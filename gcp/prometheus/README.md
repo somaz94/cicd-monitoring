@@ -52,9 +52,9 @@ metadata:
 ## ADD Ingress and Certificate
 
 ```bash
-kubectl apply -f prometheus-ingress.yaml -n monitoring
+kubectl apply -f prometheus-ingress.yaml -n prometheus
 
-kubectl apply -f prometheus-certificate.yaml -n monitoring
+kubectl apply -f prometheus-certificate.yaml -n prometheus
 ```
 
 #### In addition
