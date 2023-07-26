@@ -1,0 +1,8 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: prometheus-certificate
+spec:
+  domains:
+    - promehteus.somaz.link # change
+

@@ -1,8 +1,7 @@
-# nfs-server
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: nfs-pv-grafana
+  name: fs-pv-prometheus-alertmanager
 spec:
   capacity:
     storage: 10Gi
@@ -10,9 +9,9 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  # storageClassName: nfs
-  storageClassName: nfs-client
+  storageClassName: fs-sc
   nfs:
-    path: /nfs/grafana
-    server: <nfs-server-ip>
+    path: /vol1
+    server: <filestore-ip>
+
 

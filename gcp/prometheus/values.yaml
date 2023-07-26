@@ -1,0 +1,43 @@
+server:
+  enabled: "true"
+
+  persistentVolume:
+    enabled: true
+    storageClass: nfs-client # Select Storage Class
+    accessModes:
+      - ReadWriteMany
+    size: 10Gi
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1024Mi
+  requests:
+      cpu: 1000m
+      memory: 1024Mi
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    fsGroup: 0
+  retention: "15d"
+
+alertmanager:
+  enabled: true
+
+  persistence:
+    enabled: true
+    storageClass: nfs-client # Select Storage Class
+    accessModes:
+      - ReadWriteMany
+    size: 10Gi
+  replicaCount: 1
+
+prometheus-node-exporter:
+  enabled: true
+
+prometheus-pushgateway:
+  enabled: true
+
+kube-state-metrics:
+  enabled: false
