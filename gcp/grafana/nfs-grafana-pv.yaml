@@ -1,0 +1,18 @@
+# nfs-server
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-grafana-pv
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  # storageClassName: nfs
+  storageClassName: nfs-client
+  nfs:
+    path: /nfs/grafana
+    server: 10.1.1.1
+

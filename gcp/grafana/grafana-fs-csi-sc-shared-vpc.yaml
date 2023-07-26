@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: filestore-sharedvpc-example
+provisioner: filestore.csi.storage.gke.io
+parameters:
+  network: "projects/HOST_PROJECT_ID/global/networks/SHARED_VPC_NAME"
+  connect-mode: PRIVATE_SERVICE_ACCESS
+  reserved-ip-range: RESERVED_IP_RANGE_NAME
+allowVolumeExpansion: true

@@ -1,6 +1,4 @@
-# ArgoCD
-
-## ArgoCD Install
+## Installing ArgoCD
 
 ```bash
 kubectl create ns argocd

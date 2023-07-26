@@ -1,0 +1,8 @@
+persistence:
+  enabled: true
+  storageClassName: nfs-client # filestore.csi.storage.gke.io or pd.csi.storage.gke.io
+  accessModes:
+    - ReadWriteMany
+  size: 10Gi
+initChownData:
+  enabled: false
