@@ -85,4 +85,10 @@ How to install the monitoring tool.
         └── values.yaml
 ```
 
-
+## gitlab-ci
+```bash
+└── gitlab-ci
+    ├── README.md
+    ├── gitlab-ci-generator-build-update.yml
+    └── gitlab-ci-upload-data.yml
+```
