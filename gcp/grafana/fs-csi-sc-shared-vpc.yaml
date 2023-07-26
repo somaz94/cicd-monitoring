@@ -1,7 +1,7 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: filestore-sharedvpc-example
+  name: fs-sc-shared-vpc
 provisioner: filestore.csi.storage.gke.io
 parameters:
   network: "projects/HOST_PROJECT_ID/global/networks/SHARED_VPC_NAME"

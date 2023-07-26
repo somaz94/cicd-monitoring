@@ -10,10 +10,15 @@ helm repo add grafana https://grafana.github.io/helm-charts
 ```bash
 kubectl create ns monitoring
 
-kubectl apply -f nfs-grafana-pv.yaml -n monitoring
-kubectl apply -f grafana-fs-csi-sc-shared-vpc.yaml -n monitoring 
-kubectl apply -f grafana-fs-csi-sc.yaml -n monitoring
-kubectl apply -f grafana-pd-csi-sc.yaml -n monitoring
+# Select Disk 
+kubectl apply -f pd-csi-pv.yaml pd-csi-sc.yaml -n monitoring 
+
+kubectl apply -f fs-csi-pv.yaml fs-csi-sc.yaml -n monitoring
+
+kubectl apply -f fs-csi-pv-shared-vpc.yaml fs-csi-sc-shared-vpc.yaml -n monitoring
+
+# Read nfs-sc-Readme.md if use nfs-pv 
+kubectl apply -f nfs-pv -n monitoring
 ```
 
 ## Installing Grafana
