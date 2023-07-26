@@ -1,0 +1,39 @@
+stages:
+  - upload_data
+# CI_COMMIT_REF_NAME 파이프라인 실행하는 현재 브랜치명
+
+.change_files: &change_files
+  changes:
+    - Convertor/ServerJson/version/*
+    - Convertor/ServerJson/enum/*
+    - .gitlab-ci.yml
+
+upload_data:
+  stage: upload_data
+  image: alpine:latest
+
+  before_script:
+    - apk update && apk add openssh-client rsync
+    - eval $(ssh-agent -s)
+    - echo "${NFS_SSH_PRIVATE_KEY}"
+    - echo "${NFS_SSH_PRIVATE_KEY}" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+  script:
+    - rsync -avzr --delete --progress Convertor/ServerJson/* somaz@nfs-server.somaz.link:/data/somaz/somazdata/$CI_COMMIT_REF_NAME/
+  artifacts:
+    paths:
+      - Convertor/ServerJson/*
+    expire_in: 1 days
+  after_script:
+    - apk add curl
+    - "curl -X POST -F token=${SOMAZSERVER_TRIGGER_TOKEN} -F ref=${CI_COMMIT_REF_NAME} -F variables[project_id]=${CI_PROJECT_ID} -F variables[job_id]=${CI_JOB_ID} http://gitlab.somaz.link/api/v4/projects/<project id>/trigger/pipeline"
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "dev1")'
+      <<: *change_files
+    - if: '$CI_PIPELINE_SOURCE == "web" && ($CI_COMMIT_REF_NAME == "dev1")'
+
+
+

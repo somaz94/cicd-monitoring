@@ -1,0 +1,150 @@
+stages:
+  #- test # test code 가 명확해지면 빌드 전에 테스트 하도록 작업할 예정
+  - generator
+  - build # buld images & push to private image registry at once
+  #- deploy # deploy to server
+  - update
+
+# 스크립트에서 사용할 변수 설정
+# CI_COMMIT_REF_NAME 파이프라인 실행하는 현재 브랜치명
+variables:
+  NAMESPACE:
+    value: "dev1"
+    description: "Select the namespace: dev1 or dev2(use deploy)"
+  SERVICE:
+    value: "somaz"
+    description: "Select somaz or somazx or etc."
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$SERVICE
+  BUILD_TAG: $CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA
+  IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  BUILD_TAG_LATEST: $CI_COMMIT_REF_NAME-latest
+  IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+
+
+generator:
+  stage: generator
+  image: node:latest
+  tags:
+    - build-image
+  before_script:
+    - apt update && apt install -y unzip
+    - npm install
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.somaz.link/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - zipinfo artifacts.zip
+    - unzip -o artifacts.zip
+    - mkdir ServerJson
+    - cp -r Convertor/ServerJson/* ServerJson
+  script:
+    - npm run gen-ts
+    - rm -rf artifacts.zip Convertor ServerJson
+    - git config --global user.email "datatool@somaz.link"
+    - git config --global user.name "datatool"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.somaz.link/somaz/server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - git add .
+    - |- 
+      CHANGES=$(git status --porcelain | wc -l)
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
+      fi
+#    - git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+#    - git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger" && ($CI_COMMIT_REF_NAME == "dev1")'
+
+.build_image: &build_image
+  stage: build
+  image:
+    # kaniko debug 이미지 사용
+    name: gcr.io/kaniko-project/executor:debug
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
+    entrypoint: [""]
+  before_script:
+    - echo [INFO] Start build image.
+    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] IMAGE_URL is $IMAGE_URL
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] SERVICE is $SERVICE
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
+    - mkdir -p /kaniko/.docker
+    # private 레지스트리에 대한 접속 정보 지정
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+  script:
+    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
+
+
+build_image:
+  <<: *build_image
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web")'
+    - if: '($CI_PIPELINE_SOURCE == "trigger")'
+  tags:
+    - build-image
+
+update_image:
+  stage: update
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] SERVICE is $SERVICE
+    - echo [INFO] NAMESPACE is $NAMESPACE    
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.link:infra/kubernetes-infra.git
+    - cd kubernetes-infra/applied/argocd/applicationset/charts/fgn-server/$SERVICE
+    - git checkout master
+    - git pull
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "updateimage@somaz.link"
+    - git config --global user.name "updateimage"
+    - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git push origin HEAD
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web")'
+    - if: '($CI_PIPELINE_SOURCE == "trigger")'
+  tags:
+    - somaz-$NAMESPACE
+
+
+
+# .deploy_job: &deploy_job
+#   stage: deploy
+#   image: dtzar/helm-kubectl
+#   script:
+#     - echo [INFO] Start deploy images.
+#     - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+#     - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+#     - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
+#     - echo [INFO] BUILD_TAG is $BUILD_TAG
+#     - echo [INFO] IMAGE_URL is $IMAGE_URL
+#     - echo [INFO] IMAGE_TAG is $IMAGE_TAG
+#     - echo [INFO] SERVICE is $SERVICE
+#     - echo [INFO] NAMESPACE is $NAMESPACE
+#     - kubectl set image deployment somaz-server-$SERVICE-$NAMESPACE app=$IMAGE_URL -n somaz-$NAMESPACE --insecure-skip-tls-verify
+
+# deploy_job:
+#   <<: *deploy_job
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "web")'
+#     - if: '($CI_PIPELINE_SOURCE == "trigger")'
+#   tags:
+#     - somaz-$NAMESPACE
