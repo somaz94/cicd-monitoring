@@ -1,4 +1,4 @@
-### Installing ArgoCD
+## Installing ArgoCD
 
 ```bash
 kubectl create ns argocd
@@ -10,7 +10,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
-### Disable internal TLS
+## Disable internal TLS
 
 ```bash
 kubectl edit cm -n argocd argocd-cmd-params-cm
@@ -23,7 +23,7 @@ data:
 kubectl delete po -n argocd argocd-server-xxxxxxxx-xxxxxx-xxxxxxx
 ```
 
-### Modifying a Service
+## Modifying a Service
 
 ```bash
 k edit svc -n argocd argocd-server 
@@ -35,7 +35,7 @@ metadata:
     cloud.google.com/backend-config: '{"ports": {"http":"argocd-backend-config"}}' # ADD backend-config annotation
 ```
 
-### ADD Ingress and Certificate
+## ADD Ingress and Certificate
 
 ```bash
 kubectl apply -f argocd-ingress.yaml -n argocd
@@ -43,7 +43,7 @@ kubectl apply -f argocd-ingress.yaml -n argocd
 kubectl apply -f argocd-certificate.yaml -n argocd
 ```
 
-### ADD Git Source Repo
+## ADD Git Source Repo
 - Before registering the git source repo, generate the ssh key and register with the repo
 
 ```bash

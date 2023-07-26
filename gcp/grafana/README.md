@@ -1,10 +1,10 @@
-### ADD Helm Repo
+## ADD Helm Repo
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
-### Creating NAMESPACE & PV & StorageClass
+## Creating NAMESPACE & PV & StorageClass
 - Choose PV or Storage Class
 
 ```bash
@@ -16,7 +16,7 @@ kubectl apply -f grafana-fs-csi-sc.yaml -n monitoring
 kubectl apply -f grafana-pd-csi-sc.yaml -n monitoring
 ```
 
-### Installing Grafana
+## Installing Grafana
 
 ```bash
 helm install grafana grafana/grafana -n monitoring -f values.yaml
@@ -24,7 +24,7 @@ helm install grafana grafana/grafana -n monitoring -f values.yaml
 helm upgrade grafana grafana/grafana -n monitoring -f values.yaml # Upgrade Method
 ```
 
-### Modifying a Service
+## Modifying a Service
 
 ```bash
 kubectl edit svc -n monitoring grafana
@@ -36,7 +36,7 @@ metadata:
     cloud.google.com/backend-config: '{"ports": {"http":"grafana-backend-config"}}'
 ```
 
-### ADD Ingress and Certificate
+## ADD Ingress and Certificate
 
 ```bash
 kubectl apply -f grafana-ingress.yaml -n monitoring
