@@ -1,0 +1,9 @@
+extraScrapeConfigs: |
+   - job_name: 'api-prometheus'
+     metrics_path: /metrics
+     scrape_interval: 10s
+     scrape_timeout: 10s
+     params:
+       module: [https]
+     static_configs:
+       - targets: ['api.somaz.link']

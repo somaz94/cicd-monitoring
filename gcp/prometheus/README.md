@@ -57,6 +57,11 @@ kubectl apply -f prometheus-ingress.yaml -n prometheus
 kubectl apply -f prometheus-certificate.yaml -n prometheus
 ```
 
+## ADD Application Monitoring
+```bash
+helm upgrade prometheus prometheus-community/prometheus -f extra-scrape-configs-values.yaml -f values.yaml -n prometheus
+```
+
 #### In addition
 Modify the Domain, host, static-ip part in all yaml files. 
 

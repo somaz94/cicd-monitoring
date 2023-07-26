@@ -1,0 +1,24 @@
+persistence:
+  enabled: true
+  storageClassName: nfs-client
+  accessModes:
+    - ReadWriteMany
+  size: 10Gi
+
+serviceMonitor:
+  enabled: true
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:5xxxxxxxxxxx:certificate/bxxxxxx-6xxx-4xxx-bxxx-4xxxxxxxxxx
+    alb.ingress.kuberentes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/group.name: 'mgmt'
+  hosts:
+    - loki.somaz.link
