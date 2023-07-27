@@ -1,0 +1,204 @@
+name: 1.AWS Build
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+      service:
+        description: Which service to be built. api or admin or etc...
+        required: true
+        type: choice
+        options:
+          - api
+          - game
+          - admin
+          - gameguard
+  workflow_call:
+    inputs:
+      branch:
+        description: Source branch name
+        required: true
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        type: string
+      service:
+        description: Service to be built. api or admin or etc...
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build Image
+    runs-on: ubuntu-20.04
+    env:
+      PROJECT: somaz
+
+    strategy:
+      matrix:
+        node-version: [16.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    steps:
+      - name: Check out branch for workflow call
+        id: checkout-for-workflow-call
+        if: ${{ inputs.branch }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Check out branch for workflow dispatch
+        if: ${{ steps.checkout-for-workflow-call.outcome == 'skipped' }}
+        uses: actions/checkout@v2
+
+      - name: Set AWS region JP for prod environment
+        if: ${{ inputs.environment == 'stage' || inputs.environment == 'prod' }}
+        id: set-prod-region
+        run: |
+          echo "environment : ${{ inputs.environment }}"
+          echo "AWS_REGION=ap-northeast-1" >> $GITHUB_ENV
+
+      - name: Set AWS region KR
+        if: ${{ steps.set-prod-region.outcome == 'skipped' }}
+        run: |
+          echo "environment : ${{ inputs.environment }}"
+          echo "AWS_REGION=ap-northeast-2" >> $GITHUB_ENV
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.TEX_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.TEX_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set short sha
+        id: vars
+        run: |
+          echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        uses: docker/build-push-action@v2
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SERVICE_NAME: ${{ inputs.service }}
+          ECR_REPOSITORY: ${{ env.PROJECT }}
+          IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
+        with:
+          context: .
+          file: ${{ env.SERVICE_NAME }}.Dockerfile
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.service }}-${{ env.PROJECT }}:${{ steps.vars.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set branch var for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "IS_BUILD_TRIGGERED_BY_WORKFLOW_DISPATCH=true" >> $GITHUB_ENV
+
+      - name: Outputs build results
+        run: |
+          echo "target service: ${{ inputs.service }}"
+          echo "resource branch for workflow dispatch: ${{ github.ref_name }}"
+          echo "resource branch for workflow call: ${{ inputs.branch }}"
+          echo "deploy environment: ${{ inputs.environment }}"
+          echo "ecr region: ${{ env.AWS_REGION }}"
+          echo "image tags: ${{ steps.vars.outputs.short_sha }}"
+
+    outputs:
+      tag: ${{ steps.vars.outputs.short_sha }}
+      is_build_triggered_by_workflow_dispatch: ${{ env.IS_BUILD_TRIGGERED_BY_WORKFLOW_DISPATCH }}
+
+  call-deploy:
+    needs: [ build ]
+    name: Call deploy workflow
+    uses: ./.github/workflows/aws-deploy.yml
+    with:
+      service: ${{ inputs.service }}
+      environment: ${{ inputs.environment }}
+      tag: ${{ needs.build.outputs.tag }}
+      trigger_user: ${{ github.event.sender.login }}
+      is_build_triggered_by_workflow_dispatch: ${{ needs.build.outputs.is_build_triggered_by_workflow_dispatch }}
+      build_branch: ${{ github.ref_name }}
+    secrets: inherit
+
+  slack-notification:
+    if: ${{ always() }}
+    needs: [ build, call-deploy ]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set Env
+        run: |
+          if [ "${{ needs.build.result }}" = "failure" ] || \
+             [ "${{ needs.build.result }}" = "failure" ];
+          then
+            BUILD_RESULT="❌ 실패"
+          elif [ "${{ needs.build.result }}" = "cancelled" ] || \
+            [ "${{ needs.build.result }}" = "cancelled" ];
+          then
+            BUILD_RESULT="⚠️ 취소"
+          else
+            BUILD_RESULT="✅ 성공"
+          fi
+          echo "BUILD_RESULT=${BUILD_RESULT}" >> $GITHUB_ENV
+          
+          if [ "${{ needs.call-deploy.result }}" = "failure" ] || \
+             [ "${{ needs.call-deploy.result }}" = "failure" ];
+          then
+            DEPLOY_RESULT="❌ 실패"
+          elif [ "${{ needs.call-deploy.result }}" = "cancelled" ] || \
+            [ "${{ needs.call-deploy.result }}" = "cancelled" ];
+          then
+            DEPLOY_RESULT="⚠️ 취소"
+          else
+            DEPLOY_RESULT="✅ 성공"
+          fi
+          echo "DEPLOY_RESULT=${DEPLOY_RESULT}" >> $GITHUB_ENV
+
+      - name: set env branch
+        run: |
+          if [ ${{ inputs.branch }} ]; then
+            echo "BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi 
+
+      - name: Check out branch for workflow call
+        id: checkout-for-workflow-call
+        if: ${{ inputs.branch }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Check out branch for workflow dispatch
+        if: ${{ steps.checkout-for-workflow-call.outcome == 'skipped' }}
+        uses: actions/checkout@v2
+
+      - name: slack-send
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+           {
+             "repository_name": "${{ github.event.repository.name }} ( ${{ github.server_url }}/${{ github.repository }} )",
+             "trigger_user": "${{ github.actor }}",
+             "commit_message": "${{ github.event.head_commit.message }}",
+             "environment": "${{ inputs.environment }}",
+             "source_branch": "${{ env.BRANCH }}",
+             "build_result": "${{ env.BUILD_RESULT }}",
+             "deploy_result": "${{ env.DEPLOY_RESULT }}",
+             "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+           }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

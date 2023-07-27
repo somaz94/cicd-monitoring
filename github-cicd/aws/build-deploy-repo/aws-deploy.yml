@@ -1,4 +1,4 @@
-name: 1.GCP Deploy
+name: 1.AWS Deploy
 
 on:
   # Allows you to run this workflow manually from the Actions tab
@@ -57,17 +57,17 @@ jobs:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: somaz/${{ env.CD_REPOSITORY }}
+          repository: somaz94/${{ env.CD_REPOSITORY }}
           ref: master
           token: ${{ secrets.CICD_PAT }}
           path: ${{ env.CD_REPOSITORY }}
 
-      # Change the name so that gcpprod.values.yml can be changed if the data is changed due to the data raised to the master branch of somaz-data.
+      # Change the name so that prod.values.yml can be changed if the data is changed due to the data raised to the master branch of somaz-data.
       - name: Set env for stage
         id: set-tag-string-for-stage
-        if: ${{ inputs.environment == 'gcpstage' }}
+        if: ${{ inputs.environment == 'stage' }}
         run: |
-          echo "TARGET_VALUES_FILE_NAME=gcpprod" >> $GITHUB_ENV
+          echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
           echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
 
       - name: Set env
@@ -96,7 +96,7 @@ jobs:
       - name: Commit files
         run: |
           cd ${{ env.CD_REPOSITORY }}
-          git config --global user.email "cicd@somaz.link"
+          git config --global user.email "somaz@somaz.link"
           git config --global user.name "somaz"
-          git commit -am "Update gcp ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
+          git commit -am "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
           git push -u origin master

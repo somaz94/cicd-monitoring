@@ -70,7 +70,7 @@ jobs:
   call-artifact:
     needs: [ check-diff ]
     name: Call artifact workflow
-    uses: ./.github/workflows/2.artifacts.yml
+    uses: ./.github/workflows/2.archive-artifacts.yml
     if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
     with:
       environment: ${{ needs.check-diff.outputs.environment }}
@@ -80,7 +80,7 @@ jobs:
     needs: [ check-diff ]
     if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
     name: Call data-deploy workflow
-    uses: ./.github/workflows/3.data-deploy.yml
+    uses: ./.github/workflows/3.deploy-data.yml
     with:
       modifiedJsonFileNames: ${{ needs.check-diff.outputs.modifiedJsonFileNames }}
       environment: ${{ needs.check-diff.outputs.environment }}

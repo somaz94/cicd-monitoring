@@ -22,7 +22,7 @@ on:
       ref_name:
         description: 'branch name'
         required: true
-        default: 'gcpdev'
+        default: 'qa'
 
   repository_dispatch:
     types: [generate_files]
@@ -97,7 +97,7 @@ jobs:
           RUN_NUMBER: ${{ env.RUN_NUMBER }}
         run: |
           mkdir ServerJson
-          unzip -d ServerJson "${{ env.BRANCH }}_dsp_staticdata_server_v${{ env.RUN_NUMBER }}".zip
+          unzip -d ServerJson "${{ env.BRANCH }}_somaz_data_server_v${{ env.RUN_NUMBER }}".zip
           ls -al ServerJson
 
       # node modules 캐싱
@@ -228,7 +228,7 @@ jobs:
       branch: ${{ github.event.client_payload.ref }}
       environment: ${{ github.event.client_payload.ref_name }}
 
-  # When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
+  ## When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
   call-build-gcp-api:
     needs: [ generate ]
     if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'true' }}
@@ -240,7 +240,7 @@ jobs:
       branch: ${{ github.event.client_payload.ref }}
       environment: ${{ github.event.client_payload.ref_name }}
 
-  # When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
+  ## When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
   call-build-gcp-admin:
     needs: [ generate ]
     if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'true' }}

@@ -1,0 +1,103 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: S3 Upload & Cloudfront Cache Invalidate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-dev:
+    name: Build Image
+    runs-on: ubuntu-20.04
+
+    strategy:
+      matrix:
+        node-version: [16.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Checkout LFS objects
+        run: git lfs checkout
+
+      - name: Create LFS file list
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v2
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs2-${{ hashFiles('.lfs-assets-id') }}-v1
+
+      - name: Pull LFS objects
+        run: git lfs pull
+
+      - name: Cache node modules # node modules 캐싱
+        id: node-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules2
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: node_modules
+          key: ${{ runner.os }}-build2-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build2-
+
+      - name: Install Dependencies
+        #if: steps.node-cache.outputs.cache-hit != 'true'
+        run: |
+          npm install -g yarn
+          yarn install
+
+      - name: Build
+        run: |
+          npm run build:dev1
+
+      - name: Remove html extension
+        run: |
+          mkdir _site
+          cp -rf ./out/*.html ./_site
+          cd ./_site
+          for a in *.html; do mv -- "$a" "${a%.html}"; done
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to S3 without html extension
+        run: |
+          # html 제외한 파일 업로드
+          aws s3 sync ./out s3://${{ secrets.DEV_S3_BUCKET_NAME }} --delete --exclude "*.html"
+          # html 만 확장자 제거하고 업로드
+          #aws s3 cp . s3://${{ secrets.DEV_S3_BUCKET_NAME }} --recursive --content-type "text/html" --exclude "*" --include "*."
+          #aws s3 cp ./_site s3://${{ secrets.DEV_S3_BUCKET_NAME }} --recursive --content-type "text/html"
+
+      - name: Remove html extension in project
+        run: |
+          cd out
+          for a in *.html; do mv -- "$a" "${a%.html}"; done
+          for a in */**/*.html; do mv -- "$a" "${a%.html}"; done
+          #mv index index.html
+          #mv 404 404.html
+
+      - name: Deploy to S3 with html extension
+        run: |
+          # html 확장자 제거된 파일 업로드
+          aws s3 sync ./out s3://${{ secrets.DEV_S3_BUCKET_NAME }} --content-type "text/html"
+
+      - name: Invalidate cache CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+          --distribution-id ${{ secrets.DEV_AWS_CLOUDFRONT_DISTRIBUTION_ID }} \
+          --paths "/*"
+

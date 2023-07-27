@@ -85,10 +85,41 @@ How to install the monitoring tool.
         └── values.yaml
 ```
 
-## gitlab-ci
+## gitlab-cicd
 ```bash
 └── gitlab-cicd
     ├── README.md
     ├── gitlab-cicd-generator-build-update.yml
     └── gitlab-cicd-upload-data.yml
+```
+
+## github-cicd
+```bash
+└── github-cicd
+    ├── README.md
+    ├── aws
+    │   ├── build-deploy-repo
+    │   │   ├── aws-build.yml
+    │   │   ├── aws-deploy.yml
+    │   │   ├── aws-prod-deploy.yml
+    │   │   ├── generate_files.yml
+    │   │   └── s3-upload-cloudfront-cahce-invalidate.yml
+    │   └── data-repo
+    │       ├── 1.check-data.yml
+    │       ├── 2.archive-artifact.yml
+    │       ├── 3.deploy-data.yml
+    │       └── 4.trigger-ts-generate.yml
+    └── gcp
+        ├── build-deploy-repo
+        │   ├── gcp-build.yml
+        │   ├── gcp-deploy.yml
+        │   ├── gcp-prod-deploy.yml
+        │   ├── gcs-upload-cloudcdn-cache-invalidate.yml
+        │   ├── generate_files.yml
+        │   └── set_content_type.py
+        └── data-repo
+            ├── 1.check-data.yml
+            ├── 2.archive-artifact.yml
+            ├── 3.deploy-data.yml
+            └── 4.trigger-ts-generate.yml
 ```
