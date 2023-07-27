@@ -1,0 +1,96 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 1.Check Data
+
+on:
+  push:
+    branches:
+      - dev
+      - qa
+      - prod
+    paths:
+      - Convertor/ClientJson/**
+      - Convertor/ServerJson/**
+  workflow_dispatch:
+    inputs:
+      skipDiff:
+        description: "skip `Check data files were changed`"
+        required: true
+        default: "true"
+
+jobs:
+  # check file changed
+  check-diff:
+    name: Check changed json data files
+    if: github.ref != 'refs/heads/master' # Prevention Master Branch
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+          ref: ${{ github.ref }}
+
+      - name: Check server data files were changed
+        id: changed-files
+        uses: tj-actions/changed-files@v23
+        with:
+          files: |
+            Convertor/ClientJson/**/*.json
+            Convertor/ServerJson/**/*.json
+
+      - name: Set modifiedJsonFileNames to Output
+        id: changed-files-names
+        run: |
+          echo "all: ${{ toJSON(steps.changed-files.outputs) }}"
+          echo "names=$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')" >> $GITHUB_OUTPUT         
+          # echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')"
+
+      - name: Fail job if no files were changed
+        if: ${{ steps.changed-files.outputs.any_modified == 'false' && github.event.inputs.skipDiff != 'true' }}
+        run: |
+          exit 1
+
+      - name: Set ENVIRONMENT
+        run: |
+          if [ ${{ github.ref_name }} == 'gcpprod' ]; then
+            echo "ENVIRONMENT=gcpprod" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+    outputs:
+      isJsonModified: ${{ steps.changed-files.outputs.any_modified }}
+      modifiedJsonFileNames: ${{ steps.changed-files-names.outputs.names }}
+      environment: ${{ env.ENVIRONMENT }}
+
+  # artifact
+  call-artifact:
+    needs: [ check-diff ]
+    name: Call artifact workflow
+    uses: ./.github/workflows/2.archive-artifact.yml
+    if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
+    with:
+      environment: ${{ needs.check-diff.outputs.environment }}
+
+  # data-deploy
+  call-data-deploy:
+    needs: [ check-diff ]
+    if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
+    name: Call data-deploy workflow
+    uses: ./.github/workflows/3.deploy-data.yml
+    with:
+      modifiedJsonFileNames: ${{ needs.check-diff.outputs.modifiedJsonFileNames }}
+      environment: ${{ needs.check-diff.outputs.environment }}
+    secrets: inherit
+
+  # ts-generate
+  call-ts-generate:
+    needs: [ check-diff, call-artifact, call-data-deploy ]
+    if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
+    name: Call ts-generate workflow
+    uses: ./.github/workflows/4.trigger-ts-generate.yml
+    with:
+      environment: ${{ needs.check-diff.outputs.environment }}
+    secrets: inherit

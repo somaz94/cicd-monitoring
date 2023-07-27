@@ -1,0 +1,40 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 2.Archive Artifact
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      environment:
+        description: Target Branch
+        type: string
+        required: true
+
+jobs:
+  # archive generated json to artifact
+  artifact:
+    name: Archive data json files
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set ENVIRONMENT
+        run: |
+          if [ ${{ github.ref_name }} == 'prod' ]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      - name: Archive data json files
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.ENVIRONMENT }}_somaz_data_server_v${{ github.run_number }}
+          path: |
+            Convertor/ServerJson
+          retention-days: 30

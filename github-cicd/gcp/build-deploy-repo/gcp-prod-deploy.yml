@@ -1,0 +1,61 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 1.Deploy to GCP Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Which service to be built. api or admin or etc...'
+        required: true
+        default: api
+      #tag:
+      #  description: 'Which tag to be deployed.'
+      #  required: true
+      #  default: latest
+
+jobs:
+  deploy:
+    name: Update helm image tag
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v2
+        with:
+          repository: somaz94/somaz-applicationset
+          ref: master
+          token: ${{ secrets.CICD_PAT }}
+          path: somaz-applicationset
+
+      - name: Get Staging tag
+        env:
+          SERVICE_NAME: ${{ github.event.inputs.service }}
+        run: |
+          cd somaz-applicationset/charts/gcp-dsp/$SERVICE_NAME
+          echo "STAGING_TAG_LINE=$(sed -n -e '/^  staging_tag: /p' prod.values.yaml)" >> $GITHUB_ENV
+          echo "${{ env.STAGING_TAG_LINE }}"
+          echo $STAGING_TAG_LINE
+
+      - name: Split Staging tag
+        run: |
+          echo "STAGING_TAG=${STAGING_TAG_LINE:16:7}" >> $GITHUB_ENV
+
+      - name: Update master image tag
+        env:
+          SERVICE_NAME: ${{ github.event.inputs.service }}
+        run: |
+          cd somaz-applicationset/charts/$SERVICE_NAME
+          sed -i 's/^  tag:.*/  tag: "${{ env.STAGING_TAG }}"/g' prod.values.yaml
+
+      - name: Commit files
+        env:
+          SERVICE_NAME: ${{ github.event.inputs.service }}
+          TAG: ${{ env.STAGING_TAG }}
+          TRIGGER_USER: ${{ github.event.sender.login }}
+        run: |
+          cd somaz-applicationset
+          git config --global user.email "somaz@somaz.link"
+          git config --global user.name "somaz"
+          git commit -am "Update $SERVICE_NAME image tag to $TAG by $TRIGGER_USER"
+          git push -u origin master

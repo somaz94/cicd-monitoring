@@ -1,0 +1,134 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 3.Deploy Data
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      modifiedJsonFileNames:
+        description: Modified json file names with double quoute and comma
+        type: string
+        required: true
+      environment:
+        description: Target Branch
+        type: string
+        required: true
+
+jobs:
+  # upload generated json to patch GCS(CDN)
+  upload:
+    name: Upload json to patch GCS
+    runs-on: ubuntu-20.04
+
+    # Add "id-token" with the intended permissions.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v3
+
+      - name: Configure GCP credentials
+        id: auth         
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}      
+
+      - name: Set secrets to gcs 
+        uses: noliran/branch-based-secrets@v1
+        with:
+          # This action makes env which concatenated with PATCH_S3_BUCKET and Branch name.
+          # So, we can find branch based secret dynamic.
+          # example _) PATCH_S3_BUCKET_DEVELOP
+          secrets: PATCH_GCS_BUCKET,GCP_PROJECT        
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Select Project
+        env:
+          GCP_PROJECT: ${{ secrets[env.GCP_PROJECT_NAME] }}
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=${{ secrets.GCP_PROJECT }}" >> $GITHUB_ENV
+          gcloud config set project ${{ secrets.GCP_PROJECT }}
+          gcloud config configurations list
+
+      - name: Set short sha
+        id: vars
+        # run: echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Deploy to GCS
+        env:
+          COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
+          PATCH_GCS_BUCKET: ${{ secrets[env.PATCH_GCS_BUCKET_NAME] }}
+        run: |
+          gsutil rsync -d ./Convertor/ClientJson/ gs://${{ env.PATCH_GCS_BUCKET }}/Data/client/latest
+          gsutil rsync -d ./Convertor/ClientJson/ gs://${{ env.PATCH_GCS_BUCKET }}/Data/client/${{ env.COMMIT_HASH }}
+
+  # copy data files to ec2 using sftp
+  rsync:
+    name: Upload data to the gcp computer engine
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - name: Set secrets
+        uses: noliran/branch-based-secrets@v1
+        with:
+          secrets: GCP_BASTION_IP
+
+      - name: Uplaod data files to Bastion Server
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_BASTION_PEM }}
+          REMOTE_HOST: ${{ secrets[env.GCP_BASTION_IP_NAME] }}
+          REMOTE_USER: somaz
+          SOURCE: "Convertor/ServerJson/data/"
+          TARGET: /home/somaz/${{ inputs.environment }}
+          ARGS: "-rltDvzO --delete"
+          # ARGS: "-avzr --delete"
+
+
+      - name: Uplaod data reload api shell script to Bastion Server
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_BASTION_PEM }}
+          REMOTE_HOST: ${{ secrets[env.GCP_BASTION_IP_NAME] }}
+          REMOTE_USER: somaz
+          SOURCE: "static_publish.sh"
+          TARGET: "/home/nerdystar/"
+          ARGS: "-rltDvzO --delete"
+          # ARGS: "-avzr --delete"
+
+  # curl update version and server memory reload api
+  update_and_reload:
+    needs:
+      - upload
+      - rsync
+    name: Update version info and Call reload api
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set secrets
+        uses: noliran/branch-based-secrets@v1
+        with:
+          secrets: GCP_DATA_PUBLISH_API_DOMAIN,GCP_BASTION_IP
+
+      - name: Curl reload api
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets[env.GCP_BASTION_IP_NAME] }}
+          port: 22
+          username: somaz
+          key: ${{ secrets.GCP_BASTION_PEM }}
+          script: |
+            export GCP_DATA_PUBLISH_API_DOMAIN_NAME=${{ secrets[env.GCP_DATA_PUBLISH_API_DOMAIN_NAME] }}
+            export DATA_PUBLISH_API_KEY=${{ secrets.DATA_PUBLISH_API_KEY }}
+            sh ./static_publish.sh ${{ inputs.modifiedJsonFileNames }}

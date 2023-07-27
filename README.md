@@ -87,8 +87,8 @@ How to install the monitoring tool.
 
 ## gitlab-ci
 ```bash
-└── gitlab-ci
+└── gitlab-cicd
     ├── README.md
-    ├── gitlab-ci-generator-build-update.yml
-    └── gitlab-ci-upload-data.yml
+    ├── gitlab-cicd-generator-build-update.yml
+    └── gitlab-cicd-upload-data.yml
 ```

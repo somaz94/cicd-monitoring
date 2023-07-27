@@ -1,0 +1,50 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 4.Trigger ts generate
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Target Branch
+        type: string
+        required: true
+    secrets:
+      CICD_PAT:
+        required: true
+
+jobs:
+  trigger-ts-file-generate:
+    name: Trigger ts-file-generate workflow on somaz_server repository
+    runs-on: ubuntu-20.04
+    env:
+      CD_REPOSITORY: somaz-applicationset
+      ENVIRONMENT: ${{ inputs.environment }}
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v2
+        with:
+          repository: somaz94/${{ env.CD_REPOSITORY }}
+          ref: master
+          token: ${{ secrets.CICD_PAT }}
+          path: ${{ env.CD_REPOSITORY }}
+
+      # Step to get the repository to run gen.ts from the <environment>.txt file in the environment environment_branch folder of somaz-applicationset.
+      - name: Get target branch from environment
+        id: target-branch
+        run: |
+          echo "environment: ${{ env.ENVIRONMENT }}"
+          cd ${{ env.CD_REPOSITORY }}/environment_branch
+          echo "{target_branch}={$(cat ${{ env.ENVIRONMENT }}.txt)"} >> $GITHUB_OUTPUT
+          # echo "::set-output name=target_branch::$(cat ${{ env.ENVIRONMENT }}.txt)"
+
+      - name: Trigger ts file generate
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.CICD_PAT }}
+          repository: somaz94/somaz-server
+          event-type: generate_files
+          client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ env.ENVIRONMENT }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'
+          #client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ github.ref_name }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'
+
