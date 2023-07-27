@@ -25,8 +25,8 @@ jobs:
 
       - name: Set ENVIRONMENT
         run: |
-          if [ ${{ github.ref_name }} == 'prod' ]; then
-            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+          if [ ${{ github.ref_name }} == 'gcpprod' ]; then
+            echo "ENVIRONMENT=gcpprod" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=${{ github.ref_name }}" >> $GITHUB_ENV
           fi

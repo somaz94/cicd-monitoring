@@ -65,9 +65,9 @@ jobs:
       # Change the name so that prod.values.yml can be changed if the data is changed due to the data raised to the master branch of somaz-data.
       - name: Set env for stage
         id: set-tag-string-for-stage
-        if: ${{ inputs.environment == 'stage' }}
+        if: ${{ inputs.environment == 'gcpstage' }}
         run: |
-          echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
+          echo "TARGET_VALUES_FILE_NAME=gcpprod" >> $GITHUB_ENV
           echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
 
       - name: Set env

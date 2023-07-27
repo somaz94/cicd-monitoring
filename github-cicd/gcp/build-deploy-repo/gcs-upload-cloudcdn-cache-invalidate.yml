@@ -1,0 +1,134 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: GCS Upload & Cloud CDN Cache Invalidate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-dev:
+    name: Build Image
+    runs-on: ubuntu-20.04
+
+    strategy:
+      matrix:
+        node-version: [16.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v3
+        with:
+          lfs: true
+
+      - name: Checkout LFS objects
+        run: git lfs checkout
+
+      - name: Create LFS file list
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Restore LFS cache
+        uses: actions/cache@v2
+        id: lfs-cache
+        with:
+          path: .git/lfs
+          key: ${{ runner.os }}-lfs2-${{ hashFiles('.lfs-assets-id') }}-v1
+
+      - name: Pull LFS objects
+        run: git lfs pull
+
+      - name: Cache node modules # node modules 캐싱
+        id: node-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules2
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: node_modules
+          key: ${{ runner.os }}-build2-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build2-
+
+      - name: Install Dependencies
+        #if: steps.node-cache.outputs.cache-hit != 'true'
+        run: |
+          npm install -g yarn
+          yarn install
+
+      - name: Build
+        run: |
+          npm run build:gcpdev1
+
+      - name: Remove html extension
+        run: |
+          mkdir _site
+          cp -rf ./out/*.html ./_site
+          cd ./_site
+          for a in *.html; do mv -- "$a" "${a%.html}"; done
+
+      - name: Configure GCP credentials
+        id: auth         
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      - name: Select Project
+        run: |
+          echo "CLOUDSDK_CORE_PROJECT=${{ secrets.GCP_PROJECT_DEV }}" >> $GITHUB_ENV
+          gcloud config set project ${{ secrets.GCP_PROJECT_DEV }}
+          gcloud config configurations list
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+    
+      - name: Install Google Cloud Storage library
+        run: pip install google-cloud-storage
+
+      - name: Deploy to GCS without html extension
+        run: |
+          # Upload files except html
+          gsutil -m rsync -r -x ".*\.html$" ./out gs://${{ secrets.GCS_BUCKET_DEV }}
+  
+      - name: Remove html extension in project and record
+        run: |
+          cd out
+          find . -type f -name "*.html" -exec bash -c 'file="${0#./}"; echo "${file%.html}" >> html_files.txt; mv "$0" "${file%.html}"' {} \;
+          ls -al
+  
+      - name: Deploy to GCS with html extension removed
+        run: |
+          cd out
+          gsutil -m rsync -r . gs://${{ secrets.GCS_BUCKET_DEV }}   
+      
+      - name: Set Content-Type for HTML files
+        run: |
+          while IFS= read -r file; do
+            python .github/workflows/set_content_type.py ${{ secrets.GCS_BUCKET_DEV }} "${file}"
+          done < out/html_files.txt
+
+      # - name: Set Content-Type for HTML files
+      #   run: |
+      #     cd out
+      #     while IFS= read -r file; do
+      #       gsutil -m setmeta -h "Content-Type:text/html" "gs://${{ secrets.GCP_LUXON_GCS_BUCKET_DEV1 }}/${file}"
+      #     done < html_files.txt
+       
+      - name: Invalidate cache CloudFront
+        run: |
+          gcloud compute url-maps list
+          gcloud compute url-maps invalidate-cdn-cache ${{ secrets.GCP_CLOUDCDN_URL_MAP_DEV }} \
+          --path "/*" \
+          --global
+
+

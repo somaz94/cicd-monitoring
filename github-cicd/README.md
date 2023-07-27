@@ -14,5 +14,7 @@ All repositories from the githubaction pipeline are examples.
 - docker/setup-buildx-action <https://github.com/docker/setup-buildx-action>
 - docker/build-push-action <https://github.com/docker/build-push-action>
 - slackapi/slack-github-action <https://github.com/slackapi/slack-github-action>
+- actions/setup-python <https://github.com/actions/setup-python>
 - google-github-actions/auth <https://github.com/google-github-actions/auth>
 - google-github-actions/setup-gcloud <https://github.com/google-github-actions/setup-gcloud>
+

@@ -1,0 +1,253 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: 99.Geneate staticdata dao files
+
+on:
+  #push:
+  #  branches: [ main, develop ]
+  #pull_request:
+  #  branches: [ main, develop ]
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'run_id'
+        required: true
+        default: '2534579702'
+      run_number:
+        description: 'run_number'
+        required: true
+        default: '34'
+      ref_name:
+        description: 'branch name'
+        required: true
+        default: 'gcpdev'
+
+  repository_dispatch:
+    types: [generate_files]
+
+jobs:
+  generate:
+    name: Download dsp staticdata files and Generate ts files
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+
+      - name: check
+        run: |
+          echo "github.event_name: ${{ github.event_name }}"
+          echo "github.event.action: ${{ github.event.action }}"
+
+      - name: Set Artifact variables for workflow dispatch
+        if: ${{ github.event.inputs.run_id }}
+        env:
+          run_id: ${{ github.event.inputs.run_id }}
+          run_number: ${{ github.event.inputs.run_number }}
+          ref_name: ${{ github.event.inputs.ref_name }}
+        run: |
+          echo "RUN_ID=${{ env.run_id }}" >> $GITHUB_ENV
+          echo "RUN_NUMBER=${{ env.run_number }}" >> $GITHUB_ENV
+          echo "BRANCH=${{ env.ref_name }}" >> $GITHUB_ENV
+
+      - name: Set Artifact variables for repository dispatch
+        if: ${{ github.event.client_payload.run_id }}
+        env:
+          run_id: ${{ github.event.client_payload.run_id }}
+          run_number: ${{ github.event.client_payload.run_number }}
+          ref_name: ${{ github.event.client_payload.ref_name }}
+        run: |
+          echo "RUN_ID=${{ env.run_id }}" >> $GITHUB_ENV
+          echo "RUN_NUMBER=${{ env.run_number }}" >> $GITHUB_ENV
+          echo "BRANCH=${{ env.ref_name }}" >> $GITHUB_ENV
+
+      - name: download artifact
+        uses: actions/github-script@v6
+        env:
+          RUN_ID: ${{ env.RUN_ID }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+          BRANCH: ${{ env.BRANCH }}
+        with:
+          github-token: ${{ secrets.CICD_PAT }}
+          script: |
+            const { BRANCH, RUN_ID, RUN_NUMBER } = process.env
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: 'somaz-data',
+               run_id: `${RUN_ID}`,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == `${BRANCH}_somaz_data_server_v${RUN_NUMBER}`
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: 'somaz-data',
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_somaz_data_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
+
+      - name: Unzip artifact
+        env:
+          RUN_ID: ${{ env.RUN_ID }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+        run: |
+          mkdir ServerJson
+          unzip -d ServerJson "${{ env.BRANCH }}_dsp_staticdata_server_v${{ env.RUN_NUMBER }}".zip
+          ls -al ServerJson
+
+      # node modules 캐싱
+      - name: Cache node modules
+        id: node-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-build-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+      - name: install node dependencies
+        if: steps.node-cache.outputs.cache-hit != 'true'
+        run: |
+          npm install
+          npm ci
+
+      - name: generate ts files
+        id: gen
+        run: |
+          rm -rf libs/dao/src/static
+          npm run gen-ts
+          RESULT=$(git status)
+          if [[ $RESULT == *"libs/dao/src/static"* ]]; then
+            echo "::set-output name=isGenfileModified::true"
+          fi
+          
+          ## enum 파일만 변경되었을 경우 이미지 빌드되지 않도록 하려면 위 조건문 대신 아래 사용.
+          ## common.enum.ts 는 빌드되도록 조건 추가..
+          #RESULT=$(git status | grep --invert "**/*.enum.*" )
+          #if [[ $RESULT == *"libs/dao/src/static"* ]]; then
+          #  echo "::set-output name=isGenfileModified::true"
+          #fi
+
+      - name: Add & Commit & Push files
+        if: ${{ steps.gen.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name != 'prod' && github.event.client_payload.ref_name != 'gcpprod' }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+          BRANCH: ${{ env.BRANCH }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+        run: |
+          git config --global user.email "somaz@somaz.link"
+          git config --global user.name "somaz"
+          git add libs
+          git commit -m "Update generated files by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git push -u origin ${{ github.event.client_payload.ref }}
+
+      - name: Add & Commit & Push files & Pull request
+        if: ${{ steps.gen.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name == 'prod' && github.event.client_payload.ref_name != 'gcpprod' }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+          BRANCH: ${{ env.BRANCH }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+          CICD_PAT: ${{ secrets.CICD_PAT }} # Add CICD_PAT from organization secrets
+        run: |
+          git config --global user.email "somaz@somaz.link"
+          git config --global user.name "somaz"
+  
+          # Create a new branch for the changes
+          git checkout -b "update-generated-files-$TRIGGER_USER-$RUN_NUMBER"
+  
+          git add libs
+          git commit -m "Update generated files by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git push -u origin "update-generated-files-$TRIGGER_USER-$RUN_NUMBER"
+  
+          # Create a pull request using the GitHub API
+          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files by '"$TRIGGER_USER"'. Run number: '"${RUN_NUMBER}"'", "head":"update-generated-files-'"$TRIGGER_USER"'-'"$RUN_NUMBER"'", "base":"'"${{ github.event.client_payload.ref }}"'"}')
+          echo "$PR_JSON" | jq '.number'
+
+      - name: Check branch name
+        id: check
+        run: echo "::set-output name=branch::$(echo '${{ github.event.client_payload.ref_name }}' | grep -q '^gcp' && echo true || echo false)"
+
+    outputs:
+      isGenfileModified: ${{ steps.gen.outputs.isGenfileModified }}
+      isBranchCheck: ${{ steps.check.outputs.branch }}       
+
+  # Build an image immediately if the genfile changes, not the prod environment (main, master, prod, production branch)
+  call-build-game:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'false' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: game
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}
+
+  # Build an image immediately if the genfile changes, not the prod environment (main, master, prod, production branch)
+  call-build-api:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'false' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: api
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}
+
+  # Build an image immediately if the genfile changes, not the prod environment (main, master, prod, production branch)
+  call-build-admin:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'false' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: admin
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}
+
+  ## When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
+  call-build-gcp-game:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'true' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/gcp-build.yml
+    secrets: inherit
+    with:
+      service: game
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}
+
+  # When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
+  call-build-gcp-api:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'true' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/gcp-build.yml
+    secrets: inherit
+    with:
+      service: api
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}
+
+  # When the genfile is changed and branch starts with gcp, not the prod environment (main, master, prod, production branch)
+  call-build-gcp-admin:
+    needs: [ generate ]
+    if: ${{ needs.generate.outputs.isGenfileModified == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref  != 'gcpprod' && needs.generate.outputs.isBranchCheck == 'true' }}
+    name: Call deploy workflow
+    uses: ./.github/workflows/gcp-build.yml
+    secrets: inherit
+    with:
+      service: admin
+      branch: ${{ github.event.client_payload.ref }}
+      environment: ${{ github.event.client_payload.ref_name }}

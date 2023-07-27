@@ -6,9 +6,11 @@ name: 1.Check Data
 on:
   push:
     branches:
-      - gcpdev
-      - gcpqa
-      - gcpprod
+      - dev
+      - qa
+      - prod
+      # main 은 수동으로 배포하도록
+      #- main
     paths:
       - Convertor/ClientJson/**
       - Convertor/ServerJson/**
@@ -23,7 +25,6 @@ jobs:
   # check file changed
   check-diff:
     name: Check changed json data files
-    if: github.ref != 'refs/heads/master' # Prevention Master Branch
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout repository
@@ -44,8 +45,8 @@ jobs:
         id: changed-files-names
         run: |
           echo "all: ${{ toJSON(steps.changed-files.outputs) }}"
-          echo "names=$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')" >> $GITHUB_OUTPUT         
-          # echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')"
+          echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')"
+          #echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/'  | sed -e 's/$/"/' | sed -e '$ ! s/$/,/g' | tr -d '\n')"
 
       - name: Fail job if no files were changed
         if: ${{ steps.changed-files.outputs.any_modified == 'false' && github.event.inputs.skipDiff != 'true' }}
@@ -54,8 +55,8 @@ jobs:
 
       - name: Set ENVIRONMENT
         run: |
-          if [ ${{ github.ref_name }} == 'gcpprod' ]; then
-            echo "ENVIRONMENT=gcpprod" >> $GITHUB_ENV
+          if [ ${{ github.ref_name }} == 'prod' ]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=${{ github.ref_name }}" >> $GITHUB_ENV
           fi
@@ -69,7 +70,7 @@ jobs:
   call-artifact:
     needs: [ check-diff ]
     name: Call artifact workflow
-    uses: ./.github/workflows/2.archive-artifact.yml
+    uses: ./.github/workflows/2.artifacts.yml
     if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
     with:
       environment: ${{ needs.check-diff.outputs.environment }}
@@ -79,7 +80,7 @@ jobs:
     needs: [ check-diff ]
     if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
     name: Call data-deploy workflow
-    uses: ./.github/workflows/3.deploy-data.yml
+    uses: ./.github/workflows/3.data-deploy.yml
     with:
       modifiedJsonFileNames: ${{ needs.check-diff.outputs.modifiedJsonFileNames }}
       environment: ${{ needs.check-diff.outputs.environment }}
@@ -94,3 +95,4 @@ jobs:
     with:
       environment: ${{ needs.check-diff.outputs.environment }}
     secrets: inherit
+

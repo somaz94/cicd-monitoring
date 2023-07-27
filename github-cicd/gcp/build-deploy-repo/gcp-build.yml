@@ -61,7 +61,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set GCP region JP for prod environment
-        if: ${{ inputs.environment == 'stage' || inputs.environment == 'prod' }}
+        if: ${{ inputs.environment == 'gcpstage' || inputs.environment == 'gcpprod' }}
         id: set-prod-region
         run: |
           echo "environment : ${{ inputs.environment }}"
