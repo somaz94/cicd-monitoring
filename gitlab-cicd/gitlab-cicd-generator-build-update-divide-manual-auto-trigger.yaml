@@ -172,7 +172,7 @@ deploy_trigger_job_game:
   rules:
     - if: '($CI_PIPELINE_SOURCE == "trigger")'
   tags:
-    - fgn-$NAMESPACE
+    - somaz-$NAMESPACE
 
 .build_trigger_image_batch: &build_trigger_image_batch
   stage: build
@@ -295,7 +295,7 @@ deploy_auto_job_game:
     - if: '$CI_PIPELINE_SOURCE == "push"'
       <<: *change_files_game
   tags:
-    - fgn-$NAMESPACE
+    - somaz-$NAMESPACE
 
 .build_auto_image_batch: &build_auto_image_batch
   stage: build
