@@ -89,6 +89,7 @@ How to install the monitoring tool.
 ```bash
 └── gitlab-cicd
     ├── README.md
+    ├── gitlab-cicd-generator-build-update-divide-manual-auto-trigger.yaml
     ├── gitlab-cicd-generator-build-update.yml
     └── gitlab-cicd-upload-data.yml
 ```
