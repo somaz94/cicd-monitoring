@@ -30,4 +30,4 @@ kubectl apply -f repo-secret.yaml -n argocd
 Modify the Domain, host, part in all yaml files. It also modifies the key of the repo-secret.
 
 #### Reference
-<https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#google-cloud-load-balancers-with-kubernetes-ingress>
+<https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode>
