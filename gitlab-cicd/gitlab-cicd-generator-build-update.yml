@@ -52,8 +52,6 @@ generator:
         git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
         git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
       fi
-#    - git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
-#    - git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
   rules:
     - if: '$CI_PIPELINE_SOURCE == "trigger" && ($CI_COMMIT_REF_NAME == "dev1")'
 
@@ -62,7 +60,6 @@ generator:
   image:
     # kaniko debug 이미지 사용
     name: gcr.io/kaniko-project/executor:debug
-    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
     entrypoint: [""]
   before_script:
     - echo [INFO] Start build image.
@@ -75,9 +72,7 @@ generator:
     - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
     - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
     - echo [INFO] SERVICE is $SERVICE
-    # registry 접속 정보를 저장하기 위한 디렉토리 생성
     - mkdir -p /kaniko/.docker
-    # private 레지스트리에 대한 접속 정보 지정
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
   script:
     - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
@@ -123,28 +118,3 @@ update_image:
     - if: '($CI_PIPELINE_SOURCE == "trigger")'
   tags:
     - somaz-$NAMESPACE
-
-
-
-# .deploy_job: &deploy_job
-#   stage: deploy
-#   image: dtzar/helm-kubectl
-#   script:
-#     - echo [INFO] Start deploy images.
-#     - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-#     - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
-#     - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-#     - echo [INFO] BUILD_TAG is $BUILD_TAG
-#     - echo [INFO] IMAGE_URL is $IMAGE_URL
-#     - echo [INFO] IMAGE_TAG is $IMAGE_TAG
-#     - echo [INFO] SERVICE is $SERVICE
-#     - echo [INFO] NAMESPACE is $NAMESPACE
-#     - kubectl set image deployment somaz-server-$SERVICE-$NAMESPACE app=$IMAGE_URL -n somaz-$NAMESPACE --insecure-skip-tls-verify
-
-# deploy_job:
-#   <<: *deploy_job
-#   rules:
-#     - if: '($CI_PIPELINE_SOURCE == "web")'
-#     - if: '($CI_PIPELINE_SOURCE == "trigger")'
-#   tags:
-#     - somaz-$NAMESPACE

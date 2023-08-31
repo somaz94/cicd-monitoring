@@ -1,32 +1,41 @@
-# The gitlab runner must be installed.
-
 stages:
+  #- test # test code 가 명확해지면 빌드 전에 테스트 하도록 작업할 예정
   - generator
+  - prepare
   - build # buld images & push to private image registry at once
-  - deploy # deploy to server
+  - update
 
-# Setting variables to use in scripts
-# Current branch name running CI_COMMIT_REF_NAME pipeline
+# 스크립트에서 사용할 변수 설정
+# CI_COMMIT_REF_NAME 파이프라인 실행하는 현재 브랜치명
 variables:
   NAMESPACE:
     value: "dev1"
     description: "Select the namespace: dev1 or dev2(use deploy)"
+    options:
+      - "dev1"
+      - "dev2"
+      - "qa1"
+      - "qa2"
   SERVICE:
-    value: "game"
-    description: "Select admin or game or etc."
+    value: "web"
+    description: "Select web or game or etc."
+    options:
+      - "web"
+      - "game"
   CI_REGISTRY_IMAGE: $CI_REGISTRY/$SERVICE
   BUILD_TAG: $CI_COMMIT_REF_NAME-$CI_COMMIT_SHORT_SHA
   IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   BUILD_TAG_LATEST: $CI_COMMIT_REF_NAME-latest
   IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
-  CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE # GAME_SERVICE is a variable registered in gitlab
+  CI_REGISTRY_IMAGE_WEB: $CI_REGISTRY/$WEB_SERVICE
+  IMAGE_URL_WEB: '${CI_REGISTRY_IMAGE_WEB}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_WEB: '${CI_REGISTRY_IMAGE_WEB}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE
   IMAGE_URL_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
   IMAGE_URL_LATEST_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
-  CI_REGISTRY_IMAGE_BATCH: $CI_REGISTRY/$BATCH_SERVICE # BATCH_SERVICE is a variable registered in gitlab
-  IMAGE_URL_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
-  IMAGE_URL_LATEST_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'  
   STATIC_DATA_PROJECT_ID: $project_id
   GENERATE_JOB_ID: $job_id
+  CHANGED_SomazJson: $changed_SomazJson
 
 generator:
   stage: generator
@@ -36,40 +45,96 @@ generator:
   before_script:
     - apt update && apt install -y unzip
     - npm install
-    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.nerdystar.io/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.somaz.link/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
     - zipinfo artifacts.zip
     - unzip -o artifacts.zip
-    - mkdir ServerJson
-    - cp -r Convertor/ServerJson/* ServerJson
-  script:
-    - git config --global user.email "datatool@oozooinc.com"
+    - mkdir SomazJson
+    - cp -r Somaz/SomazJson/* SomazJson
+  script:    
+    - git config --global user.email "datatool@somaz.link"
     - git config --global user.name "datatool"
     - git config --global push.default current
-    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.nerdystar.io/4ground9/server.git
+    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.somaz.link/Somaz/somaz-server.git
     - git checkout ${CI_COMMIT_REF_NAME}
     - git pull
     - npm run gen-static
     - npm run lint:static
-    - rm -rf artifacts.zip Convertor ServerJson
+    - rm -rf artifacts.zip Somaz SomazJson    
+    - git add .
+    - CHANGES=$(git status --porcelain | wc -l)
+    - PUSHED=false
+    - |
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
+        PUSHED=true
+      fi
+    # Curl 요청
+    - echo "$CHANGED_ServerJson"
+    - |
+      if [ "$PUSHED" = "false" ] && [ ! -z "$CHANGED_ServerJson" ]; then 
+        NAMES_ARRAY="["
+        for file in $CHANGED_ServerJson; do
+          # NAMES_ARRAY+="\\\"$file\\\","
+          NAMES_ARRAY+="\"$file\","
+        done
+        # Remove the last comma
+        NAMES_ARRAY=${NAMES_ARRAY%,}
+        NAMES_ARRAY+="]"
+
+        echo $NAMES_ARRAY
+
+        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-game.somaz.link/data/reload" -H 'accept: application/json' -H 'X-API-KEY: somaz-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        echo $RESPONSE
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+.change_files_game: &change_files_game
+  changes:
+    - apps/game/**/*
+    - libs/**/*
+    - game.Dockerfile
+
+prepare_game:
+  stage: prepare
+  image: node:latest
+  variables:
+    NODE_ENV: $CI_COMMIT_REF_NAME
+  before_script:
+    - npm install
+    - apt-get update
+    - apt-get install -y git
+  script:
+    - git config --global user.email "cicd@somaz.link"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.somaz.link/Somaz/somaz-server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull gitlab_origin ${CI_COMMIT_REF_NAME}
+    - npm run gen-game
+    - npm run lint
     - git add .
     - |-
       CHANGES=$(git status --porcelain | wc -l)
       if [ "$CHANGES" -gt "0" ]; then 
-        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        git commit -m "Preparation step before game build-$CI_COMMIT_SHORT_SHA"
         git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
       fi
-  #    - git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
-  #    - git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "trigger" && ($CI_COMMIT_REF_NAME == "dev1")'
+    - if: '($CI_PIPELINE_SOURCE == "web") && ($SERVICE == "game")'
+    - if: '($CI_PIPELINE_SOURCE == "push")'
+      <<: *change_files_game
+  tags:
+    - build-image
 
-# Used when building manually on web
-.build_manual_image: &build_manual_image
+# web에서 수동 빌드 시 사용
+build_manual_image: 
   stage: build
   image:
-    # Using kaniko debug images
+    # kaniko debug 이미지 사용
     name: gcr.io/kaniko-project/executor:debug
-    # Entrypoint must explicitly specify an empty string of ".
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
     entrypoint: [""]
   before_script:
     - echo [INFO] Start build image.
@@ -82,222 +147,58 @@ generator:
     - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
     - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
     - echo [INFO] SERVICE is $SERVICE
-    # Creating a directory to store registry connection information
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
     - mkdir -p /kaniko/.docker
-    # Specifying connection information for the private registry
+    # private 레지스트리에 대한 접속 정보 지정
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
   script:
     - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
-
-build_manual_image:
-  <<: *build_manual_image
   rules:
     - if: '($CI_PIPELINE_SOURCE == "web")'
   tags:
     - build-image
 
-
-.deploy_manual_job: &deploy_manual_job
-  stage: deploy
-  image: dtzar/helm-kubectl
-  script:
-    - echo [INFO] Start deploy images.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
+update_manual_image:
+  stage: update
+  image: alpine:latest
+  before_script:
     - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL is $IMAGE_URL
-    - echo [INFO] IMAGE_TAG is $IMAGE_TAG
     - echo [INFO] SERVICE is $SERVICE
-    - echo [INFO] NAMESPACE is $NAMESPACE
-    - kubectl set image deployment fgn-server-$SERVICE-$NAMESPACE app=$IMAGE_URL -n fgn-server-$NAMESPACE --insecure-skip-tls-verify
-
-deploy_manual_job:
-  <<: *deploy_manual_job
+    - echo [INFO] NAMESPACE is $NAMESPACE    
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.link:Somaz/infra.git
+    - cd infra/argocd/applicationset/charts/somaz-server/$SERVICE
+    - git checkout master
+    - git pull
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.link"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
   rules:
     - if: '($CI_PIPELINE_SOURCE == "web")'
   tags:
     - somaz-$NAMESPACE
 
-
 #------------------------------------------------------------------------------------------------
-
-# Used when static data is changed and triggered
-.build_trigger_image_game: &build_trigger_image_game
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  before_script:
-    - echo [INFO] Start build image.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_GAME is $CI_REGISTRY_IMAGE_GAME
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_GAME is $IMAGE_URL_GAME
-    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
-    - echo [INFO] IMAGE_URL_LATEST_GAME is $IMAGE_URL_LATEST_GAME
-    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
-    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
-  script:
-    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$GAME_SERVICE.Dockerfile --destination $IMAGE_URL_GAME --destination $IMAGE_URL_LATEST_GAME --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
-
-build_trigger_image_game:
-  <<: *build_trigger_image_game
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "trigger")'
-  tags:
-    - build-image
-
-
-.deploy_trigger_job_game: &deploy_trigger_job_game
-  stage: deploy
-  image: dtzar/helm-kubectl
-  script:
-    - echo [INFO] Start deploy images.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_GAME is $CI_REGISTRY_IMAGE_GAME
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_GAME is $IMAGE_URL_GAME
-    - echo [INFO] IMAGE_TAG is $IMAGE_TAG
-    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
-    - echo [INFO] NAMESPACE is $NAMESPACE
-    - kubectl set image deployment fgn-server-$GAME_SERVICE-$NAMESPACE app=$IMAGE_URL_GAME -n fgn-server-$NAMESPACE --insecure-skip-tls-verify
-
-deploy_trigger_job_game:
-  <<: *deploy_trigger_job_game
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "trigger")'
-  tags:
-    - somaz-$NAMESPACE
-
-.build_trigger_image_batch: &build_trigger_image_batch
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  before_script:
-    - echo [INFO] Start build image.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_BATCH is $CI_REGISTRY_IMAGE_BATCH
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_BATCH is $IMAGE_URL_BATCH
-    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
-    - echo [INFO] IMAGE_URL_LATEST_BATCH is $IMAGE_URL_LATEST_BATCH
-    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
-    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
-  script:
-    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$BATCH_SERVICE.Dockerfile --destination $IMAGE_URL_BATCH --destination $IMAGE_URL_LATEST_BATCH --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
-
-build_trigger_image_batch:
-  <<: *build_trigger_image_batch
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "trigger")'
-  tags:
-    - build-image
-
-
-.deploy_trigger_job_batch: &deploy_trigger_job_batch
-  stage: deploy
-  image: dtzar/helm-kubectl
-  script:
-    - echo [INFO] Start deploy images.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_BATCH is $CI_REGISTRY_IMAGE_BATCH
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_BATCH is $IMAGE_URL_BATCH
-    - echo [INFO] IMAGE_TAG is $IMAGE_TAG
-    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
-    - echo [INFO] NAMESPACE is $NAMESPACE
-    - kubectl set image deployment fgn-server-$BATCH_SERVICE-$NAMESPACE app=$IMAGE_URL_BATCH -n fgn-server-$NAMESPACE --insecure-skip-tls-verify
-
-deploy_trigger_job_batch:
-  <<: *deploy_trigger_job_batch
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "trigger")'
-  tags:
-    - somaz-$NAMESPACE
-
-
-
-#------------------------------------------------------------------------------------------------
-.change_files_game: &change_files_game
+.change_files_web: &change_files_web
  changes:
-   - apps/game/**/*
-   - config/.game.dev1.env
+   - apps/web/**/*
    - libs/**/*
-   - game.Dockerfile
-   - .gitlab-ci.yml
-
-.change_files_batch: &change_files_batch
- changes:
-   - apps/batch/**/*
-   - config/.batch.dev1.env
-   - libs/**/*
-   - batch.Dockerfile
-   - .gitlab-ci.yml
-
-# When the data listed in change_files is changed in server repo
-.build_auto_image_game: &build_auto_image_game
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  before_script:
-    - echo [INFO] Start build image.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_GAME is $CI_REGISTRY_IMAGE_GAME
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_GAME is $IMAGE_URL_GAME
-    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
-    - echo [INFO] IMAGE_URL_LATEST_GAME is $IMAGE_URL_LATEST_GAME
-    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
-    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
-  script:
-    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$GAME_SERVICE.Dockerfile --destination $IMAGE_URL_GAME --destination $IMAGE_URL_LATEST_GAME --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
+   - web.Dockerfile
 
 build_auto_image_game:
-  <<: *build_auto_image_game
-  rules: 
-    - if: '$CI_PIPELINE_SOURCE == "push"'
-      <<: *change_files_game
-  tags:
-    - build-image
-
-.deploy_auto_job_game: &deploy_auto_job_game
-  stage: deploy
-  image: dtzar/helm-kubectl
-  script:
-    - echo [INFO] Start deploy images.
-    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_GAME is $CI_REGISTRY_IMAGE_GAME
-    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
-    - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_GAME is $IMAGE_URL_GAME
-    - echo [INFO] IMAGE_TAG is $IMAGE_TAG
-    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
-    - echo [INFO] NAMESPACE is $NAMESPACE
-    - kubectl set image deployment fgn-server-$GAME_SERVICE-$NAMESPACE app=$IMAGE_URL_GAME -n fgn-server-$NAMESPACE --insecure-skip-tls-verify
-
-deploy_auto_job_game:
-  <<: *deploy_auto_job_game
-  rules: 
-    - if: '$CI_PIPELINE_SOURCE == "push"'
-      <<: *change_files_game
-  tags:
-    - somaz-$NAMESPACE
-
-.build_auto_image_batch: &build_auto_image_batch
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug
@@ -305,48 +206,114 @@ deploy_auto_job_game:
   before_script:
     - echo [INFO] Start build image.
     - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_BATCH is $CI_REGISTRY_IMAGE_BATCH
+    - echo [INFO] CI_REGISTRY_IMAGE_GAME is $CI_REGISTRY_IMAGE_GAME
     - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
     - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_BATCH is $IMAGE_URL_BATCH
+    - echo [INFO] IMAGE_URL_GAME is $IMAGE_URL_GAME
     - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
-    - echo [INFO] IMAGE_URL_LATEST_BATCH is $IMAGE_URL_LATEST_BATCH
+    - echo [INFO] IMAGE_URL_LATEST_GAME is $IMAGE_URL_LATEST_GAME
     - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
-    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
+    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
   script:
-    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$BATCH_SERVICE.Dockerfile --destination $IMAGE_URL_BATCH --destination $IMAGE_URL_LATEST_BATCH --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
-
-build_auto_image_batch:
-  <<: *build_auto_image_batch
+    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$GAME_SERVICE.Dockerfile --destination $IMAGE_URL_GAME --destination $IMAGE_URL_LATEST_GAME --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
   rules: 
     - if: '$CI_PIPELINE_SOURCE == "push"'
-      <<: *change_files_batch
+      <<: *change_files_game
   tags:
     - build-image
 
-.deploy_auto_job_batch: &deploy_auto_job_batch
-  stage: deploy
-  image: dtzar/helm-kubectl
+update_auto_image_game:
+  stage: update
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] SERVICE is $GAME_SERVICE
+    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME    
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
   script:
-    - echo [INFO] Start deploy images.
+    - git clone git@gitlab.somaz.link:Somaz/infra.git
+    - cd infra/argocd/applicationset/charts/somaz-server/$GAME_SERVICE
+    - git checkout master
+    - git pull
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $CI_COMMIT_REF_NAME.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.link"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $GAME_SERVICE-$CI_COMMIT_REF_NAME tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_game
+  tags:
+    - somaz-$CI_COMMIT_REF_NAME
+
+build_auto_image_web:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  before_script:
+    - echo [INFO] Start build image.
     - echo [INFO] CI_REGISTRY is $CI_REGISTRY
-    - echo [INFO] CI_REGISTRY_IMAGE_BATCH is $CI_REGISTRY_IMAGE_BATCH
+    - echo [INFO] CI_REGISTRY_IMAGE_WEB is $CI_REGISTRY_IMAGE_WEB
     - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
     - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_BATCH is $IMAGE_URL_BATCH
-    - echo [INFO] IMAGE_TAG is $IMAGE_TAG
-    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
-    - echo [INFO] NAMESPACE is $NAMESPACE
-    - kubectl set image deployment fgn-server-$BATCH_SERVICE-$NAMESPACE app=$IMAGE_URL_BATCH -n fgn-server-$NAMESPACE --insecure-skip-tls-verify
-
-deploy_auto_job_batch:
-  <<: *deploy_auto_job_batch
+    - echo [INFO] IMAGE_URL_WEBis $IMAGE_URL_WEB
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST_WEB is $IMAGE_URL_LATEST_WEB
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] WEB_SERVICE is $WEB_SERVICE
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+  script:
+    - /kaniko/executor --cache=true --cache-ttl=24h --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$WEB_SERVICE.Dockerfile --destination $IMAGE_URL_WEB --destination $IMAGE_URL_LATEST_WEB --build-arg NODE_ENV=$CI_COMMIT_REF_NAME --skip-tls-verify
   rules: 
     - if: '$CI_PIPELINE_SOURCE == "push"'
-      <<: *change_files_batch
+      <<: *change_files_web
   tags:
-    - somaz-$NAMESPACE
+    - somaz-image
 
-
+update_auto_image_batch:
+  stage: update
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] SERVICE is $WEB_SERVICE
+    - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME    
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.link:Somaz/infra.git
+    - cd infra/argocd/applicationset/charts/somaz-server/$WEB_SERVICE
+    - git checkout master
+    - git pull
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $CI_COMMIT_REF_NAME.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.link"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $WEB_SERVICE-$CI_COMMIT_REF_NAME tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules: 
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_web
+  tags:
+    - somaz-$CI_COMMIT_REF_NAME
