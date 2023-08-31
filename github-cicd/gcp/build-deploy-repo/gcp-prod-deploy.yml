@@ -10,10 +10,6 @@ on:
         description: 'Which service to be built. api or admin or etc...'
         required: true
         default: api
-      #tag:
-      #  description: 'Which tag to be deployed.'
-      #  required: true
-      #  default: latest
 
 jobs:
   deploy:

@@ -116,13 +116,6 @@ jobs:
           while IFS= read -r file; do
             python .github/workflows/set_content_type.py ${{ secrets.GCS_BUCKET_DEV }} "${file}"
           done < out/html_files.txt
-
-      # - name: Set Content-Type for HTML files
-      #   run: |
-      #     cd out
-      #     while IFS= read -r file; do
-      #       gsutil -m setmeta -h "Content-Type:text/html" "gs://${{ secrets.GCP_LUXON_GCS_BUCKET_DEV1 }}/${file}"
-      #     done < html_files.txt
        
       - name: Invalidate cache CloudFront
         run: |
