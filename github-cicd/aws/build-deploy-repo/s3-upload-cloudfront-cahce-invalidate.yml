@@ -78,9 +78,6 @@ jobs:
         run: |
           # html 제외한 파일 업로드
           aws s3 sync ./out s3://${{ secrets.DEV_S3_BUCKET_NAME }} --delete --exclude "*.html"
-          # html 만 확장자 제거하고 업로드
-          #aws s3 cp . s3://${{ secrets.DEV_S3_BUCKET_NAME }} --recursive --content-type "text/html" --exclude "*" --include "*."
-          #aws s3 cp ./_site s3://${{ secrets.DEV_S3_BUCKET_NAME }} --recursive --content-type "text/html"
 
       - name: Remove html extension in project
         run: |

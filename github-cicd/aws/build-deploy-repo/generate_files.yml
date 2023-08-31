@@ -4,11 +4,6 @@
 name: Geneate data files
 
 on:
-  #push:
-  #  branches: [ main, develop ]
-  #pull_request:
-  #  branches: [ main, develop ]
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
       run_id:
@@ -129,13 +124,6 @@ jobs:
           if [[ $RESULT == *"libs/dao/src/static"* ]]; then
             echo "::set-output name=isGenfileModified::true"
           fi
-          
-          ## enum 파일만 변경되었을 경우 이미지 빌드되지 않도록 하려면 위 조건문 대신 아래 사용.
-          ## common.enum.ts 는 빌드되도록 조건 추가..
-          #RESULT=$(git status | grep --invert "**/*.enum.*" )
-          #if [[ $RESULT == *"libs/dao/src/static"* ]]; then
-          #  echo "::set-output name=isGenfileModified::true"
-          #fi
 
       - name: Add & Commit & Push files
         if: ${{ steps.gen.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name != 'prod' && github.event.client_payload.ref_name != 'gcpprod' }}

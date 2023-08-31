@@ -14,9 +14,7 @@ on:
         type: choice
         options:
           - api
-          - game
           - admin
-          - gameguard
   workflow_call:
     inputs:
       branch:
