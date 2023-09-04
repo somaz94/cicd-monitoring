@@ -33,6 +33,11 @@ How to install the monitoring tool.
 └── gitlab-cicd
 ```
 
+## gitlab-runner
+```bash
+└── gitlab-runner
+```
+
 ## github-cicd
 ```bash
 └── github-cicd
