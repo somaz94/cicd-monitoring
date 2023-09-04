@@ -24,8 +24,7 @@ How to install the monitoring tool.
 ```bash
 └── onpremise
     ├── argocd
-    ├── jenkins
-    └── metallb
+    └── jenkins
 ```
 
 ## gitlab-cicd
