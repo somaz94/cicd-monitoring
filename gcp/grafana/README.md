@@ -88,12 +88,11 @@ kubectl apply -f grafana-certificate.yaml -n monitoring
 
 <br/>
 
-#### Notes:
+## Notes:
 
 Make sure to adjust the Domain, host, and static-ip sections in all yaml files as needed.
 
 <br/>
 
-#### Reference:
-
-[Grafana Helm Charts](https://github.com/grafana/helm-charts)
+## Reference:
+- [Grafana Helm Charts](https://github.com/grafana/helm-charts)

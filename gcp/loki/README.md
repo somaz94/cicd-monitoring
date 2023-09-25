@@ -97,10 +97,10 @@ kubectl apply -f loki-certificate.yaml -n monitoring
 
 <br/>
 
-### Additional Notes:
+## Additional Notes:
 - Remember to modify the `Domain`, `host`, and `static-ip` portions in all the provided yaml files.
 
 <br/>
 
-### Reference:
+## Reference:
 - [Grafana Helm Charts GitHub Repository](https://github.com/grafana/helm-charts)

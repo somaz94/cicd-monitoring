@@ -57,5 +57,5 @@ Make sure to modify the `Domain`, `host`, and parts in all yaml files. Also, adj
 <br/>
 
 ## Reference
-[ArgoCD Ingress Operator Manual](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode)
+- [ArgoCD Ingress Operator Manual](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode)
 

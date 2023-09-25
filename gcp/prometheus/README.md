@@ -86,10 +86,10 @@ helm upgrade prometheus prometheus-community/prometheus -f extra-scrape-configs-
 
 <br/>
 
-### Additional Configuration
+## Additional Configuration
 Ensure you modify the Domain, host, and static-ip sections in all the provided yaml files.
 
 <br/>
 
-### Reference
+## Reference
 - [Prometheus Helm Charts GitHub Repository](https://github.com/prometheus-community/helm-charts)
