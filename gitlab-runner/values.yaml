@@ -209,9 +209,13 @@ metrics:
   serviceMonitor:
     enabled: false
 
-    ## Provide additional labels to the service monitor ressource
+    ## Provide additional labels to the service monitor resource
     ##
     ## labels: {}
+
+    ## Provide annotations to the service monitor ressource
+    ##
+    ## annotations: {}
 
     ## Define a scrape interval (otherwise prometheus default is used)
     ##
@@ -318,6 +322,11 @@ runners:
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "ubuntu:22.04"
+
+  ## Absolute path for an existing runner configuration file
+  ## Can be used alongside "volumes" and "volumeMounts" to use an external config file
+  ## Active if runners.config is empty or null
+  configPath: ""
 
   ## Which executor should be used
   ##
@@ -498,6 +507,18 @@ hostAliases: []
   #   - "foo.remote"
   #   - "bar.remote"
 
+## Annotations to be added to deployment
+##
+deploymentAnnotations: {}
+  # Example:
+  # downscaler/uptime: <my_uptime_period>
+
+## Labels to be added to deployment
+##
+deploymentLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+
 ## Annotations to be added to manager pod
 ##
 podAnnotations: {}
@@ -541,6 +562,11 @@ secrets: []
   #   items:
   #     - key: key_one
   #       path: path_one
+
+## Boolean to turn off the automountServiceAccountToken in the deployment
+## ref: https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#bound-service-account-token-volume
+##
+# automountServiceAccountToken: false
 
 ## Additional config files to mount in the containers in `/configmaps`.
 ##
