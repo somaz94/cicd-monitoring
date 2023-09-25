@@ -2,7 +2,7 @@
 
 A curated collection of CI/CD pipelines and instructions on how to install and set up the associated monitoring tools across various environments.
 
----
+<br/>
 
 ## 🌐 Directory Structure
 
@@ -54,7 +54,7 @@ Configurations optimized for GitHub CI/CD, with specific deployments for AWS and
 - 🌩️ `aws`
 - 🚀 `gcp`
 
----
+<br/>
 
 ## 🚀 Getting Started
 
