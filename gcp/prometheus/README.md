@@ -1,16 +1,33 @@
-## ADD Helm Repo
+# Prometheus Setup Guide
+
+<br/>
+
+## Table of Contents
+- [Add Helm Repo](#add-helm-repo)
+- [Creating Namespace, PV & StorageClass](#creating-namespace-pv--storageclass)
+- [Installing Prometheus](#installing-prometheus)
+- [Modifying a Service](#modifying-a-service)
+- [Setting Up Ingress and Certificate](#setting-up-ingress-and-certificate)
+- [Application Monitoring](#application-monitoring)
+- [Additional Configuration](#additional-configuration)
+- [Reference](#reference)
+
+<br/>
+
+## Add Helm Repo
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 ```
 
-## Creating NAMESPACE & PV & StorageClass
-- Choose PV or Storage Class
+<br/>
 
+## Creating Namespace, PV & StorageClass
+Before starting, choose between PV or Storage Class.
 ```bash
 kubectl create ns prometheus
 
-# Select Disk 
+# Disk Selection 
 kubectl apply -f pd-csi-pv-prometheus-alertmanager.yaml -n prometheus
 kubectl apply -f pd-csi-pv-prometheus-server.yaml -n prometheus
 kubectl apply -f pd-csi-sc.yaml -n prometheus
@@ -23,25 +40,28 @@ kubectl apply -f fs-csi-pv-prometheus-alertmanager.yaml -n prometheus
 kubectl apply -f fs-csi-pv-prometheus-server.yaml -n prometheus
 kubectl apply -f fs-csi-sc-shared-vpc.yaml -n prometheus
 
-# Read nfs-sc-Readme.md if use nfs-pv
+# If using NFS PV, refer to nfs-sc-Readme.md
 kubectl apply -f nfs-pv-prometheus-alertmanager.yaml -n prometheus
 kubectl apply -f nfs-pv-prometheus-server.yaml -n prometheus
-
 ```
 
-## Installing Grafana
+<br/>
 
+## Installing Prometheus
 ```bash
 helm install prometheus prometheus-community/prometheus -f values.yaml -n prometheus
-
-helm Upgrade prometheus prometheus-community/prometheus -f values.yaml -n prometheus # Upgrade Method
+helm upgrade prometheus prometheus-community/prometheus -f values.yaml -n prometheus # For upgrades
 ```
 
-## Modifying a Service
+<br/>
 
+## Modifying a Service
 ```bash
 kubectl edit svc -n prometheus prometheus-server
-...
+```
+
+Ensure the following annotation is added:
+```bash
 apiVersion: v1
 kind: Service
 metadata:
@@ -49,22 +69,27 @@ metadata:
     cloud.google.com/backend-config: '{"ports": {"http":"prometheus-backend-config"}}'
 ```
 
-## ADD Ingress and Certificate
+<br/>
 
+## Setting Up Ingress and Certificate
 ```bash
 kubectl apply -f prometheus-ingress.yaml -n prometheus
-
 kubectl apply -f prometheus-certificate.yaml -n prometheus
 ```
 
-## ADD Application Monitoring
+<br/>
+
+## Application Monitoring
 ```bash
 helm upgrade prometheus prometheus-community/prometheus -f extra-scrape-configs-values.yaml -f values.yaml -n prometheus
 ```
 
-#### In addition
-Modify the Domain, host, static-ip part in all yaml files. 
+<br/>
 
-#### Reference
-<https://github.com/prometheus-community/helm-charts>
+### Additional Configuration
+Ensure you modify the Domain, host, and static-ip sections in all the provided yaml files.
 
+<br/>
+
+### Reference
+- [Prometheus Helm Charts GitHub Repository](https://github.com/prometheus-community/helm-charts)
