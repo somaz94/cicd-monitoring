@@ -1,25 +1,55 @@
+# NFS Provisioner Installation and Configuration Guide
+
+<br>
+
+## 1. Create a Namespace for NFS Provisioner
 
 ```bash
-k create ns nfs-provisioner
+kubectl create ns nfs-provisioner
+```
 
+<br>
+
+## 2. Add the NFS Provisioner Helm Repo
+
+```bash
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+```
+
+You should see a confirmation message:
+```bash
 "nfs-subdir-external-provisioner" has been added to your repositories
+```
 
+<br/>
 
+## 3. Install NFS Provisioner using Helm
+
+Replace <nfs-server-ip> and <nfs-path> with your NFS server's IP and path respectively:
+```bash
 helm install --kubeconfig=$KUBE_CONFIG  nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner --set nfs.server=<nfs-server-ip> --set nfs.path=<nfs-path> -n nfs-provisioner
+```
 
+<br/>
+
+## 4. Verify the Storage Classes in your Cluster
+
+Run the following command and ensure nfs-client is listed among the storage classes:
+```bash
 kubectl --kubeconfig=$KUBE_CONFIG get storageclass
-NAME                        PROVISIONER                                     RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-enterprise-multishare-rwx   filestore.csi.storage.gke.io                    Delete          WaitForFirstConsumer   true                   5d3h
-enterprise-rwx              filestore.csi.storage.gke.io                    Delete          WaitForFirstConsumer   true                   5d3h
-nfs-client                  cluster.local/nfs-subdir-external-provisioner   Delete          Immediate              true                   30s
-premium-rwo                 pd.csi.storage.gke.io                           Delete          WaitForFirstConsumer   true                   5d3h
-premium-rwx                 filestore.csi.storage.gke.io                    Delete          WaitForFirstConsumer   true                   5d3h
-standard                    kubernetes.io/gce-pd                            Delete          Immediate              true                   5d3h
-standard-rwo (default)      pd.csi.storage.gke.io                           Delete          WaitForFirstConsumer   true                   5d3h
-standard-rwx                filestore.csi.storage.gke.io                    Delete          WaitForFirstConsumer   true                   5d3h
+```
 
+<br/>
+
+## 5. Check the NFS Provisioner Pod Status
+
+Ensure that the NFS Provisioner pod is running:
+```bash
 k get po -n nfs-provisioner
 NAME                                               READY   STATUS    RESTARTS   AGE
 nfs-subdir-external-provisioner-5577c5d8ff-gm9p8   1/1     Running   0          16
 ```
+
+You should see a pod named similar to nfs-subdir-external-provisioner-XXXXXXXXX-XXXXX with a status of Running.
+- **Note**: Make sure to replace placeholders like `<nfs-server-ip>` and `<nfs-path>` with actual values when executing the commands.
+
