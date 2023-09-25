@@ -4,6 +4,24 @@ This guide will walk you through the installation of ArgoCD and several configur
 
 <br/>
 
+## Table of Contents
+
+- [Installation](#installation)
+  - [Namespace Creation](#namespace-creation)
+  - [Standard Installation](#standard-installation)
+  - [High Availability Mode Installation](#high-availability-mode-installation)
+  
+- [Configurations](#configurations)
+  - [Disabling Internal TLS](#disabling-internal-tls)
+  - [Modifying a Service](#modifying-a-service)
+  - [Adding Ingress and Certificate](#adding-ingress-and-certificate)
+  - [Registering a Git Source Repository](#registering-a-git-source-repository)
+
+- [Additional Notes](#additional-notes)
+- [Reference](#reference)
+
+<br/>
+
 ## Installation
 
 1. **Namespace Creation**:

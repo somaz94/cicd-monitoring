@@ -1,6 +1,20 @@
 # Grafana Installation and Configuration Guide
 
-</br>
+<br/>
+
+## Table of Contents
+
+- [ADD Helm Repo](#add-helm-repo)
+- [Creating NAMESPACE & PV & StorageClass](#creating-namespace--pv--storageclass)
+  - [Select Disk](#select-disk)
+  - [If using NFS](#if-using-nfs)
+- [Installing Grafana](#installing-grafana)
+- [Modifying a Service](#modifying-a-service)
+- [ADD Ingress and Certificate](#add-ingress-and-certificate)
+- [Notes](#notes)
+- [Reference](#reference)
+
+<br/>
 
 ## ADD Helm Repo
 
@@ -8,7 +22,7 @@
 helm repo add grafana https://grafana.github.io/helm-charts
 ```
 
-</br>
+<br/>
 
 ## Creating NAMESPACE & PV & StorageClass
 
@@ -32,7 +46,7 @@ kubectl apply -f fs-csi-sc-shared-vpc.yaml -n monitoring
 kubectl apply -f nfs-pv.yaml -n monitoring
 ```
 
-</br>
+<br/>
 
 ## Installing Grafana
 
@@ -43,7 +57,7 @@ helm install grafana grafana/grafana -n monitoring -f values.yaml
 helm upgrade grafana grafana/grafana -n monitoring -f values.yaml
 ```
 
-</br>
+<br/>
 
 ## Modifying a Service
 
@@ -63,7 +77,7 @@ metadata:
     cloud.google.com/backend-config: '{"ports": {"http":"grafana-backend-config"}}'
 ```
 
-</br>
+<br/>
 
 ## ADD Ingress and Certificate
 
@@ -72,13 +86,13 @@ kubectl apply -f grafana-ingress.yaml -n monitoring
 kubectl apply -f grafana-certificate.yaml -n monitoring
 ```
 
-</br>
+<br/>
 
 #### Notes:
 
 Make sure to adjust the Domain, host, and static-ip sections in all yaml files as needed.
 
-</br>
+<br/>
 
 #### Reference:
 
