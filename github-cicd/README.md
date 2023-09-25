@@ -22,14 +22,10 @@ Here's a collection of some commonly used GitHub Action modules:
 - [changed-files (by tj-actions)](https://github.com/tj-actions/changed-files)
 - [checkout (by actions)](https://github.com/actions/checkout)
 
-<br/>
-
 #### Secrets and SSH:
 - [branch-based-secrets (by noliran)](https://github.com/noliran/branch-based-secrets)
 - [ssh-deploy (by easingthemes)](https://github.com/easingthemes/ssh-deploy)
 - [ssh-action (by appleboy)](https://github.com/appleboy/ssh-action)
-
-<br/>
 
 #### Repository and Docker:
 - [repository-dispatch (by peter-evans)](https://github.com/peter-evans/repository-dispatch)
@@ -37,14 +33,10 @@ Here's a collection of some commonly used GitHub Action modules:
 - [setup-buildx-action (by docker)](https://github.com/docker/setup-buildx-action)
 - [build-push-action (by docker)](https://github.com/docker/build-push-action)
 
-<br/>
-
 #### Messaging and Setup:
 - [slack-github-action (by slackapi)](https://github.com/slackapi/slack-github-action)
 - [setup-python (by actions)](https://github.com/actions/setup-python)
 - [github-script (by actions)](https://github.com/actions/github-script)
-
-<br/>
 
 #### Cloud Platforms:
 - [auth (by google-github-actions)](https://github.com/google-github-actions/auth)
