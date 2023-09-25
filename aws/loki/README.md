@@ -21,7 +21,7 @@ helm repo add grafana https://grafana.github.io/helm-charts
 
 ## Creating NAMESPACE & PV & StorageClass
 
-- Choose PV or Storage Class
+Choose PV or Storage Class:
 ```bash
 kubectl create ns monitoring
 

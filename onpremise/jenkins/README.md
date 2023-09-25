@@ -1,32 +1,51 @@
-## Create Jenkins Namespace
+# Jenkins Installation Guide on Kubernetes
 
+<br/>
+
+## Table of Contents
+- [Create Jenkins Namespace](#create-jenkins-namespace)
+- [Install certmanager and letsencrypt Setting](#install-certmanager-and-letsencrypt-setting)
+- [Install nfs-provisioner](#install-nfs-provisioner)
+- [Install Jenkins and Upgrade](#install-jenkins-and-upgrade)
+- [ADD Ingress](#add-ingress)
+- [Jenkins CLI](#jenkins-cli)
+- [Additional Information](#additional-information)
+
+<br/>
+
+## Create Jenkins Namespace
 ```bash
 kubectl create ns jenkins
-
 ```
 
-## Intsall certmanager and letsencrypt Setting
+<br/>
+
+## Install certmanager and letsencrypt Setting
 - [certmanager-letsencrypt](https://github.com/somaz94/certmanager-letsencrypt)
+
+<br/>
 
 ## Install nfs-provisioner
 - [nfs-subdir-external-provisioner](https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner)
 
+<br/>
+
 ## Install Jenkins and Upgrade
-
 ```bash
-
 helm install jenkins -f jenkins-values.yaml -n jenkins jenkins/jenkins
-helm upgrade jenkins -f jenkins-values.yaml -n jenkins jenkins/jenkins # Upgrdae Method
+helm upgrade jenkins -f jenkins-values.yaml -n jenkins jenkins/jenkins # Upgrade Method
 ```
 
-## ADD Ingress
+<br/>
 
+## ADD Ingress
 ```bash
 kubectl apply -f jenkins-ingress.yaml -n jenkins
 ```
 
-## Jenkins CLI
+<br/>
 
+## Jenkins CLI
 ```bash
 wget http://jenkins.somaz.link/jnlpJars/jenkins-cli.jar
 
@@ -41,6 +60,7 @@ java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token>
 java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token> reload-configuration
 ```
 
-#### In addition
-Modify the Domain, host, part in all yaml files.
+<br/>
 
+#### Additional Information
+Modify the Domain, host, part in all yaml files.
