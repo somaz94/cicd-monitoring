@@ -73,8 +73,6 @@ To create an API Token, follow the steps below:
 5. Click on Settings.
 6. Under API Token, click on 'ADD new Token'.
 
-![API Token](https://github.com/somaz94/cicd-monitoring/assets/112675579/8f5efc91-c8fc-470d-bfa4-4144d2f5c36e)
-
 <br/>
 
 ## Additional Notes
