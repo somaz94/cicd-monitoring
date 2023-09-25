@@ -19,6 +19,8 @@ Before installing, it's a good practice to check the available versions of the G
 helm search repo -l gitlab/gitlab-runner
 ```
 
+<br/>
+
 ### 2. Create a Namespace:
 
 Decide on a dedicated namespace for GitLab Runner. Replace <namespace> with your desired namespace name.
@@ -26,12 +28,16 @@ Decide on a dedicated namespace for GitLab Runner. Replace <namespace> with your
 kubectl create namespace <namespace>
 ```
 
+<br/>
+
 ### 3. Setup Role and RoleBinding (Optional):
 
 If you have specific security configurations or access controls, you may need to set up roles and role bindings. If you've determined it's necessary, apply the provided role and role binding configurations.
 ```bash
 kubectl apply -f gitlab-runner-role.yaml -f gitlab-runner-role-binding.yaml -n <namespace>
 ```
+
+<br/>
 
 ### 4. Install or Upgrade GitLab Runner:
 
