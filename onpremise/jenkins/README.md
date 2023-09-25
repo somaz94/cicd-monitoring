@@ -9,6 +9,7 @@
 - [Install Jenkins and Upgrade](#install-jenkins-and-upgrade)
 - [ADD Ingress](#add-ingress)
 - [Jenkins CLI](#jenkins-cli)
+- [Create API Token](#create-api-token)
 - [Additional Information](#additional-information)
 
 <br/>
@@ -59,6 +60,20 @@ java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token>
 # Reload Configuration
 java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token> reload-configuration
 ```
+
+<br/>
+
+## Create API Token
+To create an API Token, follow the steps below:
+
+1. Navigate to the Jenkins Dashboard.
+2. Go to Jenkins Management.
+3. Click on Users.
+4. Select your username.
+5. Click on Settings.
+6. Under API Token, click on 'ADD new Token'.
+
+![API Token](https://github.com/somaz94/cicd-monitoring/assets/112675579/8f5efc91-c8fc-470d-bfa4-4144d2f5c36e)
 
 <br/>
 
