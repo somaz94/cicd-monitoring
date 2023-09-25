@@ -1,61 +1,85 @@
-## Installing ArgoCD
+# ArgoCD Installation and Configuration Guide
 
-```bash
-kubectl create ns argocd
+This guide will walk you through the installation of ArgoCD and several configuration steps that are essential for its functionality.
 
-# Normal mode
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+<br/>
 
-# HA mode
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
-```
+## Installation
 
-## Disable internal TLS
+1. **Namespace Creation**:
+    ```bash
+    kubectl create ns argocd
+    ```
 
-```bash
-kubectl edit cm -n argocd argocd-cmd-params-cm
-...
-data:
-  redis.server: argocd-redis-ha-haproxy:6379
-  server.insecure: "true" # ADD server.insecure
+2. **Standard Installation**:
+    ```bash
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    ```
 
-# Pod Restart
-kubectl delete po -n argocd argocd-server-xxxxxxxx-xxxxxx-xxxxxxx
-```
+3. **High Availability Mode Installation**:
+    ```bash
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+    ```
 
-## Modifying a Service
+<br/>
 
-```bash
-k edit svc -n argocd argocd-server 
-...
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    cloud.google.com/backend-config: '{"ports": {"http":"argocd-backend-config"}}' # ADD backend-config annotation
-```
+## Configurations
 
-## ADD Ingress and Certificate
+1. **Disabling Internal TLS**:
+    Edit the config map and add `server.insecure`:
 
-```bash
-kubectl apply -f argocd-ingress.yaml -n argocd
+    ```bash
+    kubectl edit cm -n argocd argocd-cmd-params-cm
+    ```
+    
+    Then, under `data`, add:
+    ```yaml
+    server.insecure: "true"
+    ```
+    
+    After the modification, restart the pod:
+    ```bash
+    kubectl delete po -n argocd argocd-server-xxxxxxxx-xxxxxx-xxxxxxx
+    ```
 
-kubectl apply -f argocd-certificate.yaml -n argocd
-```
+2. **Modifying a Service**:
+    ```bash
+    k edit svc -n argocd argocd-server 
+    ```
 
-## ADD Git Source Repo
-- Before registering the git source repo, generate the ssh key and register with the repo
+    Add the `backend-config` annotation:
+    ```yaml
+    cloud.google.com/backend-config: '{"ports": {"http":"argocd-backend-config"}}'
+    ```
 
-```bash
-ssh-keygen -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME] 	# rsa
-ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]	# pem
+3. **Adding Ingress and Certificate**:
 
-kubectl apply -f repo-secret.yaml -n argocd
-```
+    ```bash
+    kubectl apply -f argocd-ingress.yaml -n argocd
+    kubectl apply -f argocd-certificate.yaml -n argocd
+    ```
 
-#### In addition
-Modify the Domain, host, static-ip part in all yaml files. It also modifies the key of the repo-secret.
+4. **Registering a Git Source Repository**:
+    
+    Generate an SSH key, and register it with the repo:
 
-#### Reference
-<https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#google-cloud-load-balancers-with-kubernetes-ingress>
+    ```bash
+    ssh-keygen -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]         # for rsa format
+    ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # for pem format
+
+    kubectl apply -f repo-secret.yaml -n argocd
+    ```
+
+<br/>
+
+## Additional Notes
+
+- Ensure that you modify the `Domain`, `host`, and `static-ip` portions in all the yaml files provided.
+- Also, adjust the key details within the `repo-secret.yaml` file as necessary.
+
+<br/>
+
+## Reference
+
+- [ArgoCD Ingress Operator Manual](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#google-cloud-load-balancers-with-kubernetes-ingress)
 
