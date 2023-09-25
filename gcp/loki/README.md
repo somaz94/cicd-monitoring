@@ -2,6 +2,22 @@
 
 <br/>
 
+## Table of Contents
+
+1. [Add the Grafana Helm Repository](#1-add-the-grafana-helm-repository)
+2. [Creating Namespace, Persistent Volumes (PV), and StorageClass](#2-creating-namespace-persistent-volumes-pv-and-storageclass)
+   - [Persistent Disk CSI](#for-persistent-disk-csi)
+   - [Filestore CSI](#for-filestore-csi)
+   - [Filestore CSI with Shared VPC](#for-filestore-csi-with-shared-vpc)
+   - [NFS PV](#for-nfs-pv)
+3. [Install or Upgrade Loki](#3-install-or-upgrade-loki)
+4. [Modify the Loki Service](#4-modify-the-loki-service)
+5. [Add Ingress and Certificate for Loki](#5-add-ingress-and-certificate-for-loki)
+6. [Additional Notes](#additional-notes)
+7. [Reference](#reference)
+
+<br/>
+
 ## 1. Add the Grafana Helm Repository:
 
 ```bash
