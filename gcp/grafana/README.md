@@ -4,9 +4,9 @@
 
 ## ADD Helm Repo
 
-\```bash
+```bash
 helm repo add grafana https://grafana.github.io/helm-charts
-\```
+```
 
 </br>
 
@@ -14,8 +14,9 @@ helm repo add grafana https://grafana.github.io/helm-charts
 
 Choose either PV or Storage Class based on your requirements.
 
-\```bash
+```bash
 kubectl create ns monitoring
+
 
 # Select Disk 
 kubectl apply -f pd-csi-pv.yaml -n monitoring
@@ -27,22 +28,20 @@ kubectl apply -f fs-csi-sc.yaml -n monitoring
 kubectl apply -f fs-csi-pv.yaml -n monitoring
 kubectl apply -f fs-csi-sc-shared-vpc.yaml -n monitoring
 
-</br>
-
 # If using NFS, read the guidance in nfs-sc-Readme.md
 kubectl apply -f nfs-pv.yaml -n monitoring
-\```
+```
 
 </br>
 
 ## Installing Grafana
 
-\```bash
+```bash
 helm install grafana grafana/grafana -n monitoring -f values.yaml
 
 # To upgrade Grafana
 helm upgrade grafana grafana/grafana -n monitoring -f values.yaml
-\```
+```
 
 </br>
 
@@ -50,28 +49,28 @@ helm upgrade grafana grafana/grafana -n monitoring -f values.yaml
 
 To modify the Grafana service:
 
-\```bash
+```bash
 kubectl edit svc -n monitoring grafana
-\```
+```
 
 Then, update the annotations in the service as shown below:
 
-\```
+```
 apiVersion: v1
 kind: Service
 metadata:
   annotations:
     cloud.google.com/backend-config: '{"ports": {"http":"grafana-backend-config"}}'
-\```
+```
 
 </br>
 
 ## ADD Ingress and Certificate
 
-\```bash
+```bash
 kubectl apply -f grafana-ingress.yaml -n monitoring
 kubectl apply -f grafana-certificate.yaml -n monitoring
-\```
+```
 
 </br>
 
