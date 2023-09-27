@@ -87,7 +87,7 @@ helm upgrade prometheus prometheus-community/prometheus -f extra-scrape-configs-
 <br/>
 
 ## Additional Configuration
-Ensure you modify the Domain, host, and static-ip sections in all the provided yaml files.
+Ensure you modify the `Domain`, `host`, and `static-ip` sections in all the provided yaml files.
 
 <br/>
 

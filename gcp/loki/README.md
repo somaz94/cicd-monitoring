@@ -99,7 +99,7 @@ kubectl apply -f loki-certificate.yaml -n monitoring
 
 ## Additional Notes:
 
-- Remember to modify the `Domain`, `host`, and `static-ip` portions in all the provided yaml files.
+Remember to modify the `Domain`, `host`, and `static-ip` portions in all the provided yaml files.
 
 <br/>
 

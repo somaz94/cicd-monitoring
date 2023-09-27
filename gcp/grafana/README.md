@@ -90,7 +90,7 @@ kubectl apply -f grafana-certificate.yaml -n monitoring
 
 ## Notes:
 
-Make sure to adjust the Domain, host, and static-ip sections in all yaml files as needed.
+Make sure to adjust the `Domain`, `host`, and `static-ip` sections in all yaml files as needed.
 
 <br/>
 
