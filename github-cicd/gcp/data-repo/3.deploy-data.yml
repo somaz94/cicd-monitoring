@@ -62,13 +62,22 @@ jobs:
         # run: echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      # You must register BOTO_CONFIG with GitHub Secret.
+      # [GSUtil]
+      # parallel_thread_count = 10
+      # parallel_process_count = 5
+      - name: Set up gsutil configuration
+        run: |
+          echo "${{ secrets.BOTO_CONFIG }}" > ./.boto
+          echo "GSUTIL_BOTO_CONFIG=./.boto" >> $GITHUB_ENV
+
       - name: Deploy to GCS
         env:
           COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
-          PATCH_GCS_BUCKET: ${{ secrets[env.PATCH_GCS_BUCKET_NAME] }}
+          DSP_PATCH_GCS_BUCKET: ${{ secrets[env.DSP_PATCH_GCS_BUCKET_NAME] }}
         run: |
-          gsutil rsync -d ./Convertor/ClientJson/ gs://${{ env.PATCH_GCS_BUCKET }}/Data/client/latest
-          gsutil rsync -d ./Convertor/ClientJson/ gs://${{ env.PATCH_GCS_BUCKET }}/Data/client/${{ env.COMMIT_HASH }}
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.DSP_PATCH_GCS_BUCKET }}/Data/client/latest
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.DSP_PATCH_GCS_BUCKET }}/Data/client/${{ env.COMMIT_HASH }}
 
   # copy data files to ec2 using sftp
   rsync:
