@@ -105,7 +105,17 @@ jobs:
           cd out
           find . -type f -name "*.html" -exec bash -c 'file="${0#./}"; echo "${file%.html}" >> html_files.txt; mv "$0" "${file%.html}"' {} \;
           ls -al
-  
+
+      # You must register BOTO_CONFIG with GitHub Secret.
+      # [GSUtil]
+      # parallel_thread_count = 10
+      # parallel_process_count = 5        
+      - name: Set up gsutil configuration
+        run: |
+          cd out
+          echo "${{ secrets.BOTO_CONFIG }}" > ./.boto
+          echo "GSUTIL_BOTO_CONFIG=./.boto" >> $GITHUB_ENV
+
       - name: Deploy to GCS with html extension removed
         run: |
           cd out
