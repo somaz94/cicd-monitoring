@@ -61,3 +61,9 @@ Configurations optimized for GitHub CI/CD, with specific deployments for AWS and
 1. Navigate to the specific directory for your desired platform and tool.
 2. Dive into the associated README for detailed instructions and configurations.
 3. Happy deploying!
+
+<br/>
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
