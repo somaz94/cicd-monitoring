@@ -98,7 +98,7 @@ jobs:
       - name: Deploy to GCS without html extension
         run: |
           # Upload files except html
-          gsutil -m rsync -r -x ".*\.html$" ./out gs://${{ secrets.GCS_BUCKET_DEV }}
+          gsutil -m rsync -d -r -x ".*\.html$" ./out gs://${{ secrets.GCS_BUCKET_DEV }}
   
       - name: Remove html extension in project and record
         run: |
