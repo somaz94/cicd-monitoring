@@ -32,7 +32,7 @@ kubectl create namespace <namespace>
 
 ### 3. Setup Role and RoleBinding (Optional):
 
-If you have specific security configurations or access controls, you may need to set up roles and role bindings. If you've determined it's necessary, apply the provided role and role binding configurations.
+For deployment using GitLab Runner, it is essential to apply roles and role bindings within the specific application namespace to ensure the runner has the necessary permissions. This step is crucial for maintaining proper security configurations and access controls required for the deployment process. Apply the provided role and role binding configurations to the appropriate namespace as determined by your access control requirements.
 ```bash
 kubectl apply -f gitlab-runner-role.yaml -f gitlab-runner-role-binding.yaml -n <namespace>
 ```
