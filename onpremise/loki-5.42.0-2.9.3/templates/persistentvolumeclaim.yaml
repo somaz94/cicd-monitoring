@@ -1,0 +1,20 @@
+{{- range $persistentVolumeClaim := .Values.persistentVolumeClaims }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $persistentVolumeClaim.name }}
+spec:
+  {{ with $persistentVolumeClaim.accessModes }}
+  accessModes:
+    {{- toYaml . | nindent 8 }}
+  {{ end }}
+  storageClassName: {{ $persistentVolumeClaim.storageClassName }}
+  resources:
+    requests:
+      storage: {{ $persistentVolumeClaim.storage }}
+  selector:
+    matchLabels:
+      type: {{ $persistentVolumeClaim.type }}
+---
+{{- end }}
+
