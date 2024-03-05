@@ -44,7 +44,7 @@ data:
     [OUTPUT]
         Name loki
         Match *
-        Host loki.mgmt.luxon.run
+        Host loki.somaz.link
         Port 443
         URI /loki/api/v1/push
         tls On
