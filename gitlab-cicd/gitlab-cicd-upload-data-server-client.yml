@@ -51,6 +51,12 @@ upload_data_server:
 
 upload_data_client:
   stage: upload_data_client
+  resource_group: client_data_upload
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
   image:
     name: python:3.8-slim
     entrypoint: [""]
