@@ -57,6 +57,7 @@ upload_data_client:
     max: 2  # Maximum of 2 retries
     when:
       - runner_system_failure
+      - unknown_failure
   image:
     name: python:3.8-slim
     entrypoint: [""]
