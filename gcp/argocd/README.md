@@ -88,6 +88,70 @@ This guide will walk you through the installation of ArgoCD and several configur
     kubectl apply -f repo-secret.yaml -n argocd
     ```
 
+5. **Confirm Initial Password**:
+    ```bash
+    kubectl get secret -n argocd argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+    ```
+
+6. **Except Cilium Resource Argocd(Options)**
+    Here's how to add the resource.exclusions to the argocd-cm ConfigMap in your ArgoCD installation guide:
+    ```yaml
+    k edit cm -n argocd argocd-cm 
+
+    apiVersion: v1
+    ...
+      resource.exclusions: |
+        - apiGroups:
+          - cilium.io
+          kinds:
+          - CiliumIdentity
+          clusters:
+          - "*"
+    ```
+
+7. **Argocd SSO Configuration(Options)**
+    ```yaml
+    k edit cm -n argocd argocd-rbac-cm 
+
+    apiVersion: v1
+    data:
+      dex.config: |
+        connectors:
+          - type: oidc
+            id: google
+            name: Google
+            config:
+              issuer: https://accounts.google.com
+              clientID: 7xxxxxxxxx-fxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
+              clientSecret: Gxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxv3
+              redirectURI: https://{argocd domain}/api/dex/callback
+      url: https://{argocd domain}
+    ```
+
+8. **Argocd User Rbac Setting(Options)**
+    ```yaml
+    k edit cm -n argocd argocd-rbac-cm 
+    apiVersion: v1
+    data:
+      policy.csv: |
+        p, role:org-admin, applications, *, */*, allow
+        p, role:org-admin, applicationsets, *, */*, allow
+        p, role:org-admin, clusters, get, *, allow
+        p, role:org-admin, repositories, get, *, allow
+        p, role:org-admin, repositories, create, *, allow
+        p, role:org-admin, repositories, update, *, allow
+        p, role:org-admin, repositories, delete, *, allow
+        p, role:org-admin, projects, get, *, allow
+        p, role:org-admin, projects, create, *, allow
+        p, role:org-admin, projects, update, *, allow
+        p, role:org-admin, projects, delete, *, allow
+        p, role:org-admin, logs, get, *, allow
+        p, role:org-admin, exec, create, */*, allow
+        g, somaz@example.com, role:org-admin
+      policy.default: role:readonly
+      scopes: '[groups, email]'
+    ```       
+
 <br/>
 
 ## Additional Notes
