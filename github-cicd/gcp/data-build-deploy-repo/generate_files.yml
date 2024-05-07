@@ -1,0 +1,143 @@
+# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
+# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
+
+name: Generate Files
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!main'
+      - 'release/*'
+    paths:
+      - libs/dao/src/data-version.json
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+    
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    # Add "id-token" with the intended permissions.
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Extract most recent environment from the last 50 commits
+        if: github.event_name == 'push' 
+        run: |
+          git log -50 --pretty=%B
+          COMMIT_MESSAGES=$(git log -50 --pretty=%B)
+          ENVIRONMENT=$(echo "$COMMIT_MESSAGES" | grep -oP 'server\(\K[^)]*' | tail -1 | sed 's/gcp_//')
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+
+      - name: Use input environment if provided
+        if: github.event_name == 'workflow_dispatch' && inputs.environment
+        run: |
+          echo "ENVIRONMENT=${{ inputs.environment }}" >> $GITHUB_ENV
+
+      - name: Setup environment
+        id: env_output
+        run: |
+          echo "Environment set to: ${{ env.ENVIRONMENT }}"
+          echo "environment=${{ env.ENVIRONMENT }}" >> $GITHUB_OUTPUT
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+
+      # node modules 캐싱
+      - name: Cache node modules
+        id: node-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: install node dependencies
+        if: steps.node-cache.outputs.cache-hit != 'true'
+        run: |
+          npm install
+          npm ci
+
+      - name: generate ts files
+        id: gen
+        run: |
+          NODE_ENV=${{ env.ENVIRONMENT }} npm run gen-static
+          CHANGED_FILES=$(git status --porcelain | grep '^ M' | awk '{print $2}')
+          echo "Changed files: $CHANGED_FILES"
+          for FILE in $CHANGED_FILES; do
+          if [[ "$FILE" =~ libs/ ]]; then  # Use regex match instead of glob match
+            echo "isGenfileModified=true" >> $GITHUB_OUTPUT
+            break
+          fi
+          done         
+
+      - name: Set up SSH Connection
+        run: |
+          if [ "${{ env.ENVIRONMENT }}" == "dev1" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
+          elif [ "${{ env.ENVIRONMENT }}" == "dev2" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
+          elif [ "${{ env.ENVIRONMENT }}" == "qa1" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_QA1 }}" >> $GITHUB_ENV
+          elif [ "${{ env.ENVIRONMENT }}" == "qa2" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_QA2 }}" >> $GITHUB_ENV
+          elif [ "${{ env.ENVIRONMENT }}" == "prod" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_PROD }}" >> $GITHUB_ENV
+          else
+            echo "Error: Unknown environment '${{ env.ENVIRONMENT }}'"
+            exit 1
+          fi
+
+      - name: Uplaod data files to Bastion Server
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_SOMAZ_BASTION_PEM }}
+          REMOTE_HOST: ${{ env.BASTION_IP }}
+          REMOTE_USER: nerdystar
+          SOURCE: "data/"
+          TARGET: /home/nerdystar/${{ env.ENVIRONMENT }}
+          ARGS: "-rltDvzO --delete"
+
+      - name: Get version from JSON
+        id: get_version
+        run: |
+          echo "DATA_VERSION=$(jq -r '.version' libs/dao/src/data-version.json)" >> $GITHUB_ENV          
+
+      - name: Add & Commit & Push files
+        if: ${{ env.ENVIRONMENT != 'prod' && steps.get_version.outcome == 'success' && steps.gen.outputs.isGenfileModified == 'true'  }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+        run: |
+          git config --global user.email "cicd@nerdystar.io"
+          git config --global user.name "cicd"
+          git add libs
+          git commit -m "Update generated files by $TRIGGER_USER. Version: ${{ env.DATA_VERSION }}"
+          git push -u origin ${{ github.ref_name }}
+
+    outputs:
+      environment: ${{ steps.env_output.outputs.environment }}
+
+  call-build:
+    needs: [ generate ]
+    name: Call build workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: game
+      branch: ${{ github.ref_name }}
+      environment: ${{ needs.generate.outputs.environment }}
+
+
+

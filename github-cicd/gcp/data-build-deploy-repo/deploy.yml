@@ -1,0 +1,105 @@
+name: 1.Deploy
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Which service to be built. game or admin or etc...
+        required: true
+        default: api
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        description: Which service to be built. game or admin or etc...
+        required: true
+      environment:
+        type: string
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+      is_build_triggered_by_workflow_dispatch:
+        type: string
+        description: Value for determine build workflow trigger
+        required: true
+      build_branch:
+        type: string
+        description: Build source branch
+        required: true
+jobs:
+  deploy:
+    name: Update helm image tag
+    runs-on: ubuntu-20.04
+    env:
+      PROJECT: jm
+      CD_REPOSITORY: jm-applicationset
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v2
+        with:
+          repository: nerdy-star/${{ env.CD_REPOSITORY }}
+          ref: main
+          token: ${{ secrets.CICD_PAT }}
+          path: ${{ env.CD_REPOSITORY }}
+
+      - name: Set env for stage
+        id: set-tag-string-for-stage
+        if: ${{ inputs.environment == 'stage' }}
+        run: |
+          echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
+          echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
+
+      - name: Set env
+        if: ${{ steps.set-tag-string-for-stage.outcome == 'skipped' }}
+        run: |
+          echo "TARGET_VALUES_FILE_NAME=${{ inputs.environment }}" >> $GITHUB_ENV
+          echo "TAG_STRING=tag" >> $GITHUB_ENV
+
+      - name: Update target environment image tag
+        run: |
+          echo ${{ github.ref_name }}
+          echo ${{ inputs.tag }}
+          
+          # update tag
+          cd ${{ env.CD_REPOSITORY }}/charts/${{ env.PROJECT }}/${{ inputs.service }}
+          sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
+
+      # update release_branch only workflow_dispatch
+      # 수동으로 트리거한 build, deploy 에 대해서만 applicationset 의 release_branch 정보를 갱신한다.
+      - name: Update release_branch for workflow_dispatch
+        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' }}
+        run: |
+          cd ${{ env.CD_REPOSITORY }}/environment_branch
+          echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
+
+      - name: Commit files
+        run: |
+          cd ${{ env.CD_REPOSITORY }}
+          git pull
+          git config --global user.email "cicd@nerdystar.io"
+          git config --global user.name "cicd"
+          git pull
+          git commit -am "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
+          git push -u origin main
+
+

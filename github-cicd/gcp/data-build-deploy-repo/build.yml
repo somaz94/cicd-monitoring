@@ -1,0 +1,227 @@
+# This is a basic workflow to help you get started with Actions
+
+name: 1.Build
+
+on:
+  push:
+    branches:
+      # - dev
+      - '*'
+      - '!main'
+      - 'release/*'
+    paths:
+      - apps/game/**
+    
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+      service:
+        description: Which service to be built. game or admin or etc...
+        required: true
+        type: choice
+        options:
+          - game
+  workflow_call:
+    inputs:
+      branch:
+        description: Source branch name
+        required: true
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        type: string
+      service:
+        description: Service to be built. game or admin or etc...
+        required: true
+        type: string
+
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build:
+    name: Build Image
+    runs-on: ubuntu-20.04
+    env:
+      PROJECT: jm
+      SERVICE: ${{ github.event.inputs.service || inputs.service }}
+      ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
+    # Add "id-token" with the intended permissions.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out branch for workflow call
+        id: checkout-for-workflow-call
+        if: ${{ inputs.branch }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Check out branch for workflow dispatch
+        if: ${{ steps.checkout-for-workflow-call.outcome == 'skipped' }}
+        uses: actions/checkout@v4
+
+      - name: Set GCP region JP for prod environment
+        if: ${{ env.ENVIRONMENT == 'stage' || env.ENVIRONMENT == 'prod' }}
+        id: set-prod-region
+        run: |
+          echo "GCP_REGION=asia-northeast1" >> $GITHUB_ENV
+
+      - name: Set GCP region KR
+        if: ${{ steps.set-prod-region.outcome == 'skipped' }}
+        run: |
+          echo "GCP_REGION=asia-northeast3" >> $GITHUB_ENV
+
+      - name: Configure GCP credentials
+        id: auth         
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          access_token_lifetime: 500s     
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Login to Artifact Registry
+        id : artifact
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Set short sha
+        id: vars
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build, tag, and push image to GCP Artifact Registry
+        uses: docker/build-push-action@v5
+        env:
+          GCP_SOMAZ_MGMT_PROJECT: ${{ secrets.GCP_SOMAZ_MGMT_PROJECT }}
+          GAR_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev
+          # SERVICE_NAME: ${{ inputs.service }}
+          SERVICE_NAME: ${{ env.SERVICE }}
+          GAR_REPOSITORY: ${{ env.PROJECT }}
+          IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
+        with:
+          context: .
+          file: ${{ env.SERVICE_NAME }}.Dockerfile
+          push: true
+          tags: ${{ env.GAR_REGISTRY }}/${{ env.GCP_SOMAZ_MGMT_PROJECT }}/${{ env.SERVICE }}-${{ env.PROJECT }}/${{ env.SERVICE }}-${{ env.PROJECT }}:${{ steps.vars.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set branch var for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "IS_BUILD_TRIGGERED_BY_WORKFLOW_DISPATCH=true" >> $GITHUB_ENV
+
+      - name: Outputs build results
+        run: |
+          echo "target service: ${{ env.SERVICE }}"
+          echo "resource branch for workflow dispatch: ${{ github.ref_name }}"
+          echo "resource branch for workflow call: ${{ inputs.branch }}"
+          echo "deploy environment: ${{ env.ENVIRONMENT }}"
+          echo "gar region: ${{ env.GCP_REGION }}"
+          echo "image tags: ${{ steps.vars.outputs.short_sha }}"
+
+    outputs:
+      tag: ${{ steps.vars.outputs.short_sha }}
+      is_build_triggered_by_workflow_dispatch: ${{ env.IS_BUILD_TRIGGERED_BY_WORKFLOW_DISPATCH }}
+      service: ${{ env.SERVICE }}
+      environment: ${{ env.ENVIRONMENT }}
+
+  call-deploy:
+    needs: [ build ]
+    name: Call deploy workflow
+    uses: ./.github/workflows/deploy.yml
+    with:
+      service: ${{ needs.build.outputs.service }}
+      environment: ${{ needs.build.outputs.environment }}
+      tag: ${{ needs.build.outputs.tag }}
+      trigger_user: ${{ github.event.sender.login }}
+      is_build_triggered_by_workflow_dispatch: ${{ needs.build.outputs.is_build_triggered_by_workflow_dispatch }}
+      build_branch: ${{ github.ref_name }}
+    secrets: inherit
+
+  slack-notification:
+    if: ${{ always() }}
+    needs: [ build, call-deploy ]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Set Env
+        run: |
+          if [ "${{ needs.build.result }}" = "failure" ] || \
+             [ "${{ needs.build.result }}" = "failure" ];
+          then
+            BUILD_RESULT="❌ 실패"
+          elif [ "${{ needs.build.result }}" = "cancelled" ] || \
+            [ "${{ needs.build.result }}" = "cancelled" ];
+          then
+            BUILD_RESULT="⚠️ 취소"
+          else
+            BUILD_RESULT="✅ 성공"
+          fi
+          echo "BUILD_RESULT=${BUILD_RESULT}" >> $GITHUB_ENV
+          
+          if [ "${{ needs.call-deploy.result }}" = "failure" ] || \
+             [ "${{ needs.call-deploy.result }}" = "failure" ];
+          then
+            DEPLOY_RESULT="❌ 실패"
+          elif [ "${{ needs.call-deploy.result }}" = "cancelled" ] || \
+            [ "${{ needs.call-deploy.result }}" = "cancelled" ];
+          then
+            DEPLOY_RESULT="⚠️ 취소"
+          else
+            DEPLOY_RESULT="✅ 성공"
+          fi
+          echo "DEPLOY_RESULT=${DEPLOY_RESULT}" >> $GITHUB_ENV
+
+      - name: set env branch
+        run: |
+          if [ ${{ inputs.branch }} ]; then
+            echo "BRANCH=${{ inputs.branch }}" >> $GITHUB_ENV
+          else
+            echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi 
+
+      - name: Check out branch for workflow call
+        id: checkout-for-workflow-call
+        if: ${{ inputs.branch }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Check out branch for workflow dispatch
+        if: ${{ steps.checkout-for-workflow-call.outcome == 'skipped' }}
+        uses: actions/checkout@v2
+
+      - name: slack-send
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          payload: |
+           {
+             "repository_name": "${{ github.event.repository.name }} ( ${{ github.server_url }}/${{ github.repository }} )",
+             "trigger_user": "${{ github.actor }}",
+             "commit_message": "${{ github.event.head_commit.message }}",
+             "environment": "${{ needs.build.outputs.environment }}",
+             "source_branch": "${{ env.BRANCH }}",
+             "build_result": "${{ env.BUILD_RESULT }}",
+             "deploy_result": "${{ env.DEPLOY_RESULT }}",
+             "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+           }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SOMAZ_SLACK_WEBHOOK_URL }}
+
