@@ -78,6 +78,30 @@ jobs:
         run: |
           echo "GCP_REGION=asia-northeast3" >> $GITHUB_ENV
 
+      - name: Extract most recent environment from the last 50 commits
+        if: github.event_name == 'push' 
+        run: |
+          git log -50 --pretty=%B
+          COMMIT_MESSAGES=$(git log -50 --pretty=%B)
+          ENVIRONMENT=$(echo "$COMMIT_MESSAGES" | grep -oP 'server\(\K[^)]*' | head -1 | sed 's/gcp_//')
+          echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+
+      - name: Use input environment if provided
+        if: github.event_name == 'workflow_dispatch' && inputs.environment
+        run: |
+          echo "ENVIRONMENT=${{ inputs.environment }}" >> $GITHUB_ENV
+
+      - name: Use Default Service Name if push event
+        if: github.event_name == 'push' 
+        run: |
+          echo "SERVICE=${{ inputs.service || 'game' }}" >> $GITHUB_ENV
+
+      - name: Setup environment
+        id: env_output
+        run: |
+          echo "Environment set to: ${{ env.ENVIRONMENT }}"
+          echo "Service set to: ${{ env.SERVICE }}"
+
       - name: Configure GCP credentials
         id: auth         
         uses: google-github-actions/auth@v2
