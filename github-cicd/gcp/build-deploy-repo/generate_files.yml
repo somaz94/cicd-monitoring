@@ -148,7 +148,13 @@ jobs:
         run: |
           git config --global user.email "cicd@somaz.link"
           git config --global user.name "cicd"
-  
+
+          # Delete old branches with the same pattern
+          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-$TRIGGER_USER-" | sed 's/origin\///')
+          for BRANCH in $EXISTING_BRANCHES; do
+            git push origin --delete $BRANCH || true
+          done
+
           # Create a new branch for the changes
           git checkout -b "update-generated-files-$TRIGGER_USER-$RUN_NUMBER"
   
