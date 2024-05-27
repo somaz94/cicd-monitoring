@@ -50,12 +50,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
 
-      # node modules 캐싱
-      - name: Cache node modules
-        id: node-cache
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.1.2
+
+      # pnpm modules 캐싱
+      - name: Cache pnpm modules
+        id: pnpm-cache
         uses: actions/cache@v2
         env:
-          cache-name: cache-node-modules
+          cache-name: cache-pnpm-modules
         with:
           # npm cache files are stored in `~/.npm` on Linux/macOS
           path: |
@@ -65,10 +70,9 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: install node dependencies
-        if: steps.node-cache.outputs.cache-hit != 'true'
+        if: steps.pnpm-cache.outputs.cache-hit != 'true'
         run: |
-          npm install
-          npm ci
+          pnpm install --frozen-lockfile
 
       - name: generate ts files
         id: gen
