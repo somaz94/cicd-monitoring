@@ -47,7 +47,7 @@ jobs:
     name: Build Image
     runs-on: ubuntu-20.04
     env:
-      PROJECT: jm
+      PROJECT: somaz
       SERVICE: ${{ github.event.inputs.service || inputs.service }}
       ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
     # Add "id-token" with the intended permissions.
