@@ -32,7 +32,7 @@ variables:
   BUILD_TAG_LATEST: $CI_COMMIT_REF_NAME-latest
   IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
   # GCP
-  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-fgn/${SERVICE}-fgn'
+  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-somaz/${SERVICE}-somaz'
   GCP_IMAGE_URL: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'  
   # Origin
@@ -46,13 +46,13 @@ variables:
   IMAGE_URL_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   IMAGE_URL_LATEST_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
   # GCP
-  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-fgn/$GAME_SERVICE-fgn'
+  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-somaz/$GAME_SERVICE-somaz'
   GCP_IMAGE_URL_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-fgn/$BATCH_SERVICE-fgn'
+  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-somaz/$BATCH_SERVICE-somaz'
   GCP_IMAGE_URL_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-fgn/$ADMIN_SERVICE-fgn'
+  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-somaz/$ADMIN_SERVICE-somaz'
   GCP_IMAGE_URL_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
   # staticdata variable
@@ -106,7 +106,7 @@ generator:
 
         echo $NAMES_ARRAY
 
-        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-admin.fgn.somaz.link/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: somaz-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-admin.somaz.somaz.link/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: somaz-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
         echo $RESPONSE
       fi
   rules:
@@ -248,7 +248,7 @@ update_manual_image:
     - chmod 644 ~/.ssh/known_hosts
   script:
     - git clone git@gitlab.somaz.link:infra/kubernetes-infra.git
-    - cd kubernetes-infra/applied/argocd/applicationset/charts/fgn-server/$SERVICE
+    - cd kubernetes-infra/applied/argocd/applicationset/charts/somaz-server/$SERVICE
     - git checkout master
     - git pull
     - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
@@ -261,4 +261,4 @@ update_manual_image:
   rules:
     - if: '($CI_PIPELINE_SOURCE == "web")'
   tags:
-    - fgn-$NAMESPACE
+    - somaz-$NAMESPACE
