@@ -21,6 +21,9 @@ on:
 jobs:
   generate:
     runs-on: ubuntu-latest
+    concurrency: 
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     # Add "id-token" with the intended permissions.
     steps:
       - name: Check out branch

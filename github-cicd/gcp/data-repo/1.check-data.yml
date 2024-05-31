@@ -25,6 +25,9 @@ jobs:
     name: Check changed json data files
     if: github.ref != 'refs/heads/master' # Prevention Master Branch
     runs-on: ubuntu-20.04
+    concurrency: 
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
