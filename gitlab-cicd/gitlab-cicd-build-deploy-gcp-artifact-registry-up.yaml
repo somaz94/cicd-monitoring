@@ -1,0 +1,536 @@
+stages:
+  #- test # test code 가 명확해지면 빌드 전에 테스트 하도록 작업할 예정
+  - generator
+  - prepare
+  - gcloud
+  - build # buld images & push to private image registry at once
+  - update
+
+# 스크립트에서 사용할 변수 설정
+# CI_COMMIT_REF_NAME 파이프라인 실행하는 현재 브랜치명
+variables:
+  NAMESPACE:
+    value: "dev1"
+    description: "Select the namespace: dev1 or dev2 or staging(use deploy)"
+    options:
+      - "dev1"
+      - "dev2"
+      - "staging"
+      - "qa1"
+      - "somaz-dev"
+  SERVICE:
+    value: "game"
+    description: "Select admin or game or batch or etc."
+    options:
+      - "game"
+      - "admin"
+      - "batch"
+  # Origin
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$SERVICE
+  BUILD_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  BUILD_TAG_LATEST: latest
+  IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+  # GCP
+  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-sgn/${SERVICE}-sgn'
+  GCP_IMAGE_URL: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'  
+  # Origin
+  CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE
+  IMAGE_URL_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_BATCH: $CI_REGISTRY/$BATCH_SERVICE
+  IMAGE_URL_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_ADMIN: $CI_REGISTRY/$ADMIN_SERVICE
+  IMAGE_URL_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
+  # GCP
+  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-sgn/$GAME_SERVICE-sgn'
+  GCP_IMAGE_URL_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-sgn/$BATCH_SERVICE-sgn'
+  GCP_IMAGE_URL_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-sgn/$ADMIN_SERVICE-sgn'
+  GCP_IMAGE_URL_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
+  # staticdata variable
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  CHANGED_ServerJson: $changed_ServerJson
+
+generator:
+  stage: generator
+  interruptible: true
+  image: node:latest
+  tags:
+    - build-image
+  before_script:
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apt update && apt install -y unzip
+    # - npm install -g pnpm
+    - corepack enable
+    - pnpm install
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.somaz.io/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - zipinfo artifacts.zip
+    - unzip -o artifacts.zip
+    - mkdir ServerJson
+    - cp -r Convertor/ServerJson/* ServerJson
+  script:
+    - git config --global user.email "datatool@oozooinc.com"
+    - git config --global user.name "datatool"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.somaz.io/4ground9/server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - npm run gen-static
+    - rm -rf artifacts.zip Convertor ServerJson
+    - git add .
+    - CHANGES=$(git status --porcelain | wc -l)
+    - PUSHED=false
+    - |
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        git push gitlab_origin ${CI_COMMIT_REF_NAME}
+      fi
+    # Curl 요청
+    - echo "$CHANGED_ServerJson"
+    - |
+      if [ "$PUSHED" = "false" ] && [ ! -z "$CHANGED_ServerJson" ]; then 
+        NAMES_ARRAY="["
+        for file in $CHANGED_ServerJson; do
+          NAMES_ARRAY+="\"$file\","
+        done
+        # Remove the last comma
+        NAMES_ARRAY=${NAMES_ARRAY%,}
+        NAMES_ARRAY+="]"
+
+        echo $NAMES_ARRAY
+
+        RESPONSE=$(curl -X 'POST' "https://${NAMESPACE}-admin.sgn.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: sgn-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        echo $RESPONSE
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+# .change_files_admin: &change_files_admin
+#   changes:
+#     # - apps/admin/src/**/*
+#     # - libs/common/src/**/*
+#     - libs/dao/src/static/*
+#     # - admin.Dockerfile
+
+prepare_admin:
+  stage: prepare
+  image: node:latest
+  variables:
+    NODE_ENV: $NAMESPACE
+  before_script:
+    - corepack enable
+    - pnpm install
+    - apt-get update
+    - apt-get install -y git
+  script:
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.somaz.io/4ground9/server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull gitlab_origin ${CI_COMMIT_REF_NAME}
+    - pnpm run gen-admin
+    - git add .
+    - |-
+      CHANGES=$(git status --porcelain | wc -l)
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Preparation step before admin build-$CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
+      fi
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin"'
+  # rules:
+  #   - if: '($CI_PIPELINE_SOURCE == "web") && ($SERVICE == "admin")'
+  #   - if: '($CI_PIPELINE_SOURCE == "push")'
+  #     changes:
+  #       - libs/dao/src/static/*
+  #   - if: '$CI_PIPELINE_SOURCE == "trigger"'
+  # tags:
+  #   - build-image
+
+gcloud:
+  stage: gcloud
+  image:
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+  variables:
+    CLOUDSDK_CONFIG: $CI_PROJECT_DIR/gcloud
+  before_script:
+    - echo [INFO] Start gcloud config setting.
+    - echo [INFO] GCP_SERVICE_ACCOUNT is $GCP_SERVICE_ACCOUNT
+    - echo [INFO] CLOUDSDK_CONFIG is $CLOUDSDK_CONFIG
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - mkdir -p ${CLOUDSDK_CONFIG}
+  script:
+    - echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 --decode > ${CLOUDSDK_CONFIG}/gcloud-service-key.json
+    - gcloud auth activate-service-account --key-file=${CLOUDSDK_CONFIG}/gcloud-service-key.json
+    - token=$(gcloud auth print-access-token)
+    - docker_token=$(echo -n "gclouddockertoken:$token" | base64 | tr -d "\n")
+    - echo "{\"auths\":{\"$GCP_CI_REGISTRY\":{\"auth\":\"$docker_token\",\"email\":\"admin@somaz.io\"}}}" > gcloud/config.json
+  artifacts:
+    paths:
+      - gcloud/config.json
+  rules:
+    # - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESAPCE == "somaz-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "somaz-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    # - if: '$CI_PIPELINE_SOURCE == "web"'
+  tags:
+    - build-image
+
+# web에서 수동 빌드 시 사용
+build_manual_image:
+  stage: build
+  image:
+    # kaniko debug 이미지 사용
+    # name: gcr.io/kaniko-project/executor:debug
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
+    entrypoint: [""]
+  before_script:
+    - echo [INFO] Start build image.
+    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] IMAGE_URL is $IMAGE_URL
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] SERVICE is $SERVICE
+    - echo [INFO] GCP Config
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - echo [INFO] GCP_CI_REGISTRY_IMAGE is $GCP_CI_REGISTRY_IMAGE
+    - echo [INFO] GCP_IMAGE_URL is $GCP_IMAGE_URL
+    - echo [INFO] GCP_IMAGE_URL_LATEST is $GCP_IMAGE_URL_LATEST
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
+    - mkdir -p /kaniko/.docker
+    # private 레지스트리에 대한 접속 정보 지정
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        echo "Configuring registry for special namespace $NAMESPACE"
+        # echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 -d > /kaniko/.docker/config.json
+        cp gcloud/config.json /kaniko/.docker/config.json
+      else
+        echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+      fi
+  script:
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        # somaz-가 포함된 NAMESPACE용 설정
+        echo "Using special build settings for $NAMESPACE"
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      else        
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - build-image
+
+update_manual_image:
+  stage: update
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] SERVICE is $SERVICE
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - cd kubernetes-infra
+    - git checkout master
+    - git pull
+    - cd applied/argocd/applicationset/environment_branch
+    - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
+    - cd ../../../argocd/applicationset/charts/sgn-server/$SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - deploy-image
+
+# server repo에 change_files에 나열된 데이터가 변경되었을때
+build_auto_image_game:
+  stage: build
+  interruptible: true
+  image:
+    # kaniko debug 이미지 사용
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
+    entrypoint: [ "" ]
+  before_script:
+    - echo [INFO] Start build image.
+    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] IMAGE_URL is $IMAGE_URL
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
+    - echo [INFO] GCP Config
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - echo [INFO] GCP_CI_REGISTRY_IMAGE is $GCP_CI_REGISTRY_IMAGE
+    - echo [INFO] GCP_IMAGE_URL is $GCP_IMAGE_URL
+    - echo [INFO] GCP_IMAGE_URL_LATEST is $GCP_IMAGE_URL_LATEST
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
+    - mkdir -p /kaniko/.docker
+    # private 레지스트리에 대한 접속 정보 지정
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        echo "Configuring registry for special namespace $NAMESPACE"
+        # echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 -d > /kaniko/.docker/config.json
+        cp gcloud/config.json /kaniko/.docker/config.json
+      else
+        echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+      fi
+  script:
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        # somaz-가 포함된 NAMESPACE용 설정
+        echo "Using special build settings for $NAMESPACE"
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$GAME_SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      else        
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$GAME_SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - build-image
+
+update_auto_image_game:
+  stage: update
+  interruptible: true
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] GAME_SERVICE is $GAME_SERVICE
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - cd kubernetes-infra
+    - git checkout master
+    - git pull
+    - cd applied/argocd/applicationset/environment_branch
+    - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
+    - cd ../../../argocd/applicationset/charts/sgn-server/$GAME_SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $GAME_SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - deploy-image
+
+build_auto_image_batch:
+  stage: build
+  interruptible: true
+  image:
+    # kaniko debug 이미지 사용
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
+    entrypoint: [ "" ]
+  before_script:
+    - echo [INFO] Start build image.
+    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] IMAGE_URL is $IMAGE_URL
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
+    - echo [INFO] GCP Config
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - echo [INFO] GCP_CI_REGISTRY_IMAGE is $GCP_CI_REGISTRY_IMAGE
+    - echo [INFO] GCP_IMAGE_URL is $GCP_IMAGE_URL
+    - echo [INFO] GCP_IMAGE_URL_LATEST is $GCP_IMAGE_URL_LATEST
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
+    - mkdir -p /kaniko/.docker
+    # private 레지스트리에 대한 접속 정보 지정
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        echo "Configuring registry for special namespace $NAMESPACE"
+        # echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 -d > /kaniko/.docker/config.json
+        cp gcloud/config.json /kaniko/.docker/config.json
+      else
+        echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+      fi
+  script:
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        # somaz-가 포함된 NAMESPACE용 설정
+        echo "Using special build settings for $NAMESPACE"
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$BATCH_SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      else        
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$BATCH_SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - build-image
+
+update_auto_image_batch:
+  stage: update
+  interruptible: true
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] BATCH_SERVICE is $BATCH_SERVICE
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - cd kubernetes-infra
+    - git checkout master
+    - git pull
+    - cd applied/argocd/applicationset/environment_branch
+    - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
+    - cd ../../../argocd/applicationset/charts/sgn-server/$BATCH_SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $BATCH_SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - deploy-image
+
+build_auto_image_admin:
+  stage: build
+  interruptible: true
+  image:
+    # kaniko debug 이미지 사용
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+    # entrypoint 는 명시적으로  "" 빈 스트링 지정해야함.
+    entrypoint: [ "" ]
+  before_script:
+    - echo [INFO] Start build image.
+    - echo [INFO] CI_REGISTRY is $CI_REGISTRY
+    - echo [INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] IMAGE_URL is $IMAGE_URL
+    - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
+    - echo [INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST
+    - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
+    - echo [INFO] ADMIN_SERVICE is $ADMIN_SERVICE
+    - echo [INFO] GCP Config
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - echo [INFO] GCP_CI_REGISTRY_IMAGE is $GCP_CI_REGISTRY_IMAGE
+    - echo [INFO] GCP_IMAGE_URL is $GCP_IMAGE_URL
+    - echo [INFO] GCP_IMAGE_URL_LATEST is $GCP_IMAGE_URL_LATEST
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    # registry 접속 정보를 저장하기 위한 디렉토리 생성
+    - mkdir -p /kaniko/.docker
+    # private 레지스트리에 대한 접속 정보 지정
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        echo "Configuring registry for special namespace $NAMESPACE"
+        # echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 -d > /kaniko/.docker/config.json
+        cp gcloud/config.json /kaniko/.docker/config.json
+      else
+        echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+      fi
+  script:
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        # somaz-가 포함된 NAMESPACE용 설정
+        echo "Using special build settings for $NAMESPACE"
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$ADMIN_SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      else        
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$ADMIN_SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - build-image
+
+update_auto_image_admin:
+  stage: update
+  interruptible: true
+  image: alpine:latest
+  before_script:
+    - echo [INFO] BUILD_TAG is $BUILD_TAG
+    - echo [INFO] ADMIN_SERVICE is $ADMIN_SERVICE
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - cd kubernetes-infra
+    - git checkout master
+    - git pull
+    - cd applied/argocd/applicationset/environment_branch
+    - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
+    - cd ../../../argocd/applicationset/charts/sgn-server/$ADMIN_SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $ADMIN_SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - deploy-image
+
