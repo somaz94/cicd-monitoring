@@ -1,0 +1,156 @@
+name: 1.Deploy
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Which service to be built. game or admin or etc...
+        required: true
+        default: game
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        description: Which service to be built. game or admin or etc...
+        required: true
+      environment:
+        type: string
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+      is_build_triggered_by_workflow_dispatch:
+        type: string
+        description: Value for determine build workflow trigger
+        required: true
+      build_branch:
+        type: string
+        description: Build source branch
+        required: true
+jobs:
+  deploy:
+    name: Update helm image tag
+    runs-on: ubuntu-20.04
+    env:
+      somaz_PROJECT: somaz
+      somaz_CD_REPOSITORY: somaz-applicationset
+      somax_PROJECT: somax
+      somax_CD_REPOSITORY: somax-applicationset
+    steps:
+      - name: Checkout config repository for somaz
+        if: ${{ inputs.service == 'game' }}
+        uses: actions/checkout@v2
+        with:
+          repository: nerdy-star/${{ env.somaz_CD_REPOSITORY }}
+          ref: main
+          token: ${{ secrets.CICD_PAT }}
+          path: ${{ env.somaz_CD_REPOSITORY }}
+
+      - name: Checkout config repository for somax
+        if: ${{ inputs.service == 'admin' }}
+        uses: actions/checkout@v2
+        with:
+          repository: nerdy-star/${{ env.somax_CD_REPOSITORY }}
+          ref: master
+          token: ${{ secrets.CICD_PAT }}
+          path: ${{ env.somax_CD_REPOSITORY }}
+
+      - name: Set env for stage
+        id: set-tag-string-for-stage
+        if: ${{ inputs.environment == 'stage' }}
+        run: |
+          echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
+          echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
+
+      - name: Set env
+        if: ${{ steps.set-tag-string-for-stage.outcome == 'skipped' }}
+        run: |
+          echo "TARGET_VALUES_FILE_NAME=${{ inputs.environment }}" >> $GITHUB_ENV
+          echo "TAG_STRING=tag" >> $GITHUB_ENV
+
+      - name: Update target environment image tag for Game
+        if: ${{ inputs.service == 'game' }}
+        run: |
+          echo ${{ github.ref_name }}
+          echo ${{ inputs.tag }}
+          
+          # update tag
+          cd ${{ env.somaz_CD_REPOSITORY }}/charts/${{ env.somaz_PROJECT }}/${{ inputs.service }}
+          sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
+
+      - name: Update target environment image tag for admin
+        if: ${{ inputs.service == 'admin' }}
+        run: |
+          echo ${{ github.ref_name }}
+          echo ${{ inputs.tag }}
+          
+          # update tag
+          cd ${{ env.somax_CD_REPOSITORY }}/charts/${{ env.somax_PROJECT }}/${{ inputs.service }}
+          sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
+
+      - name: Update release_branch for workflow_dispatch for Game
+        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' && inputs.service == 'game' }}
+        run: |
+          cd ${{ env.somaz_CD_REPOSITORY }}/environment_branch
+          existing_branch=$(cat ${{ inputs.environment }}.txt)
+          if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
+            echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
+            echo "Updated release branch to ${{ inputs.build_branch }}"
+          else
+            echo "No update needed. Current branch is already set to $existing_branch"
+          fi
+
+      - name: Update release_branch for workflow_dispatch For admin
+        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' && inputs.service == 'admin' }}
+        run: |
+          cd ${{ env.somax_CD_REPOSITORY }}/environment_branch
+          existing_branch=$(cat ${{ inputs.environment }}.txt)
+          if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
+            echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
+            echo "Updated release branch to ${{ inputs.build_branch }}"
+          else
+            echo "No update needed. Current branch is already set to $existing_branch"
+          fi
+
+      - name: Commit files for Game
+        if: ${{ inputs.service == 'game'  }}
+        run: |
+          cd ${{ env.somaz_CD_REPOSITORY }}
+          git pull
+          git config user.email "cicd@somaz.io"
+          git config user.name "cicd"
+          git add -A
+          git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
+          git push -u origin main
+
+      - name: Commit files for Admin
+        if: ${{ inputs.service == 'admin'  }}
+        run: |
+          cd ${{ env.somax_CD_REPOSITORY }}
+          git pull
+          git config user.email "cicd@somaz.io"
+          git config user.name "cicd"
+          git add -A
+          git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
+          git push -u origin master
+
+

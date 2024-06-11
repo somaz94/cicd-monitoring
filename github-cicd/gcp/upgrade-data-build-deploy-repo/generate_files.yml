@@ -1,0 +1,327 @@
+# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
+# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
+
+name: Generate Files
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!main'
+      - 'release/*'
+    paths:
+      - libs/somaz-guy/src/data-version.json
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: environment
+        description: Select the environment 
+        required: true
+  repository_dispatch:
+    types: [generate_files_somaz]        
+        
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    # Add "id-token" with the intended permissions.
+    steps:
+      - name: Checkout repository for push
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+
+      - name: Checkout repository for repository_dispatch
+        if: github.event_name == 'repository_dispatch'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.ref }}
+
+      - name: Setup environment based on event
+        id: setup-environment
+        run: |
+          echo "Processing event type: ${{ github.event_name }}"
+          if [[ "${{ github.event_name }}" == 'push' ]]; then
+            COMMIT_MESSAGES=$(git log -50 --pretty=%B)
+            ENVIRONMENT=$(echo "$COMMIT_MESSAGES" | grep -oP 'server\(\K[^)]*' | head -1 | sed 's/gcp_//')
+            ENVIRONMENT=${ENVIRONMENT:-unknown} # 기본값 설정
+            echo "Extracted environment: $ENVIRONMENT"
+          elif [[ "${{ github.event_name }}" == 'repository_dispatch' ]]; then
+            ENVIRONMENT=${{ github.event.client_payload.environment }}
+            ENVIRONMENT=${ENVIRONMENT:-unknown} # 기본값 설정
+            echo "Using environment from repository_dispatch: $ENVIRONMENT"
+          elif [[ "${{ github.event_name }}" == 'workflow_dispatch' ]]; then
+            ENVIRONMENT=${{ github.event.inputs.environment }}
+            ENVIRONMENT=${ENVIRONMENT:-unknown} # 기본값 설정
+            echo "Using environment from workflow_dispatch input: $ENVIRONMENT"
+          else
+            ENVIRONMENT="unknown"
+            echo "Defaulting environment to 'unknown'"
+          fi
+          echo "Setting environment variable..."
+          echo "environment=$ENVIRONMENT" >> $GITHUB_ENV
+
+      - name: Set Artifact variables for repository dispatch
+        if: github.event_name == 'repository_dispatch'
+        env:
+          run_id: ${{ github.event.client_payload.run_id }}
+          run_number: ${{ github.event.client_payload.run_number }}
+          ref_name: ${{ github.event.client_payload.ref_name }}
+        run: |
+          echo "RUN_ID=${{ env.run_id }}" >> $GITHUB_ENV
+          echo "RUN_NUMBER=${{ env.run_number }}" >> $GITHUB_ENV
+          echo "BRANCH=${{ env.ref_name }}" >> $GITHUB_ENV
+
+      - name: download artifact
+        if: github.event_name == 'repository_dispatch'
+        uses: actions/github-script@v6
+        env:
+          RUN_ID: ${{ env.RUN_ID }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+          BRANCH: ${{ env.BRANCH }}
+        with:
+          github-token: ${{ secrets.CICD_PAT }}
+          script: |
+            const { BRANCH, RUN_ID, RUN_NUMBER } = process.env
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: 'somax-staticdata',
+               run_id: `${RUN_ID}`,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == `${BRANCH}_somax_staticdata_server_v${RUN_NUMBER}`
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: 'somax-staticdata',
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_somax_staticdata_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
+
+      - name: Unzip artifact
+        if: github.event_name == 'repository_dispatch'
+        env:
+          RUN_ID: ${{ env.RUN_ID }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+          BRANCH: ${{ env.BRANCH }}
+        run: |
+          mkdir ServerJson
+          unzip -d ServerJson "${{ env.BRANCH }}_somax_staticdata_server_v${{ env.RUN_NUMBER }}".zip
+          ls -al ServerJson
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+
+      - name: Setup pnpm
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.1.2
+
+      # pnpm modules 캐싱
+      - name: Cache pnpm modules
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        id: pnpm-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-pnpm-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: install node dependencies pnpm
+        if: steps.pnpm-cache.outputs.cache-hit != 'true' && github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          pnpm install --frozen-lockfile       
+
+      # node modules 캐싱
+      - name: Cache node modules
+        if: github.event_name == 'repository_dispatch'
+        id: node-cache
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: |
+            **/node_modules
+          key: ${{ runner.os }}-build-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+
+      - name: install node dependencies
+        if: steps.node-cache.outputs.cache-hit != 'true' && github.event_name == 'repository_dispatch'
+        run: |
+          npm install
+          npm ci 
+          
+      - name: generate static files for somaz
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        id: gen-somaz
+        run: |
+          echo "Using NODE_ENV set to: ${{ env.environment }}"
+          NODE_ENV=${{ env.environment }} npm run gen-static
+          RESULT=$(git status)
+          if [[ $RESULT == *"libs/somaz-guy/src/static"* ]]; then
+            echo "isGenfileModified=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: generate ts files for somax
+        if: github.event_name == 'repository_dispatch'
+        id: gen-somax
+        run: |
+          rm -rf libs/somax-guy/src/static
+          npm run gen-ts
+          RESULT=$(git status)
+          if [[ $RESULT == *"libs/somax-guy/src/static"* ]]; then
+            echo "isGenfileModified=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up SSH Connection
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Using ENVIRONMENT set to: ${{ env.environment }}"
+          if [ "${{ env.environment }}" == "dev1" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
+          elif [ "${{ env.environment }}" == "dev2" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
+          elif [ "${{ env.environment }}" == "qa1" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_QA1 }}" >> $GITHUB_ENV
+          elif [ "${{ env.environment }}" == "qa2" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_QA2 }}" >> $GITHUB_ENV
+          elif [ "${{ env.environment }}" == "prod" ]; then
+            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_PROD }}" >> $GITHUB_ENV
+          else
+            echo "Error: Unknown environment '${{ env.environment }}'"
+            exit 1
+          fi
+
+      - name: Uplaod data files to Bastion Server
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_somaz_BASTION_PEM }}
+          REMOTE_HOST: ${{ env.BASTION_IP }}
+          REMOTE_USER: somaz
+          SOURCE: "somaz-data/"
+          TARGET: /home/somaz/${{ env.environment }}
+          ARGS: "-rltDvzO --delete"
+
+      - name: Get version from JSON
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        id: get_version
+        run: |
+          echo "DATA_VERSION=$(jq -r '.version' libs/somaz-guy/src/data-version.json)" >> $GITHUB_ENV          
+
+      - name: Add & Commit & Push files for somaz
+        if: ${{ env.environment != 'prod' && steps.get_version.outcome == 'success' && steps.gen-somaz.outputs.isGenfileModified == 'true'  }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+        run: |
+          git config --global user.email "cicd@somaz.io"
+          git config --global user.name "cicd"
+          git add libs
+          git commit -m "Update generated files somaz by $TRIGGER_USER. Version: ${{ env.DATA_VERSION }}"
+          git push -u origin ${{ github.ref_name }}
+
+
+      - name: Add & Commit & Push files & Pull request for somaz
+        if: ${{ env.environment == 'prod' && steps.get_version.outcome == 'success' && steps.gen-somaz.outputs.isGenfileModified == 'true' }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+          CICD_PAT: ${{ secrets.CICD_PAT }} # Add CICD_PAT from organization secrets
+        run: |
+          git config --global user.email "cicd@somaz.io"
+          git config --global user.name "cicd"
+
+          # Delete old branches with the same pattern
+          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-somaz-$TRIGGER_USER-" | sed 's/origin\///')
+          for BRANCH in $EXISTING_BRANCHES; do
+            git push origin --delete $BRANCH || true
+          done                   
+
+          # Create a new branch for the changes
+          git checkout -b "update-generated-files-somaz-$TRIGGER_USER"
+          git add libs
+          git commit -m "Update generated files somaz by $TRIGGER_USER. Version: $DATA_VERSION"
+          git push -u origin "update-generated-files-somaz-$TRIGGER_USER"
+          # Create a pull request using the GitHub API
+          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files somaz by '"$TRIGGER_USER"'. Version: ${{ env.DATA_VERSION }}", "head":"update-generated-files-somaz'"$TRIGGER_USER"'", "base":"master"}')
+          echo "$PR_JSON" | jq '.number'            
+
+      - name: Add & Commit & Push files for somax
+        if: ${{ steps.gen-somax.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name != 'prod' }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+          BRANCH: ${{ env.BRANCH }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+        run: |
+          git config --global user.email "cicd@somaz.io"
+          git config --global user.name "cicd"
+          git add libs
+          git commit -m "Update generated files somax by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git push -u origin ${{ github.event.client_payload.ref }}
+
+      - name: Add & Commit & Push files & Pull request
+        if: ${{ steps.gen-somax.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name == 'prod' }}
+        env:
+          TRIGGER_USER: ${{ github.event.sender.login }}
+          BRANCH: ${{ env.BRANCH }}
+          RUN_NUMBER: ${{ env.RUN_NUMBER }}
+          CICD_PAT: ${{ secrets.CICD_PAT }} # Add CICD_PAT from organization secrets
+        run: |
+          git config --global user.email "cicd@somaz.io"
+          git config --global user.name "cicd"
+
+          # Delete old branches with the same pattern
+          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-somax-$TRIGGER_USER-" | sed 's/origin\///')
+          for BRANCH in $EXISTING_BRANCHES; do
+            git push origin --delete $BRANCH || true
+          done          
+
+          # Create a new branch for the changes
+          git checkout -b "update-generated-files-somax-$TRIGGER_USER-$RUN_NUMBER"
+  
+          git add libs
+          git commit -m "Update generated files-somax by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git push -u origin "update-generated-files-somax-$TRIGGER_USER-$RUN_NUMBER"
+  
+          # Create a pull request using the GitHub API
+          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files somax by '"$TRIGGER_USER"'. Run number: '"${RUN_NUMBER}"'", "head":"update-generated-files-somax'"$TRIGGER_USER"'-'"$RUN_NUMBER"'", "base":"'"${{ github.event.client_payload.ref }}"'"}')
+          echo "$PR_JSON" | jq '.number'          
+
+    outputs:
+      isGenfileModified-somax: ${{ steps.gen-somax.outputs.isGenfileModified }}
+      isGenfileModified-somaz: ${{ steps.gen-somaz.outputs.isGenfileModified }}
+      environment: ${{ steps.setup-environment.outputs.environment }}
+
+  call-build-game:
+    if: ${{ needs.generate.outputs.isGenfileModified-somaz == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    needs: [ generate ]
+    name: Call build workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: game
+      branch: ${{ github.ref_name }}
+      environment: ${{ needs.generate.outputs.environment }}
+
+  call-build-admin:
+    if: ${{ needs.generate.outputs.isGenfileModified-somax == 'true' || needs.generate.outputs.isGenfileModified-somaz == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    needs: [ generate ]
+    name: Call build workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: admin
+      branch: ${{ github.ref_name }}
+      environment: ${{ needs.generate.outputs.environment }}
+
+
+
