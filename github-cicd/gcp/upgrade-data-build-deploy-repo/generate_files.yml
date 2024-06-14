@@ -60,6 +60,7 @@ jobs:
           fi
           echo "Setting environment variable..."
           echo "environment=$ENVIRONMENT" >> $GITHUB_ENV
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
 
       - name: Set Artifact variables for repository dispatch
         if: github.event_name == 'repository_dispatch'
