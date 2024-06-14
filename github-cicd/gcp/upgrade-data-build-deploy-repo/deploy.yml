@@ -51,66 +51,56 @@ jobs:
     name: Update helm image tag
     runs-on: ubuntu-20.04
     env:
-      somaz_PROJECT: somaz
-      somaz_CD_REPOSITORY: somaz-applicationset
-      somax_PROJECT: somax
-      somax_CD_REPOSITORY: somax-applicationset
+      sm_PROJECT: sm
+      sm_CD_REPOSITORY: sm-applicationset
+      msp_PROJECT: msp
+      msp_CD_REPOSITORY: msp-applicationset
+      SERVICE: ${{ github.event.inputs.service || inputs.service }}
+      ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
+
     steps:
-      - name: Checkout config repository for somaz
-        if: ${{ inputs.service == 'game' }}
+      - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: nerdy-star/${{ env.somaz_CD_REPOSITORY }}
-          ref: main
+          repository: nerdy-star/${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          ref: ${{ env.SERVICE == 'game' && 'main' || 'master' }}
           token: ${{ secrets.CICD_PAT }}
-          path: ${{ env.somaz_CD_REPOSITORY }}
+          path: ${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
 
-      - name: Checkout config repository for somax
-        if: ${{ inputs.service == 'admin' }}
-        uses: actions/checkout@v2
-        with:
-          repository: nerdy-star/${{ env.somax_CD_REPOSITORY }}
-          ref: master
-          token: ${{ secrets.CICD_PAT }}
-          path: ${{ env.somax_CD_REPOSITORY }}
-
-      - name: Set env for stage
-        id: set-tag-string-for-stage
-        if: ${{ inputs.environment == 'stage' }}
+      - name: Set environment variables
         run: |
-          echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
-          echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
+          if [ "${{ inputs.environment }}" == "stage" || "${{ inputs.environment }}" == "prod" ]; then
+            echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
+            echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
+          else
+            echo "TARGET_VALUES_FILE_NAME=${{ inputs.environment }}" >> $GITHUB_ENV
+            echo "TAG_STRING=tag" >> $GITHUB_ENV
+          fi
 
-      - name: Set env
-        if: ${{ steps.set-tag-string-for-stage.outcome == 'skipped' }}
+      - name: Determine change service name for msp-game -> game
+        if: ${{ inputs.service == 'msp-game' }}
         run: |
-          echo "TARGET_VALUES_FILE_NAME=${{ inputs.environment }}" >> $GITHUB_ENV
-          echo "TAG_STRING=tag" >> $GITHUB_ENV
+          echo "SERVICE_TAG=game" >> $GITHUB_ENV
 
-      - name: Update target environment image tag for Game
-        if: ${{ inputs.service == 'game' }}
+      - name: Update target environment image tag
         run: |
           echo ${{ github.ref_name }}
-          echo ${{ inputs.tag }}
+          echo ${{ inputs.tag }} 
+
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          PROJECT=${{ env.SERVICE == 'game' && env.sm_PROJECT || env.msp_PROJECT }}
+          SERVICE_NAME=${{ inputs.service == 'msp-game' && env.SERVICE_TAG || inputs.service }}
+          echo "Updating ${SERVICE_NAME} in ${SERVICE_PATH} for ${PROJECT}"
           
-          # update tag
-          cd ${{ env.somaz_CD_REPOSITORY }}/charts/${{ env.somaz_PROJECT }}/${{ inputs.service }}
+          cd ${SERVICE_PATH}/charts/${PROJECT}/${SERVICE_NAME}
           sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
 
-      - name: Update target environment image tag for admin
-        if: ${{ inputs.service == 'admin' }}
-        run: |
-          echo ${{ github.ref_name }}
-          echo ${{ inputs.tag }}
-          
-          # update tag
-          cd ${{ env.somax_CD_REPOSITORY }}/charts/${{ env.somax_PROJECT }}/${{ inputs.service }}
-          sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
 
-      - name: Update release_branch for workflow_dispatch for Game
-        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' && inputs.service == 'game' }}
+      - name: Update release_branch for workflow_dispatch 
+        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' }}
         run: |
-          cd ${{ env.somaz_CD_REPOSITORY }}/environment_branch
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          cd ${SERVICE_PATH}/environment_branch
           existing_branch=$(cat ${{ inputs.environment }}.txt)
           if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
             echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
@@ -119,38 +109,17 @@ jobs:
             echo "No update needed. Current branch is already set to $existing_branch"
           fi
 
-      - name: Update release_branch for workflow_dispatch For admin
-        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' && inputs.service == 'admin' }}
+      - name: Commit files
         run: |
-          cd ${{ env.somax_CD_REPOSITORY }}/environment_branch
-          existing_branch=$(cat ${{ inputs.environment }}.txt)
-          if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
-            echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
-            echo "Updated release branch to ${{ inputs.build_branch }}"
-          else
-            echo "No update needed. Current branch is already set to $existing_branch"
-          fi
-
-      - name: Commit files for Game
-        if: ${{ inputs.service == 'game'  }}
-        run: |
-          cd ${{ env.somaz_CD_REPOSITORY }}
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          ref=${{ env.SERVICE == 'game' && 'main' || 'master' }}
+          cd ${SERVICE_PATH}
           git pull
           git config user.email "cicd@somaz.io"
           git config user.name "cicd"
           git add -A
           git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
-          git push -u origin main
+          git push -u origin ${ref}
 
-      - name: Commit files for Admin
-        if: ${{ inputs.service == 'admin'  }}
-        run: |
-          cd ${{ env.somax_CD_REPOSITORY }}
-          git pull
-          git config user.email "cicd@somaz.io"
-          git config user.name "cicd"
-          git add -A
-          git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
-          git push -u origin master
-
+        
 

@@ -10,7 +10,7 @@ on:
       - '!main'
       - 'release/*'
     paths:
-      - libs/somaz-guy/src/data-version.json
+      - libs/sm-dao/src/data-version.json
   workflow_dispatch:
     inputs:
       environment:
@@ -86,20 +86,20 @@ jobs:
             const { BRANCH, RUN_ID, RUN_NUMBER } = process.env
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
-               repo: 'somax-staticdata',
+               repo: 'msp-staticdata',
                run_id: `${RUN_ID}`,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == `${BRANCH}_somax_staticdata_server_v${RUN_NUMBER}`
+              return artifact.name == `${BRANCH}_msp_staticdata_server_v${RUN_NUMBER}`
             })[0];
             let download = await github.rest.actions.downloadArtifact({
                owner: context.repo.owner,
-               repo: 'somax-staticdata',
+               repo: 'msp-staticdata',
                artifact_id: matchArtifact.id,
                archive_format: 'zip',
             });
             let fs = require('fs');
-            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_somax_staticdata_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_msp_staticdata_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
 
       - name: Unzip artifact
         if: github.event_name == 'repository_dispatch'
@@ -109,7 +109,7 @@ jobs:
           BRANCH: ${{ env.BRANCH }}
         run: |
           mkdir ServerJson
-          unzip -d ServerJson "${{ env.BRANCH }}_somax_staticdata_server_v${{ env.RUN_NUMBER }}".zip
+          unzip -d ServerJson "${{ env.BRANCH }}_msp_staticdata_server_v${{ env.RUN_NUMBER }}".zip
           ls -al ServerJson
 
       - name: Setup Node
@@ -162,25 +162,33 @@ jobs:
           npm install
           npm ci 
           
-      - name: generate static files for somaz
+      - name: generate static files for sm
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        id: gen-somaz
+        id: gen-sm
         run: |
           echo "Using NODE_ENV set to: ${{ env.environment }}"
           NODE_ENV=${{ env.environment }} npm run gen-static
-          RESULT=$(git status)
-          if [[ $RESULT == *"libs/somaz-guy/src/static"* ]]; then
+          # RESULT=$(git status)
+          # if [[ $RESULT == *"libs/sm-dao/src/static"* ]]; then
+          #   echo "isGenfileModified=true" >> $GITHUB_OUTPUT
+          # fi
+          CHANGED_FILES=$(git status --porcelain | grep '^ M' | awk '{print $2}')
+          echo "Changed files: $CHANGED_FILES"
+          for FILE in $CHANGED_FILES; do
+          if [[ "$FILE" =~ libs/sm-dao/src/static/ ]]; then  # Use regex match instead of glob match
             echo "isGenfileModified=true" >> $GITHUB_OUTPUT
+            break
           fi
+          done
 
-      - name: generate ts files for somax
+      - name: generate ts files for msp
         if: github.event_name == 'repository_dispatch'
-        id: gen-somax
+        id: gen-msp
         run: |
-          rm -rf libs/somax-guy/src/static
+          rm -rf libs/msp-dao/src/static
           npm run gen-ts
           RESULT=$(git status)
-          if [[ $RESULT == *"libs/somax-guy/src/static"* ]]; then
+          if [[ $RESULT == *"libs/msp-dao/src/static"* ]]; then
             echo "isGenfileModified=true" >> $GITHUB_OUTPUT
           fi
 
@@ -189,15 +197,15 @@ jobs:
         run: |
           echo "Using ENVIRONMENT set to: ${{ env.environment }}"
           if [ "${{ env.environment }}" == "dev1" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_sm_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
           elif [ "${{ env.environment }}" == "dev2" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_sm_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
           elif [ "${{ env.environment }}" == "qa1" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_QA1 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_sm_BASTION_IP_QA1 }}" >> $GITHUB_ENV
           elif [ "${{ env.environment }}" == "qa2" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_QA2 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_sm_BASTION_IP_QA2 }}" >> $GITHUB_ENV
           elif [ "${{ env.environment }}" == "prod" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_somaz_BASTION_IP_PROD }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_sm_BASTION_IP_PROD }}" >> $GITHUB_ENV
           else
             echo "Error: Unknown environment '${{ env.environment }}'"
             exit 1
@@ -207,10 +215,10 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: easingthemes/ssh-deploy@main
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.GCP_somaz_BASTION_PEM }}
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_sm_BASTION_PEM }}
           REMOTE_HOST: ${{ env.BASTION_IP }}
           REMOTE_USER: somaz
-          SOURCE: "somaz-data/"
+          SOURCE: "sm-data/"
           TARGET: /home/somaz/${{ env.environment }}
           ARGS: "-rltDvzO --delete"
 
@@ -218,22 +226,22 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         id: get_version
         run: |
-          echo "DATA_VERSION=$(jq -r '.version' libs/somaz-guy/src/data-version.json)" >> $GITHUB_ENV          
+          echo "DATA_VERSION=$(jq -r '.version' libs/sm-dao/src/data-version.json)" >> $GITHUB_ENV          
 
-      - name: Add & Commit & Push files for somaz
-        if: ${{ env.environment != 'prod' && steps.get_version.outcome == 'success' && steps.gen-somaz.outputs.isGenfileModified == 'true'  }}
+      - name: Add & Commit & Push files for sm
+        if: ${{ env.environment != 'prod' && steps.get_version.outcome == 'success' && steps.gen-sm.outputs.isGenfileModified == 'true'  }}
         env:
           TRIGGER_USER: ${{ github.event.sender.login }}
         run: |
           git config --global user.email "cicd@somaz.io"
           git config --global user.name "cicd"
           git add libs
-          git commit -m "Update generated files somaz by $TRIGGER_USER. Version: ${{ env.DATA_VERSION }}"
+          git commit -m "Update generated files sm by $TRIGGER_USER. Version: ${{ env.DATA_VERSION }}"
           git push -u origin ${{ github.ref_name }}
 
 
-      - name: Add & Commit & Push files & Pull request for somaz
-        if: ${{ env.environment == 'prod' && steps.get_version.outcome == 'success' && steps.gen-somaz.outputs.isGenfileModified == 'true' }}
+      - name: Add & Commit & Push files & Pull request for sm
+        if: ${{ env.environment == 'prod' && steps.get_version.outcome == 'success' && steps.gen-sm.outputs.isGenfileModified == 'true' }}
         env:
           TRIGGER_USER: ${{ github.event.sender.login }}
           CICD_PAT: ${{ secrets.CICD_PAT }} # Add CICD_PAT from organization secrets
@@ -242,22 +250,22 @@ jobs:
           git config --global user.name "cicd"
 
           # Delete old branches with the same pattern
-          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-somaz-$TRIGGER_USER-" | sed 's/origin\///')
+          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-sm-$TRIGGER_USER-" | sed 's/origin\///')
           for BRANCH in $EXISTING_BRANCHES; do
             git push origin --delete $BRANCH || true
           done                   
 
           # Create a new branch for the changes
-          git checkout -b "update-generated-files-somaz-$TRIGGER_USER"
+          git checkout -b "update-generated-files-sm-$TRIGGER_USER"
           git add libs
-          git commit -m "Update generated files somaz by $TRIGGER_USER. Version: $DATA_VERSION"
-          git push -u origin "update-generated-files-somaz-$TRIGGER_USER"
+          git commit -m "Update generated files sm by $TRIGGER_USER. Version: $DATA_VERSION"
+          git push -u origin "update-generated-files-sm-$TRIGGER_USER"
           # Create a pull request using the GitHub API
-          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files somaz by '"$TRIGGER_USER"'. Version: ${{ env.DATA_VERSION }}", "head":"update-generated-files-somaz'"$TRIGGER_USER"'", "base":"master"}')
+          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files sm by '"$TRIGGER_USER"'. Version: ${{ env.DATA_VERSION }}", "head":"update-generated-files-sm'"$TRIGGER_USER"'", "base":"master"}')
           echo "$PR_JSON" | jq '.number'            
 
-      - name: Add & Commit & Push files for somax
-        if: ${{ steps.gen-somax.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name != 'prod' }}
+      - name: Add & Commit & Push files for msp
+        if: ${{ steps.gen-msp.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name != 'prod' }}
         env:
           TRIGGER_USER: ${{ github.event.sender.login }}
           BRANCH: ${{ env.BRANCH }}
@@ -266,11 +274,11 @@ jobs:
           git config --global user.email "cicd@somaz.io"
           git config --global user.name "cicd"
           git add libs
-          git commit -m "Update generated files somax by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git commit -m "Update generated files msp by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
           git push -u origin ${{ github.event.client_payload.ref }}
 
       - name: Add & Commit & Push files & Pull request
-        if: ${{ steps.gen-somax.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name == 'prod' }}
+        if: ${{ steps.gen-msp.outputs.isGenfileModified == 'true' && github.event.client_payload.ref_name == 'prod' }}
         env:
           TRIGGER_USER: ${{ github.event.sender.login }}
           BRANCH: ${{ env.BRANCH }}
@@ -281,29 +289,29 @@ jobs:
           git config --global user.name "cicd"
 
           # Delete old branches with the same pattern
-          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-somax-$TRIGGER_USER-" | sed 's/origin\///')
+          EXISTING_BRANCHES=$(git branch -r | grep "origin/update-generated-files-msp-$TRIGGER_USER-" | sed 's/origin\///')
           for BRANCH in $EXISTING_BRANCHES; do
             git push origin --delete $BRANCH || true
           done          
 
           # Create a new branch for the changes
-          git checkout -b "update-generated-files-somax-$TRIGGER_USER-$RUN_NUMBER"
+          git checkout -b "update-generated-files-msp-$TRIGGER_USER-$RUN_NUMBER"
   
           git add libs
-          git commit -m "Update generated files-somax by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
-          git push -u origin "update-generated-files-somax-$TRIGGER_USER-$RUN_NUMBER"
+          git commit -m "Update generated files-msp by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
+          git push -u origin "update-generated-files-msp-$TRIGGER_USER-$RUN_NUMBER"
   
           # Create a pull request using the GitHub API
-          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files somax by '"$TRIGGER_USER"'. Run number: '"${RUN_NUMBER}"'", "head":"update-generated-files-somax'"$TRIGGER_USER"'-'"$RUN_NUMBER"'", "base":"'"${{ github.event.client_payload.ref }}"'"}')
+          PR_JSON=$(curl -s -X POST -H "Authorization: token $CICD_PAT" -H "Accept: application/vnd.github+json" https://api.github.com/repos/$GITHUB_REPOSITORY/pulls -d '{"title":"Update generated files msp by '"$TRIGGER_USER"'. Run number: '"${RUN_NUMBER}"'", "head":"update-generated-files-msp'"$TRIGGER_USER"'-'"$RUN_NUMBER"'", "base":"'"${{ github.event.client_payload.ref }}"'"}')
           echo "$PR_JSON" | jq '.number'          
 
     outputs:
-      isGenfileModified-somax: ${{ steps.gen-somax.outputs.isGenfileModified }}
-      isGenfileModified-somaz: ${{ steps.gen-somaz.outputs.isGenfileModified }}
+      isGenfileModified-msp: ${{ steps.gen-msp.outputs.isGenfileModified }}
+      isGenfileModified-sm: ${{ steps.gen-sm.outputs.isGenfileModified }}
       environment: ${{ steps.setup-environment.outputs.environment }}
 
   call-build-game:
-    if: ${{ needs.generate.outputs.isGenfileModified-somaz == 'true' && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    if: ${{ needs.generate.outputs.isGenfileModified-msp == 'true' || needs.generate.outputs.isGenfileModified-sm == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
     needs: [ generate ]
     name: Call build workflow
     uses: ./.github/workflows/build.yml
@@ -314,7 +322,7 @@ jobs:
       environment: ${{ needs.generate.outputs.environment }}
 
   call-build-admin:
-    if: ${{ needs.generate.outputs.isGenfileModified-somax == 'true' || needs.generate.outputs.isGenfileModified-somaz == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    if: ${{ needs.generate.outputs.isGenfileModified-msp == 'true' || needs.generate.outputs.isGenfileModified-sm == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
     needs: [ generate ]
     name: Call build workflow
     uses: ./.github/workflows/build.yml
@@ -324,5 +332,24 @@ jobs:
       branch: ${{ github.ref_name }}
       environment: ${{ needs.generate.outputs.environment }}
 
+  call-build-api:
+    if: ${{ needs.generate.outputs.isGenfileModified-msp == 'true' || needs.generate.outputs.isGenfileModified-sm == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    needs: [ generate ]
+    name: Call build workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: api
+      branch: ${{ github.ref_name }}
+      environment: ${{ needs.generate.outputs.environment }}
 
-
+  call-build-msp-game:
+    if: ${{ needs.generate.outputs.isGenfileModified-msp == 'true' || needs.generate.outputs.isGenfileModified-sm == 'true'  && github.event.client_payload.ref != 'main' && github.event.client_payload.ref != 'master' && github.event.client_payload.ref  != 'prod'  && github.event.client_payload.ref  != 'production' && github.event.client_payload.ref != 'review' }}
+    needs: [ generate ]
+    name: Call build workflow
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      service: msp-game
+      branch: ${{ github.ref_name }}
+      environment: ${{ needs.generate.outputs.environment }}

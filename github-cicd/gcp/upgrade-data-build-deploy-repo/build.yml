@@ -26,6 +26,8 @@ on:
         options:
           - game
           - admin
+          - api
+          - msp-game
         default: game
   workflow_call:
     inputs:
@@ -50,41 +52,27 @@ jobs:
     name: Build Image
     runs-on: ubuntu-20.04
     env:
-      JM_PROJECT: jm
-      DSP_PROJECT: dsp
+      sm_PROJECT: sm
+      msp_PROJECT: msp
       SERVICE: ${{ github.event.inputs.service || inputs.service }}
       ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
+      GCP_REGION: asia-northeast3
     # Add "id-token" with the intended permissions.
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Check out branch for workflow call
-        id: checkout-for-workflow-call
-        if: ${{ inputs.branch }}
+      - name: Check out code
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Check out branch for workflow dispatch
-        if: ${{ steps.checkout-for-workflow-call.outcome == 'skipped' }}
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 50
-
-      - name: Set GCP region JP for prod environment
+      - name: Set GCP region for prod/stage environment
         if: ${{ inputs.environment == 'stage' || inputs.environment == 'prod' }}
-        id: set-prod-region
         run: |
           echo "environment : ${{ inputs.environment }}"
           echo "GCP_REGION=asia-northeast1" >> $GITHUB_ENV
-
-      - name: Set GCP region KR
-        if: ${{ steps.set-prod-region.outcome == 'skipped' }}
-        run: |
-          echo "environment : ${{ inputs.environment }}"
-          echo "GCP_REGION=asia-northeast3" >> $GITHUB_ENV
 
       - name: Configure GCP credentials
         id: auth         
@@ -114,37 +102,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Determine change service name for msp-game -> game
+        if: ${{ inputs.service == 'msp-game' }}
+        run: |
+          echo "SERVICE_TAG=game" >> $GITHUB_ENV
+
       - name: Build, tag, and push image to GCP Artifact Registry for Game
-        if: ${{ inputs.service == 'game' }}
         uses: docker/build-push-action@v5
         env:
-          GCP_JM_MGMT_PROJECT: ${{ secrets.GCP_JM_MGMT_PROJECT }}
+          GCP_PROJECT: ${{ inputs.service == 'game' && secrets.GCP_sm_MGMT_PROJECT || secrets.GCP_MGMT_PROJECT }}
           GAR_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev
-          SERVICE_NAME: ${{ inputs.service }}
-          GAR_REPOSITORY: ${{ env.JM_PROJECT }}
+          SERVICE_NAME: ${{ inputs.service == 'msp-game' && env.SERVICE_TAG || inputs.service }}
+          GAR_REPOSITORY: ${{ inputs.service == 'game' && env.sm_PROJECT || env.msp_PROJECT }}
           IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
         with:
           context: .
-          file: ${{ env.SERVICE_NAME }}.Dockerfile
+          file: ${{ inputs.service }}.Dockerfile
           push: true
-          tags: ${{ env.GAR_REGISTRY }}/${{ env.GCP_JM_MGMT_PROJECT }}/${{ inputs.service }}-${{ env.JM_PROJECT }}/${{ inputs.service }}-${{ env.JM_PROJECT }}:${{ steps.vars.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build, tag, and push image to GCP Artifact Registry for Admin
-        if: ${{ inputs.service == 'admin' }}
-        uses: docker/build-push-action@v2
-        env:
-          GCP_MGMT_PROJECT: ${{ secrets.GCP_MGMT_PROJECT }}
-          GAR_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev
-          SERVICE_NAME: ${{ inputs.service }}
-          GAR_REPOSITORY: ${{ env.DSP_PROJECT }}
-          IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
-        with:
-          context: .
-          file: ${{ env.SERVICE_NAME }}.Dockerfile
-          push: true
-          tags: ${{ env.GAR_REGISTRY }}/${{ env.GCP_MGMT_PROJECT }}/${{ inputs.service }}-${{ env.DSP_PROJECT }}/${{ inputs.service }}-${{ env.DSP_PROJECT }}:${{ steps.vars.outputs.short_sha }}
+          tags: ${{ env.GAR_REGISTRY }}/${{ env.GCP_PROJECT }}/${{ env.SERVICE_NAME }}-${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ env.GAR_REPOSITORY }}:${{ steps.vars.outputs.short_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -242,11 +217,11 @@ jobs:
              "trigger_user": "${{ github.actor }}",
              "commit_message": "${{ github.event.head_commit.message }}",
              "environment": "${{ needs.build.outputs.environment }}",
+             "deploy_service": "${{ needs.build.outputs.service }}",
              "source_branch": "${{ env.BRANCH }}",
              "build_result": "${{ env.BUILD_RESULT }}",
              "deploy_result": "${{ env.DEPLOY_RESULT }}",
              "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
            }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.JM_SLACK_WEBHOOK_URL }}
-
+          SLACK_WEBHOOK_URL: ${{ secrets.sm_SLACK_WEBHOOK_URL }}
