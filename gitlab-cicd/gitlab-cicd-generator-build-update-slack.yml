@@ -1,0 +1,417 @@
+stages:
+  - generator
+  - prepare
+  - gcloud
+  - build # buld images & push to private image registry at once
+  - update
+  - notify
+
+variables:
+  NAMESPACE:
+    value: "dev1"
+    description: "Select the namespace: dev1 or dev2 or staging(use deploy)"
+    options:
+      - "dev1"
+      - "dev2"
+      - "staging"
+      - "qa1"
+      - "somaz-dev"
+  SERVICE:
+    value: "game"
+    description: "Select admin or game or batch or etc."
+    options:
+      - "game"
+      - "admin"
+      - "batch"
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$SERVICE
+  BUILD_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  BUILD_TAG_LATEST: latest
+  IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-somaz/${SERVICE}-somaz'
+  GCP_IMAGE_URL: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE
+  IMAGE_URL_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_GAME: '${CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_BATCH: $CI_REGISTRY/$BATCH_SERVICE
+  IMAGE_URL_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_BATCH: '${CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
+  CI_REGISTRY_IMAGE_ADMIN: $CI_REGISTRY/$ADMIN_SERVICE
+  IMAGE_URL_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
+  IMAGE_URL_LATEST_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-somaz/$GAME_SERVICE-somaz'
+  GCP_IMAGE_URL_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-somaz/$BATCH_SERVICE-somaz'
+  GCP_IMAGE_URL_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
+  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-somaz/$ADMIN_SERVICE-somaz'
+  GCP_IMAGE_URL_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
+  GCP_IMAGE_URL_LATEST_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  CHANGED_ServerJson: $changed_ServerJson
+
+.templates:
+  .common_build_before_script: &common_build_before_script
+    - echo "[INFO] Start build image."
+    - echo "[INFO] CI_REGISTRY is $CI_REGISTRY"
+    - echo "[INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE"
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] IMAGE_URL is $IMAGE_URL"
+    - echo "[INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST"
+    - echo "[INFO] IMAGE_URL_LATEST is $IMAGE_URL_LATEST"
+    - echo "[INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] GCP Config"
+    - echo "[INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY"
+    - echo "[INFO] GCP_CI_REGISTRY_IMAGE is $GCP_CI_REGISTRY_IMAGE"
+    - echo "[INFO] GCP_IMAGE_URL is $GCP_IMAGE_URL"
+    - echo "[INFO] GCP_IMAGE_URL_LATEST is $GCP_IMAGE_URL_LATEST"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - mkdir -p /kaniko/.docker
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        echo "Configuring registry for special namespace $NAMESPACE"
+        cp gcloud/config.json /kaniko/.docker/config.json
+      else
+        echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+      fi
+
+  .common_build_script: &common_build_script
+    - >
+      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      else        
+        /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
+      fi 
+    - KANIKO_RESULT=$?
+    - echo "$SERVICE" > service_status.txt
+    - >
+      if [ $KANIKO_RESULT -eq 0 ]; then
+        echo "✅ 성공" > build_status.txt
+      else
+        echo "❌ 실패" > build_status.txt
+      fi
+
+  .common_update_before_script: &common_update_before_script
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - apk add --no-cache sed git openssh
+    - 'which ssh-agent || ( apk add --update openssh )'
+    - eval $(ssh-agent -s)
+    - echo "${MASTER_SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - echo "${GITLAB_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+
+  .common_update_script: &common_update_script
+    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - cd kubernetes-infra
+    - git checkout master
+    - git pull
+    - cd applied/argocd/applicationset/environment_branch
+    - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
+    - cd ../../../argocd/applicationset/charts/somaz-server/$SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
+    - git push -u origin master
+
+  .common_update_after_script: &common_update_after_script
+    - >
+      if [ "$CI_JOB_STATUS" = "success" ]; then
+        echo "✅ 성공" > /builds/somaz94/server/update_status.txt
+      elif [ "$CI_JOB_STATUS" = "failed" ]; then
+        echo "❌ 실패" > /builds/somaz94/server/update_status.txt
+      elif [ "$CI_JOB_STATUS" = "canceled" ]; then
+        echo "⚠️ 취소" > /builds/somaz94/server/update_status.txt
+      else
+        echo "🔍 상태 불명" > /builds/somaz94/server/update_status.txt
+      fi
+
+generator:
+  stage: generator
+  interruptible: true
+  image: node:latest
+  tags:
+    - build-image
+  before_script:
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apt update && apt install -y unzip
+    - corepack enable
+    - pnpm install
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.somaz.io/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - zipinfo artifacts.zip
+    - unzip -o artifacts.zip
+    - mkdir ServerJson
+    - cp -r Convertor/ServerJson/* ServerJson
+  script:
+    - git config --global user.email "datatool@oozooinc.com"
+    - git config --global user.name "datatool"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.somaz.io/somaz94/server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - npm run gen-static
+    - rm -rf artifacts.zip Convertor ServerJson
+    - git add .
+    - CHANGES=$(git status --porcelain | wc -l)
+    - PUSHED=false
+    - |
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        git push gitlab_origin ${CI_COMMIT_REF_NAME}
+      fi
+    - echo "$CHANGED_ServerJson"
+    - |
+      if [ "$PUSHED" = "false" ] && [ ! -z "$CHANGED_ServerJson" ]; then 
+        NAMES_ARRAY="["
+        for file in $CHANGED_ServerJson; do
+          NAMES_ARRAY+="\"$file\","
+        done
+        NAMES_ARRAY=${NAMES_ARRAY%,}
+        NAMES_ARRAY+="]"
+
+        echo $NAMES_ARRAY
+
+        RESPONSE=$(curl -X 'POST' "https://${NAMESPACE}-admin.somaz.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: somaz-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        echo $RESPONSE
+      fi
+  after_script:
+    - |
+      if [ "$CI_JOB_STATUS" = "success" ]; then
+        echo "✅ 성공" > generator_status.txt
+      elif [ "$CI_JOB_STATUS" = "failed" ]; then
+        echo "❌ 실패" > generator_status.txt
+      elif [ "$CI_JOB_STATUS" = "canceled" ]; then
+        echo "⚠️ 취소" > generator_status.txt
+      else
+        echo "🔍 상태 불명" > generator_status.txt
+      fi
+  artifacts:
+    paths:
+      - generator_status.txt
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+prepare_admin:
+  stage: prepare
+  image: node:latest
+  variables:
+    NODE_ENV: $NAMESPACE
+  before_script:
+    - corepack enable
+    - pnpm install
+    - apt-get update
+    - apt-get install -y git
+  script:
+    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.somaz.io/somaz94/server.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull gitlab_origin ${CI_COMMIT_REF_NAME}
+    - pnpm run gen-admin
+    - git add .
+    - |-
+      CHANGES=$(git status --porcelain | wc -l)
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Preparation step before admin build-$CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
+      fi
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin"'
+
+gcloud:
+  stage: gcloud
+  image:
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+  variables:
+    CLOUDSDK_CONFIG: $CI_PROJECT_DIR/gcloud
+  before_script:
+    - echo [INFO] Start gcloud config setting.
+    - echo [INFO] GCP_SERVICE_ACCOUNT is $GCP_SERVICE_ACCOUNT
+    - echo [INFO] CLOUDSDK_CONFIG is $CLOUDSDK_CONFIG
+    - echo [INFO] GCP_CI_REGISTRY is $GCP_CI_REGISTRY
+    - mkdir -p ${CLOUDSDK_CONFIG}
+  script:
+    - echo $GCP_SERVICE_ACCOUNT_KEY_BASE64 | base64 --decode > ${CLOUDSDK_CONFIG}/gcloud-service-key.json
+    - gcloud auth activate-service-account --key-file=${CLOUDSDK_CONFIG}/gcloud-service-key.json
+    - token=$(gcloud auth print-access-token)
+    - docker_token=$(echo -n "gclouddockertoken:$token" | base64 | tr -d "\n")
+    - echo "{\"auths\":{\"$GCP_CI_REGISTRY\":{\"auth\":\"$docker_token\",\"email\":\"admin@somaz.io\"}}}" > gcloud/config.json
+  artifacts:
+    paths:
+      - gcloud/config.json
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "somaz-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+  tags:
+    - build-image
+
+build_manual_image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+  before_script: *common_build_before_script
+  script: *common_build_script
+  artifacts:
+    paths:
+      - build_status.txt
+      - service_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - build-image
+
+update_manual_image:
+  stage: update
+  image: alpine:latest
+  before_script: *common_update_before_script
+  script: *common_update_script 
+  after_script: *common_update_after_script
+  artifacts:
+    paths:
+      - update_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  tags:
+    - deploy-image
+
+build_auto_image_game:
+  stage: build
+  image: 
+    name: gcr.io/kaniko-project/executor:v1.22.0-debug
+  before_script: *common_build_before_script
+  script: *common_build_script
+  variables:
+    SERVICE: $GAME_SERVICE
+    IMAGE_URL: $IMAGE_URL_GAME
+    IMAGE_URL_LATEST: $IMAGE_URL_LATEST_GAME
+  artifacts:
+    paths:
+      - build_status.txt
+      - service_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" 
+  tags:
+    - build-image
+
+update_auto_image_game:
+  stage: update
+  image: alpine:latest
+  variables:
+    SERVICE: $GAME_SERVICE
+  before_script: *common_update_before_script
+  script: *common_update_script 
+  after_script: *common_update_after_script
+  artifacts:
+    paths:
+      - update_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - deploy-image
+
+build_auto_image_batch:
+  stage: build
+  image: gcr.io/kaniko-project/executor:v1.22.0-debug
+  before_script: *common_build_before_script
+  script: *common_build_script
+  variables:
+    SERVICE: $BATCH_SERVICE
+    IMAGE_URL: $IMAGE_URL_BATCH
+    IMAGE_URL_LATEST: $IMAGE_URL_LATEST_BATCH
+  artifacts:
+    paths:
+      - build_status.txt
+      - service_status.txt 
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - build-image
+
+update_auto_image_batch:
+  stage: update
+  image: alpine:latest
+  variables:
+    SERVICE: $BATCH_SERVICE
+  before_script: *common_update_before_script
+  script: *common_update_script 
+  after_script: *common_update_after_script
+  artifacts:
+    paths:
+      - update_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - deploy-image
+
+build_auto_image_admin:
+  stage: build
+  image: gcr.io/kaniko-project/executor:v1.22.0-debug
+  before_script: *common_build_before_script
+  script: *common_build_script
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    IMAGE_URL: $IMAGE_URL_ADMIN
+    IMAGE_URL_LATEST: $IMAGE_URL_LATEST_ADMIN
+  artifacts:
+    paths:
+      - build_status.txt
+      - service_status.txt 
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - build-image
+
+update_auto_image_admin:
+  stage: update
+  image: alpine:latest
+  variables:
+    SERVICE: $ADMIN_SERVICE
+  before_script: *common_update_before_script
+  script: *common_update_script 
+  after_script: *common_update_after_script
+  artifacts:
+    paths:
+      - update_status.txt
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - deploy-image
+
+notify_slack:
+  stage: notify
+  image: curlimages/curl:latest
+  script:
+    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵")
+    - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
+    - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
+    - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
+    - export CLEAN_COMMIT_MESSAGE=$(echo "$CI_COMMIT_MESSAGE" | tr -d '\n' | tr -d '\r')
+    - >
+      export JSON_DATA="{\"source_branch\": \"$CI_COMMIT_REF_NAME\", \"generator_result\": \"$GENERATOR_STATUS\", \"deploy_result\": \"$UPDATE_STATUS\", \"build_result\": \"$BUILD_STATUS\", \"commit_message\": \"$CLEAN_COMMIT_MESSAGE\", \"trigger_user\": \"$GITLAB_USER_LOGIN\", \"gitlab_ci_run_url\": \"$CI_PIPELINE_URL\", \"repository_name\": \"$CI_PROJECT_PATH\", \"environment\": \"$NAMESPACE\", \"deploy_service\": \"$DEPLOY_SERVICE\"}"
+    - >
+      echo "Sending the following data to Slack: $JSON_DATA"
+    - >
+      export RESPONSE=$(curl -sS -X POST -H 'Content-type: application/json' --data "$JSON_DATA" $SLACK_WEBHOOK_URL)
+    - >
+      echo "Slack response: $RESPONSE"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+  tags:
+    - deploy-image
+  when: always
