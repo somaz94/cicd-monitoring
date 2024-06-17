@@ -142,8 +142,13 @@ variables:
 
 generator:
   stage: generator
-  interruptible: true
   image: node:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   tags:
     - build-image
   before_script:
@@ -215,8 +220,13 @@ generator:
 
 prepare_admin:
   stage: prepare
-  interruptible: true
   image: node:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   variables:
     NODE_ENV: $CI_COMMIT_REF_NAME
   before_script:
@@ -250,6 +260,12 @@ gcloud:
   stage: gcloud
   image:
     name: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   variables:
     CLOUDSDK_CONFIG: $CI_PROJECT_DIR/gcloud
   before_script:
@@ -277,6 +293,12 @@ build_manual_image:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:v1.22.0-debug
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   before_script: *common_build_before_script
   script: *common_build_script
   artifacts:
@@ -291,6 +313,12 @@ build_manual_image:
 update_manual_image:
   stage: update
   image: alpine:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   before_script: *common_update_before_script
   script: *common_update_script 
   after_script: *common_update_after_script
@@ -321,6 +349,12 @@ build_auto_image_game:
   stage: build
   image: 
     name: gcr.io/kaniko-project/executor:v1.22.0-debug
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -340,6 +374,12 @@ build_auto_image_game:
 update_auto_image_game:
   stage: update
   image: alpine:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   variables:
     SERVICE: $GAME_SERVICE
   before_script: *common_update_before_script
@@ -357,6 +397,12 @@ update_auto_image_game:
 build_auto_image_batch:
   stage: build
   image: gcr.io/kaniko-project/executor:v1.22.0-debug
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -376,6 +422,12 @@ build_auto_image_batch:
 update_auto_image_batch:
   stage: update
   image: alpine:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   variables:
     SERVICE: $BATCH_SERVICE
   before_script: *common_update_before_script
@@ -393,6 +445,12 @@ update_auto_image_batch:
 build_auto_image_admin:
   stage: build
   image: gcr.io/kaniko-project/executor:v1.22.0-debug
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -412,6 +470,12 @@ build_auto_image_admin:
 update_auto_image_admin:
   stage: update
   image: alpine:latest
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
   variables:
     SERVICE: $ADMIN_SERVICE
   before_script: *common_update_before_script
