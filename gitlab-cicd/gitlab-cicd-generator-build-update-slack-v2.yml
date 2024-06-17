@@ -505,7 +505,7 @@ notify_slack:
   stage: notify
   image: curlimages/curl:latest
   script:
-    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵")
+    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
     - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
     - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
     - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
