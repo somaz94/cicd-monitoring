@@ -1,0 +1,126 @@
+name: 1.Deploy
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Which service to be built. game or admin or etc...
+        required: true
+        default: game
+      environment:
+        type: environment
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+  workflow_call:
+    inputs:
+      service:
+        type: string
+        description: Which service to be built. game or admin or etc...
+        required: true
+      environment:
+        type: string
+        description: Select the environment
+        required: true
+      tag:
+        type: string
+        description: Built image tag
+        required: true
+      trigger_user:
+        type: string
+        description: CI&CD trigger user
+        required: true
+      is_build_triggered_by_workflow_dispatch:
+        type: string
+        description: Value for determine build workflow trigger
+        required: true
+      build_branch:
+        type: string
+        description: Build source branch
+        required: true
+jobs:
+  deploy:
+    name: Update helm image tag
+    runs-on: ubuntu-20.04
+    env:
+      sm_PROJECT: sm
+      sm_CD_REPOSITORY: sm-applicationset
+      qsp_PROJECT: qsp
+      qsp_CD_REPOSITORY: qsp-applicationset
+      SERVICE: ${{ github.event.inputs.service || inputs.service }}
+      ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
+
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v2
+        with:
+          repository: nerdy-star/${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_CD_REPOSITORY || env.qsp_CD_REPOSITORY }}
+          ref: ${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && 'main' || 'master' }}
+          token: ${{ secrets.CICD_PAT }}
+          path: ${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_CD_REPOSITORY || env.qsp_CD_REPOSITORY }}
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ inputs.environment }}" == "stage" || "${{ inputs.environment }}" == "prod" ]; then
+            echo "TARGET_VALUES_FILE_NAME=prod" >> $GITHUB_ENV
+            echo "TAG_STRING=staging_tag" >> $GITHUB_ENV
+          else
+            echo "TARGET_VALUES_FILE_NAME=${{ inputs.environment }}" >> $GITHUB_ENV
+            echo "TAG_STRING=tag" >> $GITHUB_ENV
+          fi
+
+      - name: Determine change service name for qsp-game -> game
+        if: ${{ inputs.service == 'qsp-game' }}
+        run: |
+          echo "SERVICE_TAG=game" >> $GITHUB_ENV
+
+      - name: Update target environment image tag
+        run: |
+          echo ${{ github.ref_name }}
+          echo ${{ inputs.tag }} 
+
+          SERVICE_PATH=${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_CD_REPOSITORY || env.qsp_CD_REPOSITORY }}
+          PROJECT=${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_PROJECT || env.qsp_PROJECT }}
+          SERVICE_NAME=${{ inputs.service == 'qsp-game' && env.SERVICE_TAG || inputs.service }}
+          echo "Updating ${SERVICE_NAME} in ${SERVICE_PATH} for ${PROJECT}"
+          
+          cd ${SERVICE_PATH}/charts/${PROJECT}/${SERVICE_NAME}
+          sed -i 's/${{ env.TAG_STRING }}:.*/${{ env.TAG_STRING }}: "${{ inputs.tag }}"/g' ${{ env.TARGET_VALUES_FILE_NAME }}.values.yaml
+
+
+      - name: Update release_branch for workflow_dispatch 
+        if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' }}
+        run: |
+          SERVICE_PATH=${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_CD_REPOSITORY || env.qsp_CD_REPOSITORY }}
+          cd ${SERVICE_PATH}/environment_branch
+          existing_branch=$(cat ${{ inputs.environment }}.txt)
+          if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
+            echo -n "${{ inputs.build_branch }}" > ${{ inputs.environment }}.txt
+            echo "Updated release branch to ${{ inputs.build_branch }}"
+          else
+            echo "No update needed. Current branch is already set to $existing_branch"
+          fi
+
+      - name: Commit files
+        run: |
+          SERVICE_PATH=${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && env.sm_CD_REPOSITORY || env.qsp_CD_REPOSITORY }}
+          ref=${{ (env.SERVICE == 'game' || env.SERVICE == 'batch') && 'main' || 'master' }}
+          cd ${SERVICE_PATH}
+          git pull
+          git config user.email "cicd@somaz.io"
+          git config user.name "cicd"
+          git add -A
+          git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
+          git push -u origin ${ref}
+
+        
+
+
