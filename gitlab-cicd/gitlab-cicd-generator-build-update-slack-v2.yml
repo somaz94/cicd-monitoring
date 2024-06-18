@@ -18,7 +18,7 @@ variables:
       - "dev2"
       - "staging"
       - "qa1"
-      - "garena-dev"
+      - "sarena-dev"
   SERVICE:
     value: "game"
     description: "Select admin or game or batch or etc."
@@ -75,7 +75,7 @@ variables:
     - echo "[INFO] NAMESPACE is $NAMESPACE"
     - mkdir -p /kaniko/.docker
     - >
-      if [[ "$NAMESPACE" =~ ^garena- ]]; then
+      if [[ "$NAMESPACE" =~ ^sarena- ]]; then
         echo "Configuring registry for special namespace $NAMESPACE"
         cp gcloud/config.json /kaniko/.docker/config.json
       else
@@ -84,7 +84,7 @@ variables:
 
   .common_build_script: &common_build_script
     - >
-      if [[ "$NAMESPACE" =~ ^garena- ]]; then
+      if [[ "$NAMESPACE" =~ ^sarena- ]]; then
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
       else        
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
@@ -298,8 +298,8 @@ gcloud:
     paths:
       - gcloud/config.json
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "garena-dev"'
-    - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESPACE == "garena-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "sarena-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESPACE == "sarena-dev"'
   tags:
     - build-image
 
