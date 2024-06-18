@@ -18,7 +18,7 @@ variables:
       - "dev2"
       - "staging"
       - "qa1"
-      - "somaz-dev"
+      - "garena-dev"
   SERVICE:
     value: "game"
     description: "Select admin or game or batch or etc."
@@ -31,7 +31,7 @@ variables:
   IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   BUILD_TAG_LATEST: latest
   IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-somaz/${SERVICE}-somaz'
+  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-sgn/${SERVICE}-sgn'
   GCP_IMAGE_URL: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
   CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE
@@ -43,13 +43,13 @@ variables:
   CI_REGISTRY_IMAGE_ADMIN: $CI_REGISTRY/$ADMIN_SERVICE
   IMAGE_URL_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   IMAGE_URL_LATEST_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-somaz/$GAME_SERVICE-somaz'
+  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-sgn/$GAME_SERVICE-sgn'
   GCP_IMAGE_URL_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-somaz/$BATCH_SERVICE-somaz'
+  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-sgn/$BATCH_SERVICE-sgn'
   GCP_IMAGE_URL_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-somaz/$ADMIN_SERVICE-somaz'
+  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-sgn/$ADMIN_SERVICE-sgn'
   GCP_IMAGE_URL_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
   STATIC_DATA_PROJECT_ID: $project_id
@@ -75,7 +75,7 @@ variables:
     - echo "[INFO] NAMESPACE is $NAMESPACE"
     - mkdir -p /kaniko/.docker
     - >
-      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+      if [[ "$NAMESPACE" =~ ^garena- ]]; then
         echo "Configuring registry for special namespace $NAMESPACE"
         cp gcloud/config.json /kaniko/.docker/config.json
       else
@@ -84,7 +84,7 @@ variables:
 
   .common_build_script: &common_build_script
     - >
-      if [[ "$NAMESPACE" =~ ^somaz- ]]; then
+      if [[ "$NAMESPACE" =~ ^garena- ]]; then
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
       else        
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
@@ -119,7 +119,7 @@ variables:
     - git pull
     - cd applied/argocd/applicationset/environment_branch
     - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
-    - cd ../../../argocd/applicationset/charts/somaz-server/$SERVICE
+    - cd ../../../argocd/applicationset/charts/sgn-server/$SERVICE
     - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
     - git add .
     - git config --global user.email "cicd@somaz.io"
@@ -139,6 +139,20 @@ variables:
       else
         echo "🔍 상태 불명" > /builds/somaz94/server/update_status.txt
       fi
+  .common_notify_slack_script: &common_notify_slack_script
+    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
+    - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
+    - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
+    - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
+    - export CLEAN_COMMIT_MESSAGE=$(echo "$CI_COMMIT_MESSAGE" | tr -d '\n' | tr -d '\r')
+    - >
+      export JSON_DATA="{\"source_branch\": \"$CI_COMMIT_REF_NAME\", \"generator_result\": \"$GENERATOR_STATUS\", \"deploy_result\": \"$UPDATE_STATUS\", \"build_result\": \"$BUILD_STATUS\", \"commit_message\": \"$CLEAN_COMMIT_MESSAGE\", \"trigger_user\": \"$GITLAB_USER_LOGIN\", \"gitlab_ci_run_url\": \"$CI_PIPELINE_URL\", \"repository_name\": \"$CI_PROJECT_PATH\", \"environment\": \"$NAMESPACE\", \"deploy_service\": \"$DEPLOY_SERVICE\"}"
+    - >
+      echo "Sending the following data to Slack: $JSON_DATA"
+    - >
+      export RESPONSE=$(curl -sS -X POST -H 'Content-type: application/json' --data "$JSON_DATA" $SLACK_WEBHOOK_URL)
+    - >
+      echo "Slack response: $RESPONSE"
 
 generator:
   stage: generator
@@ -191,14 +205,14 @@ generator:
 
         echo $NAMES_ARRAY
 
-        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-admin.somaz.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: somaz-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-admin.sgn.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: sgn-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
         echo $RESPONSE
       fi
   after_script:
     - |
       if [ "$CI_JOB_STATUS" = "success" ]; then
         echo "✅ 성공" > generator_status.txt
-      elif [ "$CI_JOB_STATUS" = "failed" ]; then
+      elif [ "$인I_JOB_STATUS" = "failed" ]; then
         echo "❌ 실패" > generator_status.txt
       elif [ "$CI_JOB_STATUS" = "canceled" ]; then
         echo "⚠️ 취소" > generator_status.txt
@@ -284,8 +298,8 @@ gcloud:
     paths:
       - gcloud/config.json
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "somaz-dev"'
-    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "garena-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESPACE == "garena-dev"'
   tags:
     - build-image
 
@@ -329,6 +343,8 @@ update_manual_image:
     - if: $CI_PIPELINE_SOURCE == "web"
   tags:
     - deploy-image
+  dependencies:
+    - build_manual_image
 
 #------------------------------------------------------------------------------------------------
 .change_files_game: &change_files_game
@@ -393,6 +409,8 @@ update_auto_image_game:
       <<: *change_files_game
   tags:
     - deploy-image
+  dependencies:
+    - build_auto_image_game
 
 build_auto_image_batch:
   stage: build
@@ -441,6 +459,8 @@ update_auto_image_batch:
       <<: *change_files_batch
   tags:
     - deploy-image
+  dependencies:
+    - build_auto_image_batch
 
 build_auto_image_admin:
   stage: build
@@ -489,40 +509,58 @@ update_auto_image_admin:
       <<: *change_files_admin
   tags:
     - deploy-image
-
-.rules_changes_all: &rules_changes_all
-  changes:
-        - apps/game/src/**/*
-        - apps/batch/src/**/*
-        - apps/admin/src/**/*
-        - libs/common/src/**/*   # 여기서 libs/common과 libs/dao는 모든 서비스에서 공통적으로 사용
-        - libs/dao/src/**/*
-        - game.Dockerfile
-        - batch.Dockerfile
-        - admin.Dockerfile
+  dependencies:
+    - build_auto_image_admin
 
 notify_slack:
   stage: notify
   image: curlimages/curl:latest
-  script:
-    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
-    - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
-    - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
-    - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
-    - export CLEAN_COMMIT_MESSAGE=$(echo "$CI_COMMIT_MESSAGE" | tr -d '\n' | tr -d '\r')
-    - >
-      export JSON_DATA="{\"source_branch\": \"$CI_COMMIT_REF_NAME\", \"generator_result\": \"$GENERATOR_STATUS\", \"deploy_result\": \"$UPDATE_STATUS\", \"build_result\": \"$BUILD_STATUS\", \"commit_message\": \"$CLEAN_COMMIT_MESSAGE\", \"trigger_user\": \"$GITLAB_USER_LOGIN\", \"gitlab_ci_run_url\": \"$CI_PIPELINE_URL\", \"repository_name\": \"$CI_PROJECT_PATH\", \"environment\": \"$NAMESPACE\", \"deploy_service\": \"$DEPLOY_SERVICE\"}"
-    - >
-      echo "Sending the following data to Slack: $JSON_DATA"
-    - >
-      export RESPONSE=$(curl -sS -X POST -H 'Content-type: application/json' --data "$JSON_DATA" $SLACK_WEBHOOK_URL)
-    - >
-      echo "Slack response: $RESPONSE"
+  script: *common_notify_slack_script
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "trigger"
-    - if: '$CI_PIPELINE_SOURCE == "push"'
-      <<: *rules_changes_all
   tags:
     - deploy-image
   when: always
+
+notify_slack_auto_game:
+  stage: notify
+  image: curlimages/curl:latest
+  script: *common_notify_slack_script
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_game
+  tags:
+    - deploy-image
+  when: always
+  dependencies:
+    - build_auto_image_game
+    - update_auto_image_game
+
+notify_slack_auto_batch:
+  stage: notify
+  image: curlimages/curl:latest
+  script: *common_notify_slack_script
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_batch
+  tags:
+    - deploy-image
+  when: always
+  dependencies:
+    - build_auto_image_batch
+    - update_auto_image_batch
+
+notify_slack_auto_admin:
+  stage: notify
+  image: curlimages/curl:latest
+  script: *common_notify_slack_script
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
+  tags:
+    - deploy-image
+  when: always
+  dependencies:
+    - build_auto_image_admin
+    - update_auto_image_admin
