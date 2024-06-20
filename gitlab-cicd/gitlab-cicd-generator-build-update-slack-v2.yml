@@ -116,7 +116,6 @@ variables:
     - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
     - cd kubernetes-infra
     - git checkout master
-    - git pull
     - cd applied/argocd/applicationset/environment_branch
     - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
     - cd ../../../argocd/applicationset/charts/sgn-server/$SERVICE
@@ -126,7 +125,36 @@ variables:
     - git config --global user.name "cicd"
     - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
     - git pull
-    - git push -u origin master
+    - >
+      for i in {1..5}; do
+        if git pull origin master; then
+          echo "Pull succeeded"
+          break
+        else
+          if [ $i -eq 5 ]; then
+            echo "Pull failed after 5 attempts, exiting."
+            exit 1
+          else
+            echo "Pull failed, retrying in 15 seconds..."
+            sleep 15
+          fi
+        fi
+      done
+    - >
+      for i in {1..5}; do
+        if git push -u origin master; then
+          echo "Push succeeded"
+          break
+        else
+          if [ $i -eq 5 ]; then
+            echo "Push failed after 5 attempts, exiting."
+            exit 1
+          else
+            echo "Push failed, retrying in 15 seconds..."
+            sleep 15
+          fi
+        fi
+      done
 
   .common_update_after_script: &common_update_after_script
     - >
@@ -163,6 +191,9 @@ generator:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   tags:
     - build-image
   before_script:
@@ -241,6 +272,9 @@ prepare_admin:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   variables:
     NODE_ENV: $CI_COMMIT_REF_NAME
   before_script:
@@ -280,6 +314,9 @@ gcloud:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   variables:
     CLOUDSDK_CONFIG: $CI_PROJECT_DIR/gcloud
   before_script:
@@ -313,6 +350,9 @@ build_manual_image:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_build_before_script
   script: *common_build_script
   artifacts:
@@ -333,6 +373,9 @@ update_manual_image:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_update_before_script
   script: *common_update_script 
   after_script: *common_update_after_script
@@ -371,6 +414,9 @@ build_auto_image_game:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -396,6 +442,9 @@ update_auto_image_game:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   variables:
     SERVICE: $GAME_SERVICE
   before_script: *common_update_before_script
@@ -421,6 +470,9 @@ build_auto_image_batch:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -446,6 +498,9 @@ update_auto_image_batch:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   variables:
     SERVICE: $BATCH_SERVICE
   before_script: *common_update_before_script
@@ -471,6 +526,9 @@ build_auto_image_admin:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_build_before_script
   script: *common_build_script
   variables:
@@ -496,6 +554,9 @@ update_auto_image_admin:
     when:
       - runner_system_failure
       - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
   variables:
     SERVICE: $ADMIN_SERVICE
   before_script: *common_update_before_script
