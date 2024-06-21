@@ -144,10 +144,12 @@ variables:
       for i in {1..5}; do
         if git push -u origin master; then
           echo "Push succeeded"
+          echo "✅ 성공" > /builds/4ground9/server/update_status.txt
           break
         else
           if [ $i -eq 5 ]; then
             echo "Push failed after 5 attempts, exiting."
+            echo "❌ 실패" > /builds/4ground9/server/update_status.txt
             exit 1
           else
             echo "Push failed, retrying in 15 seconds..."
@@ -167,6 +169,7 @@ variables:
       else
         echo "🔍 상태 불명" > /builds/somaz94/server/update_status.txt
       fi
+
   .common_notify_slack_script: &common_notify_slack_script
     - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
     - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
@@ -236,7 +239,7 @@ generator:
 
         echo $NAMES_ARRAY
 
-        RESPONSE=$(curl -X 'POST' "https://${CI_COMMIT_REF_NAME}-admin.sgn.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: sgn-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        RESPONSE=$(curl -X 'POST' "https://${NAMESPACE}-admin.sgn.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: sgn-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
         echo $RESPONSE
       fi
   after_script:
@@ -378,7 +381,7 @@ update_manual_image:
       - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -449,7 +452,7 @@ update_auto_image_game:
     SERVICE: $GAME_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -505,7 +508,7 @@ update_auto_image_batch:
     SERVICE: $BATCH_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -561,7 +564,7 @@ update_auto_image_admin:
     SERVICE: $ADMIN_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt

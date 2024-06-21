@@ -140,10 +140,12 @@ variables:
       for i in {1..5}; do
         if git push -u origin master; then
           echo "Push succeeded"
+          echo "✅ 성공" > /builds/4ground9/server/update_status.txt
           break
         else
           if [ $i -eq 5 ]; then
             echo "Push failed after 5 attempts, exiting."
+            echo "❌ 실패" > /builds/4ground9/server/update_status.txt
             exit 1
           else
             echo "Push failed, retrying in 15 seconds..."
@@ -155,13 +157,13 @@ variables:
   .common_update_after_script: &common_update_after_script
     - >
       if [ "$CI_JOB_STATUS" = "success" ]; then
-        echo "✅ 성공" > /builds/somaz94/server/update_status.txt
+        echo "✅ 성공" > /builds/4ground9/server/update_status.txt
       elif [ "$CI_JOB_STATUS" = "failed" ]; then
-        echo "❌ 실패" > /builds/somaz94/server/update_status.txt
+        echo "❌ 실패" > /builds/4ground9/server/update_status.txt
       elif [ "$CI_JOB_STATUS" = "canceled" ]; then
-        echo "⚠️ 취소" > /builds/somaz94/server/update_status.txt
+        echo "⚠️ 취소" > /builds/4ground9/server/update_status.txt
       else
-        echo "🔍 상태 불명" > /builds/somaz94/server/update_status.txt
+        echo "🔍 상태 불명" > /builds/4ground9/server/update_status.txt
       fi
 
   .common_notify_slack_script: &common_notify_slack_script
@@ -366,7 +368,7 @@ update_manual_image:
       - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -419,7 +421,7 @@ update_auto_image_game:
     SERVICE: $GAME_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -473,7 +475,7 @@ update_auto_image_batch:
     SERVICE: $BATCH_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
@@ -527,7 +529,7 @@ update_auto_image_admin:
     SERVICE: $ADMIN_SERVICE
   before_script: *common_update_before_script
   script: *common_update_script 
-  after_script: *common_update_after_script
+  # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
