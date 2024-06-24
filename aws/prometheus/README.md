@@ -1,7 +1,5 @@
 # Prometheus Setup Guide
 
-<br/>
-
 ## Table of Contents
 
 - [Adding Helm Repository](#adding-helm-repository)
@@ -11,15 +9,11 @@
 - [Additional Information](#additional-information)
 - [Reference](#reference)
 
-<br/>
-
 ## Adding Helm Repository
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 ```
-
-<br/>
 
 ## Creating Namespace, PV & StorageClass
 
@@ -38,28 +32,20 @@ kubectl apply -f ebs-csi-pv-prometheus-alertmanager.yaml -n monitoring
 kubectl apply -f ebs-csi-sc.yaml -n monitoring
 ```
 
-<br/>
-
 ## Installing Prometheus
 ```bash
 helm install prometheus prometheus-community/prometheus -f values.yaml -n prometheus
 helm upgrade prometheus prometheus-community/prometheus -f values.yaml -n prometheus # For Upgrades
 ```
 
-<br/>
-
 ## Add Application Monitoring
 ```bash
 helm upgrade prometheus prometheus-community/prometheus -f extra-scrape-configs-values.yaml -f values.yaml -n prometheus
 ```
 
-<br/>
-
 ## Additional Information
 
 Modify the `Domain`, `host` part in all yaml files.
-
-<br/>
 
 ## Reference
 

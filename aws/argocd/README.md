@@ -1,8 +1,7 @@
 # ArgoCD Guide
 
-This guide will take you through the process of installing ArgoCD, adding ingress, and registering a git source repository.
-
-<br/>
+This guide will take you through the process of installing ArgoCD, 
+adding ingress, and registering a git source repository.
 
 ## Table of Contents
 
@@ -11,8 +10,6 @@ This guide will take you through the process of installing ArgoCD, adding ingres
 - [Adding Git Source Repository](#adding-git-source-repo)
 - [Additional Notes](#in-addition)
 - [Reference](#reference)
-
-<br/>
 
 ## Installing ArgoCD
 
@@ -28,20 +25,19 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
-<br/>
-
 ## Adding Ingress
 
 Add ingress for ArgoCD with:
+
 ```bash
 kubectl apply -f argocd-ingress.yaml -n argocd
 ```
 
-<br/>
-
 ## Adding Git Source Repo
 
-Before registering the git source repo, generate the ssh key and register it with the repo:
+Before registering the git source repo, 
+generate the ssh key and register it with the repo:
+
 ```bash
 ssh-keygen -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # rsa format
 ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # pem format
@@ -49,13 +45,12 @@ ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # pem format
 kubectl apply -f repo-secret.yaml -n argocd
 ```
 
-<br/>
-
 ## In addition
-Make sure to modify the `Domain`, `host`, and parts in all yaml files. Also, adjust the key details within the `repo-secret.yaml` file as necessary.
 
-<br/>
+Make sure to modify the `Domain`, `host`, and parts in all yaml files. 
+Also, adjust the key details within the `repo-secret.yaml` file as necessary.
 
 ## Reference
+
 - [ArgoCD Ingress Operator Manual](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode)
 
