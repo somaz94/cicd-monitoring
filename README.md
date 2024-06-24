@@ -1,7 +1,5 @@
 # 🛠️ cicd-monitoring
 
-[![GitHub Super-Linter](https://github.com/actions/container-action/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-
 A curated collection of CI/CD pipelines and instructions on how to install 
 and set up the associated monitoring tools across various environments.
 

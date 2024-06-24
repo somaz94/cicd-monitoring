@@ -1,4 +1,0 @@
-# lintconfig.yml
-exclude:
-  - '**/templates/*.txt'
-  - '**/minio/templates/_helper_*.txt'
