@@ -1,0 +1,7 @@
+[allowlist]
+#rules = ["private-key", "generic-api-key", "gitlab-rrt", "hashicorp-tf-password"]
+paths = [
+  ".*aws/argocd/repo-secret.yaml$",
+  ".*gcp/argocd/repo-secret.yaml$",
+  ".*onpremise/argocd/repo-secret.yaml$"
+]

@@ -1,6 +1,7 @@
 {
   "absolute": true,
   "ignore": [
-    ".github/workflows/*"
+    ".github/workflows/*",
+    "onpremise/loki-5.42.0-2.9.3"
   ]
 }
