@@ -16,6 +16,7 @@ The AWS directory contains configurations and instructions for deploying tools o
 - 📚 `loki`
 - 🔔 `prometheus`
 
+<br/>
 
 ### 🚀 GCP
 
@@ -27,6 +28,7 @@ Configuration files tailored for the Google Cloud Platform.
 - 📚 `loki`
 - 🔔 `prometheus`
 
+<br/>
 
 ### 🏠 On-Premise
 
@@ -36,6 +38,7 @@ For on-premises configurations, find setups tailored for your local environment.
 - 🚀 `argocd`
 - 🔧 `jenkins`
 
+<br/>
 
 ### 🦊 GitLab CI/CD
 
@@ -43,6 +46,7 @@ Pipeline configurations designed specifically for GitLab CI/CD.
 
 📁 `gitlab-cicd`
 
+<br/>
 
 ### 🏃 GitLab Runner
 
@@ -50,6 +54,7 @@ Setups and configurations dedicated to the GitLab Runner.
 
 📁 `gitlab-runner`
 
+<br/>
 
 ### 🐙 GitHub CI/CD
 
