@@ -1,6 +1,9 @@
 # 🛠️ cicd-monitoring
 
-A curated collection of CI/CD pipelines and instructions on how to install and set up the associated monitoring tools across various environments.
+[![GitHub Super-Linter](https://github.com/actions/container-action/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
+
+A curated collection of CI/CD pipelines and instructions on how to install 
+and set up the associated monitoring tools across various environments.
 
 <br/>
 
@@ -8,7 +11,8 @@ A curated collection of CI/CD pipelines and instructions on how to install and s
 
 ### 🌩️ AWS 
 
-The AWS directory contains configurations and instructions for deploying tools on the Amazon Web Services platform.
+The AWS directory contains configurations and instructions 
+for deploying tools on the Amazon Web Services platform.
 
 📁 `aws`
 - 🚀 `argocd`
