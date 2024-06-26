@@ -16,35 +16,43 @@ on:
 
 jobs:
   trigger-ts-file-generate:
-    name: Trigger ts-file-generate workflow on somaz_server repository
+    name: Trigger ts-file-generate workflow on asp_server repository
     runs-on: ubuntu-20.04
     env:
-      CD_REPOSITORY: somaz-applicationset
+      CD_REPOSITORY: asp-applicationset
       ENVIRONMENT: ${{ inputs.environment }}
     steps:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: somaz94/${{ env.CD_REPOSITORY }}
+          repository: somaz/${{ env.CD_REPOSITORY }}
           ref: master
           token: ${{ secrets.CICD_PAT }}
           path: ${{ env.CD_REPOSITORY }}
 
-      # Step to get the repository to run gen.ts from the <environment>.txt file in the environment environment_branch folder of somaz-applicationset.
+      # asp-applicationset 의 environment_branch 폴더의 <environment>.txt 파일에서
+      # 해당 환경의 현재 배포된 브랜치 상태를 가져와 gen.ts 를 실행할 저장소를 가져오는 스텝.
       - name: Get target branch from environment
         id: target-branch
         run: |
           echo "environment: ${{ env.ENVIRONMENT }}"
           cd ${{ env.CD_REPOSITORY }}/environment_branch
-          echo "{target_branch}={$(cat ${{ env.ENVIRONMENT }}.txt)"} >> $GITHUB_OUTPUT
           # echo "::set-output name=target_branch::$(cat ${{ env.ENVIRONMENT }}.txt)"
+          echo "target_branch=$(cat ${{ env.ENVIRONMENT }}.txt)" >> $GITHUB_OUTPUT
 
-      - name: Trigger ts file generate
+      - name: Trigger ts file generate asp server
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.CICD_PAT }}
-          repository: somaz94/somaz-server
+          repository: somaz/asp-server
           event-type: generate_files
           client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ env.ENVIRONMENT }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'
           #client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ github.ref_name }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'
 
+      - name: Trigger ts file generate sm-game-server
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.CICD_PAT }}
+          repository: somaz/sm-game-server
+          event-type: generate_files_sm
+          client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ env.ENVIRONMENT }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'

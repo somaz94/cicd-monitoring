@@ -1,14 +1,17 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
 
-name: 1.Check Data
+name: 1.Deploy staticdata
 
 on:
   push:
     branches:
-      - dev
-      - qa
-      - prod
+      - dev1
+      - dev2
+      - qa1
+      - qa2
+      # main 은 수동으로 배포하도록
+      #- main
     paths:
       - Convertor/ClientJson/**
       - Convertor/ServerJson/**
@@ -23,7 +26,6 @@ jobs:
   # check file changed
   check-diff:
     name: Check changed json data files
-    if: github.ref != 'refs/heads/master' # Prevention Master Branch
     runs-on: ubuntu-20.04
     concurrency: 
       group: ${{ github.workflow }}-${{ github.ref }}
@@ -47,8 +49,8 @@ jobs:
         id: changed-files-names
         run: |
           echo "all: ${{ toJSON(steps.changed-files.outputs) }}"
-          echo "names=$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')" >> $GITHUB_OUTPUT         
-          # echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')"
+          echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/' | sed -e 's/$/"/' | sed -e '$ ! s/$/ /g' | tr -d '\n')"
+          #echo "::set-output name=names::$(awk -F/ '{print $4}' <<< "$(echo "${{ steps.changed-files.outputs.all_changed_and_modified_files }}" | sed -e 's/ /\n/' | grep ServerJson | sed -e 's/ /\n/')" | awk -F. '{print $1}' | sed -e 's/^/"/'  | sed -e 's/$/"/' | sed -e '$ ! s/$/,/g' | tr -d '\n')"
 
       - name: Fail job if no files were changed
         if: ${{ steps.changed-files.outputs.any_modified == 'false' && github.event.inputs.skipDiff != 'true' }}
@@ -57,7 +59,7 @@ jobs:
 
       - name: Set ENVIRONMENT
         run: |
-          if [ ${{ github.ref_name }} == 'prod' ]; then
+          if [ ${{ github.ref_name }} == 'production' ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=${{ github.ref_name }}" >> $GITHUB_ENV
@@ -76,6 +78,9 @@ jobs:
     if: ${{ needs.check-diff.outputs.isJsonModified == 'true' }} || ${{ github.event.inputs.skipDiff == 'true' }}
     with:
       environment: ${{ needs.check-diff.outputs.environment }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
   # data-deploy
   call-data-deploy:
@@ -87,6 +92,9 @@ jobs:
       modifiedJsonFileNames: ${{ needs.check-diff.outputs.modifiedJsonFileNames }}
       environment: ${{ needs.check-diff.outputs.environment }}
     secrets: inherit
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
 
   # ts-generate
   call-ts-generate:
@@ -97,3 +105,6 @@ jobs:
     with:
       environment: ${{ needs.check-diff.outputs.environment }}
     secrets: inherit
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
