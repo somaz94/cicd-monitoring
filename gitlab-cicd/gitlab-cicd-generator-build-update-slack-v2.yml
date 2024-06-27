@@ -126,13 +126,14 @@ variables:
     - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
     - git pull
     - >
-      for i in {1..5}; do
+      for i in $(seq 1 5); do
         if git pull origin master; then
           echo "Pull succeeded"
           break
         else
           if [ $i -eq 5 ]; then
             echo "Pull failed after 5 attempts, exiting."
+            echo "❌ 풀 실패" > /builds/somaz94/server/update_status.txt
             exit 1
           else
             echo "Pull failed, retrying in 15 seconds..."
@@ -141,18 +142,19 @@ variables:
         fi
       done
     - >
-      for i in {1..5}; do
+      for i in $(seq 1 5); do  # Use seq for better compatibility       
         if git push -u origin master; then
           echo "Push succeeded"
-          echo "✅ 성공" > /builds/4ground9/server/update_status.txt
+          echo "✅ 성공" > /builds/somaz94/server/update_status.txt
           break
         else
-          if [ $i -eq 5 ]; then
+          if [ $i -eq 5 ]; then  # Check if it is the 5th iteration
             echo "Push failed after 5 attempts, exiting."
-            echo "❌ 실패" > /builds/4ground9/server/update_status.txt
+            echo "❌ 실패" > /builds/somaz94/server/update_status.txt
             exit 1
           else
             echo "Push failed, retrying in 15 seconds..."
+            git pull --rebase origin master
             sleep 15
           fi
         fi
