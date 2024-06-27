@@ -171,7 +171,8 @@ variables:
       fi
 
   .common_notify_slack_script: &common_notify_slack_script
-    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
+    - >
+      export GENERATOR_STATUS=$(if [ -z "$GENERATOR_STATUS" ]; then cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인"; else echo $GENERATOR_STATUS; fi)
     - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
     - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
     - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
@@ -590,6 +591,8 @@ notify_slack:
 notify_slack_auto_game:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "⏭️ 스킵 or ✅ Commit Massage 확인"
   script: *common_notify_slack_script
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
@@ -604,6 +607,8 @@ notify_slack_auto_game:
 notify_slack_auto_batch:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "⏭️ 스킵 or ✅ Commit Massage 확인"
   script: *common_notify_slack_script
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
@@ -618,6 +623,8 @@ notify_slack_auto_batch:
 notify_slack_auto_admin:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "⏭️ 스킵 or ✅ Commit Massage 확인"
   script: *common_notify_slack_script
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push"'
