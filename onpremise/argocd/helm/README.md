@@ -5,9 +5,8 @@
 ## Table of Contents
 1. [Installing ArgoCD](#installing-argocd)
 2. [Installing cert-manager and Let's Encrypt Settings](#installing-cert-manager-and-lets-encrypt-settings)
-3. [Adding Ingress](#adding-ingress)
-4. [Adding Git Source Repository](#adding-git-source-repository)
-5. [Additional Notes](#additional-notes)
+3. [Adding Git Source Repository](#adding-git-source-repository)
+4. [Additional Notes](#additional-notes)
 
 <br/>
 
