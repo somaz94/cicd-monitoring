@@ -44,6 +44,27 @@ ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]	# pem
 kubectl apply -f repo-secret.yaml -n argocd
 ```
 
+Note: When using a private Gitlab instance, you need to add the Gitlab server's SSH host key to ArgoCD's known_hosts configuration:
+```bash
+# Get your Gitlab host key
+ssh-keyscan gitlab.your-domain.com
+
+# Example output:
+# gitlab.your-domain.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwzyYtyGeO...
+# gitlab.your-domain.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHA...
+# gitlab.your-domain.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDB2NGVSx5...
+
+# Edit ArgoCD known_hosts ConfigMap
+kubectl edit cm -n argocd argocd-ssh-known-hosts-cm
+
+# Add the output from ssh-keyscan to the end of ssh_known_hosts section in the ConfigMap
+# Example structure:
+# data:
+#   ssh_known_hosts: |
+#     [existing entries...]
+#     gitlab.your-domain.com ssh-rsa AAAAB3NzaC1...
+```
+
 <br/>
 
 ## Additional Notes
