@@ -13,6 +13,10 @@
 ## Installing ArgoCD
 ```bash
 
+# Helm repo add
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
 # Normal mode
 helm install argocd . -n argocd -f ./values/mgmt-single.yaml --create-namespace
 
