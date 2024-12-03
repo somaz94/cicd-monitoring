@@ -1,0 +1,115 @@
+stages:
+  - build
+  - update
+
+variables:
+  NAMESPACE:
+    value: "test"
+    description: "Select the namespace: dev1 or dev2 or staging(use deploy)"
+    options:
+      - "test"
+      - "dev1"
+      - "dev2"
+  SERVICE:
+    value: "nginx"
+    description: "Select admin or game or batch or etc."
+    options:
+      - "nginx"
+      - "game"
+      - "admin"
+      - "batch"
+
+  IMAGE_PROJECT: test
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$IMAGE_PROJECT/$SERVICE
+  BUILD_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  BUILD_TAG_LATEST: latest
+  IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+
+.templates:
+
+  .common_build_before_script: &common_build_before_script
+    - echo "[INFO] Start build image."
+    - echo "[INFO] CI_REGISTRY is $CI_REGISTRY"
+    - echo "[INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE"
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] IMAGE_URL is $IMAGE_URL"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - mkdir -p /kaniko/.docker
+    - >
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+
+  .common_build_script: &common_build_script
+    - >      
+      /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify 
+
+  # common update before script
+  .common_update_before_script: &common_update_before_script
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - apk add --no-cache sed git openssh
+    - eval $(ssh-agent -s)
+    - echo "$GITLAB_SSH_PRIVATE_KEY" | ssh-add -
+    - mkdir -p ~/.ssh 
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan gitlab.concrit.us)
+    - echo "$GITLAB_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+  .common_update_script: &common_update_script
+    - git clone git@gitlab.concrit.us:server/argocd-applicationset.git
+    - cd argocd-applicationset
+    - git checkout master
+    - cd values/$IMAGE_PROJECT/$SERVICE
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - git add .
+    - if git diff --cached --quiet; then echo "No changes to commit"; else
+        git config --global user.email "cicd@concrit.us";
+        git config --global user.name "cicd";
+        git commit -m "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG";
+        git push origin master;
+      fi
+
+  .common_job_config: &common_job_config
+    interruptible: true
+    retry:
+      max: 2
+      when:
+        - runner_system_failure
+        - unknown_failure
+        - data_integrity_failure
+      exit_codes:
+        - 137  # OOM kill retry
+
+  .build_template: &build_template
+    <<: *common_job_config
+    stage: build
+    image:
+      name: gcr.io/kaniko-project/executor:v1.23.0-debug
+    before_script: *common_build_before_script
+    script: *common_build_script
+    tags:
+      - build-image
+
+  .update_template: &update_template
+    <<: *common_job_config
+    stage: update
+    image: alpine:latest
+    before_script: *common_update_before_script
+    script: *common_update_script
+    tags:
+      - deploy-image
+
+# actual job definition
+build_manual_image:
+  <<: *build_template
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web")'
+
+update_manual_image:
+  <<: *update_template
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+
