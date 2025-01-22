@@ -1,0 +1,30 @@
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: example-runner
+spec:
+  replicas: 1
+  template:
+    spec:
+      # 단일 repository 연결
+      repository: "somaz94/k8s-namespace-sync"
+      # 또는 organization 전체 연결
+      # organization: "your-organization"
+      
+      # Runner 라벨 (GitHub Actions workflow에서 사용)
+      labels:
+        - self-hosted
+        - linux
+        - x64
+      # env:
+      #   - name: RUNNER_FEATURE_FLAG_CUSTOM_COMMANDS
+      #     value: "true"
+      # # 시크릿 사용
+      # envFrom:
+      #   - secretRef:
+      #       name: runner-secrets
+
+      # GitHub Enterprise 사용시
+      # ephemeral: true  # 작업 완료 후 runner 자동 제거
+      # group: "default"  # runner group 지정
+      # workDir: "/home/runner/work"  # 작업 디렉토리 지정
