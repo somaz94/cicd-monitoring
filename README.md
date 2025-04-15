@@ -13,10 +13,10 @@ The AWS directory contains configurations and instructions
 for deploying tools on the Amazon Web Services platform.
 
 📁 `aws`
-- 🚀 `argocd`
-- 📊 `grafana`
-- 📚 `loki`
-- 🔔 `prometheus`
+- `argocd`
+- `grafana`
+- `loki`
+- `prometheus`
 
 <br/>
 
@@ -25,10 +25,10 @@ for deploying tools on the Amazon Web Services platform.
 Configuration files tailored for the Google Cloud Platform.
 
 📁 `gcp`
-- 🚀 `argocd`
-- 📊 `grafana`
-- 📚 `loki`
-- 🔔 `prometheus`
+- `argocd`
+- `grafana`
+- `loki`
+- `prometheus`
 
 <br/>
 
@@ -37,8 +37,15 @@ Configuration files tailored for the Google Cloud Platform.
 For on-premises configurations, find setups tailored for your local environment.
 
 📁 `onpremise`
-- 🚀 `argocd`
-- 🔧 `jenkins`
+- `argocd`
+- `jenkins`
+- `elk-stack`
+- `grafana`
+- `ingress-nginx-sidecar-fluenbit`
+- `kube-prometheus-stack`
+- `loki`
+- `promtail`
+- `thanos`
 
 <br/>
 
