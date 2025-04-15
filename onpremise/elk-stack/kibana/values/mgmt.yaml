@@ -1,0 +1,60 @@
+---
+elasticsearchHosts: "https://elasticsearch-master:9200"
+elasticsearchCertificateSecret: elasticsearch-master-certs
+elasticsearchCertificateAuthoritiesFile: ca.crt
+elasticsearchCredentialSecret: elasticsearch-master-credentials
+
+replicas: 1
+
+image: "docker.elastic.co/kibana/kibana"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "2Gi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+protocol: http
+
+serverHost: "0.0.0.0"
+
+healthCheckPath: "/app/kibana"
+
+updateStrategy:
+  type: "Recreate"
+
+service:
+  type: ClusterIP
+  loadBalancerIP: ""
+  port: 5601
+  nodePort: ""
+  labels: {}
+  annotations: {}
+  # cloud.google.com/load-balancer-type: "Internal"
+  # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+  # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+  # service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+  # service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"
+  loadBalancerSourceRanges: []
+  # 0.0.0.0/0
+  httpPortName: http
+
+ingress:
+  enabled: true
+  className: "nginx"
+  pathtype: ImplementationSpecific
+  annotations: 
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+  hosts:
+    - host: kibana.somaz.link
+      paths:
+        - path: /
+  tls:
+    - secretName: kibana-tls
+      hosts:
+        - kibana.somaz.link

@@ -1,0 +1,9 @@
+# k create secret generic thanos-objstore --from-file=objstore.yml -n monitoring
+type: S3
+config:
+  bucket: thanos-bucket
+  endpoint: <endpoint>
+  access_key: <access key>
+  secret_key: <secret key>
+  insecure: true
+  signature_version2: true

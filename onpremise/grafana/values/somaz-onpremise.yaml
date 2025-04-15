@@ -1,0 +1,125 @@
+replicas: 1
+
+deploymentStrategy:
+  type: RollingUpdate
+
+image:
+  registry: docker.io
+  repository: grafana/grafana
+
+testFramework:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bats/bats
+    tag: "v1.4.1"
+  imagePullPolicy: IfNotPresent
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+downloadDashboardsImage:
+  # -- The Docker registry
+  registry: docker.io
+  repository: curlimages/curl
+  tag: 7.85.0
+  sha: ""
+  pullPolicy: IfNotPresent
+
+adminUser: admin 
+adminPassword: admin
+
+service:
+  enabled: true
+  type: ClusterIP
+
+serviceMonitor:
+  ## If true, a ServiceMonitor CR is created for a prometheus operator
+  ## https://github.com/coreos/prometheus-operator
+  ##
+  enabled: true
+  path: /metrics
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  labels: {}
+  path: /
+  pathType: Prefix
+  hosts:
+    - grafana.somaz.link
+resources: {}
+#  limits:
+#    cpu: 100m
+#    memory: 128Mi
+#  requests:
+#    cpu: 100m
+#    memory: 128Mi
+
+tolerations: 
+  - key: "monitoring"
+    operator: "Equal"
+    effect: "NoSchedule"
+
+nodeSelector:
+  local-path: enabled
+
+# sidecar:
+#   datasources:
+#     enabled: ture
+
+## Enable persistence using Persistent Volume Claims
+## ref: https://kubernetes.io/docs/user-guide/persistent-volumes/
+##
+persistence:
+  type: pvc
+  enabled: true
+  storageClassName: default
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  # annotations: {}
+  finalizers:
+    - kubernetes.io/pvc-protection
+
+initChownData:
+  enabled: true
+  image:
+    # -- The Docker registry
+    registry: docker.io
+    repository: library/busybox
+    tag: "1.31.1"
+    sha: ""
+    pullPolicy: IfNotPresent
+  resources: {}
+  #  limits:
+  #    cpu: 100m
+  #    memory: 128Mi
+  #  requests:
+  #    cpu: 100m
+  #    memory: 128Mi
+
+# Configure grafana datasources
+# ref: http://docs.grafana.org/administration/provisioning/#datasources
+#
+# datasources:
+#   datasources.yaml:
+#     apiVersion: 1
+#     datasources:
+#     - name: Thanos
+#       type: prometheus
+#       url: https://thanos.somaz.link
+#       access: proxy
+#       isDefault: true
+#     - name: Loki
+#       type: loki
+#       access: proxy
+#       url: http://10.0.100.11:3100

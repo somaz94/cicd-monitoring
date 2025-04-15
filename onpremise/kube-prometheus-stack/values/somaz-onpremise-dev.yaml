@@ -1,0 +1,308 @@
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+  service:
+    type: NodePort
+  serviceMonitor:
+    selfMonitor: true
+    relabelings:
+      - action: replace
+        regex: (.+)
+        sourceLabels:
+          - __meta_kubernetes_service_annotation_prometheus_io_path
+        targetLabel: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        sourceLabels:
+          - __address__
+          - __meta_kubernetes_service_annotation_prometheus_io_port
+        targetLabel: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_namespace
+        targetLabel: kubernetes_namespace
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_service_name
+        targetLabel: kubernetes_name
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_pod_node_name
+        targetLabel: kubernetes_node
+
+grafana:
+  enabled: false
+
+## Component scraping the kubelet and kubelet-hosted cAdvisor
+##
+kubelet:
+  enabled: true
+  namespace: kube-system
+
+## Component scraping the kube controller manager
+##
+kubeControllerManager:
+  enabled: true
+
+## Component scraping coreDns. Use either this or kubeDns
+##
+coreDns:
+  enabled: true
+
+## Component scraping kubeDns. Use either this or coreDns
+##
+kubeDns:
+  enabled: false
+
+## Component scraping kube scheduler
+##
+kubeScheduler:
+  enabled: true
+
+## Component scraping kube proxy
+##
+kubeProxy:
+  enabled: true
+
+kubeEtcd:
+  enabled: true
+
+## Component scraping kube state metrics
+##
+kubeStateMetrics:
+  enabled: true
+
+## Configuration for kube-state-metrics subchart
+##
+kube-state-metrics:
+  namespaceOverride: ""
+  rbac:
+    create: true
+  releaseLabel: true
+  prometheus:
+    monitor:
+      enabled: true
+
+kubeApiServer:
+  enabled: true
+  serviceMonitor:
+    relabelings:
+      - action: replace
+        regex: (.+)
+        sourceLabels:
+          - __meta_kubernetes_service_annotation_prometheus_io_path
+        targetLabel: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        sourceLabels:
+          - __address__
+          - __meta_kubernetes_service_annotation_prometheus_io_port
+        targetLabel: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_namespace
+        targetLabel: kubernetes_namespace
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_service_name
+        targetLabel: kubernetes_name
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_pod_node_name
+        targetLabel: kubernetes_node
+
+## Deploy node exporter as a daemonset to all nodes
+##
+nodeExporter:
+  enabled: true
+  operatingSystems:
+    linux:
+      enabled: true
+    darwin:
+      enabled: true
+
+  ## ForceDeployDashboard Create dashboard configmap even if nodeExporter deployment has been disabled
+  ##
+  forceDeployDashboards: false
+
+## Manages Prometheus and Alertmanager components
+##
+prometheusOperator:
+  enabled: true
+  thanosImage:
+    registry: quay.io
+    repository: thanos/thanos
+    tag: v0.36.1
+    sha: ""
+
+## Deploy a Prometheus instance
+##
+prometheus:
+  enabled: true
+  thanosService:
+    enabled: true
+  thanosServiceMonitor:
+    enabled: true
+  thanosServiceExternal:
+    enabled: true
+    type: NodePort
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - prometheus-dev.somaz.link
+  serviceMonitor:
+    disableCompaction: true
+    selfMonitor: true
+    tolerations: 
+     - key: "monitoring"
+       operator: "Equal"
+       effect: "NoSchedule"
+    nodeSelector:
+      local-path: enabled
+    replicas: 1
+    shards: 1
+    # resources:
+    #   requests:
+    #     cpu: 4
+    #     memory: 10Gi
+    #   limits:
+    #     cpu: 4
+    #     memory: 10Gi
+    relabelings: 
+      - action: replace
+        regex: (.+)
+        sourceLabels:
+          - __meta_kubernetes_service_annotation_prometheus_io_path
+        targetLabel: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        sourceLabels:
+          - __address__
+          - __meta_kubernetes_service_annotation_prometheus_io_port
+        targetLabel: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_namespace
+        targetLabel: kubernetes_namespace
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_service_name
+        targetLabel: kubernetes_name
+      - action: replace
+        sourceLabels:
+          - __meta_kubernetes_pod_node_name
+        targetLabel: kubernetes_node
+  prometheusSpec:
+    replicas: 1
+    thanos:
+      baseImage: quay.io/thanos/thanos
+      version: v0.36.1
+      objectStorageConfig:
+        existingSecret:
+          name: thanos-objstore
+          key: objstore.yml
+    storageSpec: 
+      volumeClaimTemplate:
+        spec:
+          storageClassName: default
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+    externalLabels:
+      provider: sia
+      region: seoul1
+      cluster: dev
+      cluster_id: sia-seoul1-dev
+    retention: 10d
+    additionalScrapeConfigs: |
+      - job_name: ingress-nginx-exporter
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: keep
+            regex: (ingress-controller-nginx).+(metrics)
+            source_labels:
+              - __meta_kubernetes_endpoints_name
+          - action: keep
+            regex: metrics
+            source_labels:
+              - __meta_kubernetes_pod_container_port_name
+          - action: replace
+            regex: (.+)
+            source_labels:
+              - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            source_labels:
+              - __address__
+              - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_namespace
+            target_label: kubernetes_namespace
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_endpoint_node_name
+            target_label: kubernetes_node
+        scrape_interval: 5s
+        scrape_timeout: 5s
+      - job_name: jupyterhub
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - action: keep
+            regex: (jhub);(hub)
+            source_labels:
+              - __meta_kubernetes_namespace
+              - __meta_kubernetes_endpoints_name
+          - action: replace
+            regex: (.+)
+            source_labels:
+              - __meta_kubernetes_service_annotation_prometheus_io_path
+            target_label: __metrics_path__
+          - action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            source_labels:
+              - __address__
+              - __meta_kubernetes_service_annotation_prometheus_io_port
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_namespace
+            target_label: kubernetes_namespace
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_service_name
+            target_label: kubernetes_name
+          - action: replace
+            source_labels:
+              - __meta_kubernetes_pod_node_name
+            target_label: kubernetes_node

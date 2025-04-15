@@ -1,0 +1,68 @@
+global:
+  defaultStorageClass: "local-path"
+
+fullnameOverride: "thanos-multicluster" 
+clusterDomain: cluster.local
+
+existingObjstoreSecret: "thanos-objstore"
+
+query:
+  enabled: true
+  logLevel: debug
+  # resources:
+  #   requests:
+  #     cpu: 200m
+  #     memory: 4Gi
+  #   limits:
+  #     cpu: 400m
+  #     memory: 8Gi
+  replicaLabel:
+    - prometheus_replica
+  dnsDiscovery:
+    enabled: false
+  stores:
+    - dev-thanos-query.somaz.link:443
+    - qa-thanos-query.somaz.link:443
+  extraFlags:
+    - "--grpc-client-tls-secure"
+  replicaCount: 0
+  startupProbe:
+    enabled: true
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  ingress:
+    enabled: false
+
+queryFrontend:
+  enabled: false
+
+bucketweb:
+  enabled: false
+
+compactor:
+  enabled: false
+
+storegateway:
+  enabled: false
+
+ruler:
+  enabled: false
+
+receive:
+  enabled: false
+
+receiveDistributor:
+  enabled: false
+
+metrics:
+  enabled: false
+
+volumePermissions:
+  enabled: false
+
+minio:
+  enabled: false

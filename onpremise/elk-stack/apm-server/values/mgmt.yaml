@@ -1,0 +1,105 @@
+---
+# Allows you to add config files
+apmConfig:
+  apm-server.yml: |
+    apm-server:
+      host: "0.0.0.0:8200"
+
+    queue: {}
+
+    output.elasticsearch:
+      hosts: ["https://elasticsearch-master:9200"]
+      username: "${ELASTICSEARCH_USERNAME}"
+      password: "${ELASTICSEARCH_PASSWORD}"
+      # If SSL is enabled
+      protocol: https
+      ssl.certificate_authorities:
+       - /usr/share/apm-server/config/certs/ca.crt
+      index: "apmserver-%{+YYYY.MM.dd}" 
+
+    setup:
+      kibana:
+        host: "https://kibana-kibana:5601"
+        username: "${ELASTICSEARCH_USERNAME}"
+        password: "${ELASTICSEARCH_PASSWORD}"
+
+replicas: 1
+
+# Extra environment variables to append to the DaemonSet pod spec.
+# This will be appended to the current 'env:' key. You can use any of the kubernetes env
+# syntax here
+extraEnvs:
+  - name: "ELASTICSEARCH_USERNAME"
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: username
+  - name: "ELASTICSEARCH_PASSWORD"
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+
+image: "docker.elastic.co/apm/apm-server"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+imagePullSecrets: []
+
+# Whether this chart should self-manage its service account, role, and associated role binding.
+managedServiceAccount: true
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+# Custom service account override that the pod will use
+serviceAccount: ""
+
+# Annotations to add to the ServiceAccount that is created if the serviceAccount value isn't set.
+serviceAccountAnnotations: {}
+# eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/k8s.clustername.namespace.serviceaccount
+
+# A list of secrets and their paths to mount inside the pod
+secretMounts:
+  - name: elastic-certs
+    secretName: elasticsearch-master-certs
+    path: /usr/share/apm-server/config/certs
+
+terminationGracePeriod: 30
+
+tolerations: []
+
+nodeSelector: {}
+
+affinity: {}
+
+ingress:
+  enabled: false
+  className: "nginx"
+  pathtype: ImplementationSpecific
+  annotations: {}
+  # kubernetes.io/ingress.class: nginx
+  # kubernetes.io/tls-acme: "true"
+  path: /
+  hosts:
+    - chart-example.local
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+service:
+  type: ClusterIP
+  loadBalancerIP: ""
+  port: 8200
+  nodePort: ""
+  annotations: {}
+  # cloud.google.com/load-balancer-type: "Internal"
+  # service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+  # service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+  # service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+  # service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"

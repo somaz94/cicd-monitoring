@@ -1,0 +1,82 @@
+global:
+  clusterDomain: "cluster.local"
+  dnsService: "coredns"
+  dnsNamespace: "kube-system"
+deploymentMode: SingleBinary
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+    - from: "2024-01-01"
+      store: tsdb
+      index:
+        prefix: loki_index_
+        period: 24h
+      object_store: filesystem # we're storing on filesystem so there's no real persistence here.
+      schema: v13
+singleBinary:
+  # -- Number of replicas for the single binary
+  replicas: 1
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+gateway:
+  # -- Specifies whether the gateway should be enabled
+  enabled: true
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  service:
+    # -- Type of the gateway service
+    type: NodePort
+    nodePort: 31400
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+tableManager:
+  enabled: false
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+test:
+  enabled: false
+lokiCanary:
+  enabled: false

@@ -1,0 +1,155 @@
+global:
+  defaultStorageClass: "local-path"
+
+fullnameOverride: "thanos" 
+clusterDomain: cluster.local
+
+existingObjstoreSecret: "thanos-objstore"
+
+query:
+  enabled: true
+  logLevel: debug
+  # resources:
+  #   requests:
+  #     cpu: 200m
+  #     memory: 4Gi
+  #   limits:
+  #     cpu: 400m
+  #     memory: 8Gi
+  replicaLabel:
+    - prometheus_replica
+  dnsDiscovery:
+    enabled: false
+  stores:
+    # - kube-prometheus-stack-thanos-discovery:10901
+    - dnssrv+_grpc._tcp.kube-prometheus-stack-thanos-discovery.monitoring.svc.cluster.local
+    # - dnssrv+_grpc._tcp.thanos-multicluster-query-grpc.monitoring.svc.svc.cluster.local
+  replicaCount: 1
+  startupProbe:
+    enabled: true
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  ingress:
+    enabled: true
+    hostname: thanos-query.somaz.link
+    ingressClassName: nginx
+    pathType: ImplementationSpecific
+    path: /
+    grpc:
+      enabled: false
+
+queryFrontend:
+  enabled: true
+  # resources:
+  #   requests:
+  #     cpu: 100m
+  #     memory: 1Gi
+  #   limits:
+  #     cpu: 200m
+  #     memory: 2Gi
+  rbac:
+    create: true
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  ingress:
+    enabled: true
+    hostname: thanos.somaz.link
+    ingressClassName: nginx
+    pathType: ImplementationSpecific
+    path: /
+
+bucketweb:
+  enabled: false
+
+compactor:
+  enabled: true
+  retentionResolutionRaw: 60d      # Retain raw data (10-second resolution) for 10 days
+  retentionResolution5m: 60d       # Retain 5-minute downsampled data for 60 days
+  retentionResolution1h: 1y        # Retain 1-hour downsampled data for 1 year
+  consistencyDelay: 1h
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  resources:
+    requests:
+      cpu: 100m
+      memory: 400Mi
+    limits:
+      cpu: 200m
+      memory: 800Mi
+  ingress:
+    enabled: true
+    hostname: thanos-compactor.somaz.link
+    ingressClassName: nginx
+    pathType: ImplementationSpecific
+    path: /
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+
+storegateway:
+  enabled: true
+  logLevel: warn
+  # resources:
+  #   requests:
+  #     cpu: 400m
+  #     memory: 3Gi
+  #   limits:
+  #     cpu: 800m
+  #     memory: 6Gi
+  tolerations: 
+    - key: "monitoring"
+      operator: "Equal"
+      effect: "NoSchedule"
+  nodeSelector:
+    local-path: enabled
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+  sharded:
+    enabled: false
+  pdb:
+    create: true
+    minAvailable: ""
+    maxUnavailable: ""
+  ingress:
+    enabled: false
+
+ruler:
+  enabled: false
+
+receive:
+  enabled: false
+
+receiveDistributor:
+  enabled: false
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: false
+
+volumePermissions:
+  enabled: false
+
+minio:
+  enabled: false
