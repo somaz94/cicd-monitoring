@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+    
+    environment {
+        GIT_URL = 'http://10.10.10.7/client/somaz'
+        UNITY_PATH = ' /Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
+        UNITY_FUNCTION = 'BuilderJenkins.HotfixLua'
+    	
+    	
+    	//Upload 설정
+    	PROJECT_VERSION_DATA_NAME = 'DataVersion.json'
+    	PROJECT_UPLOAD_PATH =      "${WORKSPACE}/Assets/StreamingAssets/lua"
+    	PROJECT_UPLOAD_PATH_VER = "${WORKSPACE}/Assets/StreamingAssets/lua/${PROJECT_VERSION_DATA_NAME}"
+    	
+    	//Upload S3 설정 (Live 용)
+        S3_BUCKET = 's3://cdn.somaz'
+        S3_PATH = "/somaz-hero/Lua/${APP_VERSION}"
+        PATH = "$PATH:/usr/local/bin"  // AWS CLI 경로를 환경 변수에 추가
+        
+        //Upload NAS 설정 (개발 용)
+        UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
+        UPLOAD_USER = 'somaz@somaz-cluster.somaz.link'
+    }
+
+    stages {
+        stage('Git') {
+            steps {
+                script {
+                   if (fileExists('.git')) {
+                        sh 'git checkout ./'
+                        sh 'git clean -df'
+                    }
+                }
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${BRANCH}"]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                    userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
+                ])
+                script {
+                    sh "git checkout ${BRANCH}"
+                    sh "git pull origin ${BRANCH}" // 원격 상태 동기화
+                }
+            }
+        }
+
+        stage('Unity Build') {
+            steps {
+                sh """
+                    ${env.UNITY_PATH} -projectPath ${WORKSPACE} -executeMethod ${env.UNITY_FUNCTION} UnityParams:LUA_VERSION=0 -logFile -quit -batchmode -nographics
+                """
+            }
+        }
+        
+        stage('Upload') {
+            steps {
+                script {
+
+                    def envKey = params.GAME_SERVER.toLowerCase()
+                    def UPLOAD_PATH = "/mnt/nfs/somaz/${envKey}/client/lua"
+                    def UPLOAD_SERVER_PATH = "${env.UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version"
+
+                    /*
+                    sh """
+                        echo "Upload AWS process..."
+                        aws s3 sync ${env.PROJECT_UPLOAD_PATH} ${S3_BUCKET}${S3_PATH} --exclude "*.meta"
+                        aws cloudfront create-invalidation --distribution-id E17RV4PLCZQGZ5 --paths '${S3_PATH}*'
+                        
+                        echo "Upload VERSION Process"
+                        curl -X GET "http://concrit.iptime.org:34003/set_lua_version.php?client_version=${APP_VERSION}&lua_version=${LUA_VERSION}"
+                        
+                        echo "Upload AWS End"
+                    """
+                    */
+
+                    echo "Json load process..."
+                    def jsonData = readJSON file: "${PROJECT_UPLOAD_PATH_VER}"
+                    def appVersion = jsonData['appVersion']
+                    
+                    def upload_File = "${UPLOAD_PATH}/${appVersion}"
+                    def upload_Ver = "${UPLOAD_PATH}/${appVersion}/${PROJECT_VERSION_DATA_NAME}"
+                    
+                    
+                    sh """
+                        echo "Nas process..."
+                        ssh -i "${UPLOAD_SSH_KEY}" ${UPLOAD_USER} "mkdir -p ${upload_File}"
+                        rsync -avzr --delete --progress --exclude='*.meta' "${PROJECT_UPLOAD_PATH}" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_USER}:${upload_File}"
+                        rsync -avzr --delete --progress --exclude='*.meta' "${PROJECT_UPLOAD_PATH_VER}" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_USER}:${upload_Ver}"
+                        echo "Upload End"
+                    """
+
+                    // 서버 버전 파일 업로드
+                    sh """
+                        echo "Server version upload process..."
+                        cp "${PROJECT_UPLOAD_PATH_VER}" "${WORKSPACE}/temp.json"
+                        curl -s -f https://file-server.somaz.link/somaz/${envKey}/server/version/LuaVersion.json > "${WORKSPACE}/LuaVersion.json" || echo '[]' > "${WORKSPACE}/LuaVersion.json"
+                        
+                        NEW_VERSION=\$(/opt/homebrew/bin/jq -r '.version' "${WORKSPACE}/temp.json")
+                        NEW_APP_VERSION=\$(/opt/homebrew/bin/jq -r '.appVersion' "${WORKSPACE}/temp.json")
+                        
+                        /opt/homebrew/bin/jq --arg v "\$NEW_VERSION" --arg av "\$NEW_APP_VERSION" '
+                            if (map(select(.appVersion == \$av)) | length) > 0 then
+                                map(if .appVersion == \$av then {appVersion: \$av, version: \$v} else . end)
+                            else
+                                . + [{appVersion: \$av, version: \$v}]
+                            end
+                        ' "${WORKSPACE}/LuaVersion.json" > "${WORKSPACE}/LuaVersion.json.tmp"
+                        
+                        mv "${WORKSPACE}/LuaVersion.json.tmp" "${WORKSPACE}/LuaVersion.json"
+                        rsync -avz "${WORKSPACE}/LuaVersion.json" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_SERVER_PATH}/"
+                        rm "${WORKSPACE}/temp.json" "${WORKSPACE}/LuaVersion.json"
+                        
+                        echo "Upload End"
+                    """
+
+                    // API 호출을 통한 버전 배포 알림
+                    sh """
+                        echo "Notifying admin API about new Lua version..."
+                        curl -X 'POST' \\
+                          'http://${envKey}-admin.pm.somaz.link/versions/lua/publish' \\
+                          -H 'accept: application/json' \\
+                          -H 'X-API-KEY: somaz-super-user'
+                        echo "API notification complete"
+                    """
+
+                }
+            }
+        }
+    }
+}

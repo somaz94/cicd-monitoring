@@ -1,0 +1,144 @@
+pipeline {
+    agent any
+    
+    environment {
+        GIT_URL = 'http://10.10.10.7/client/somaz'
+        UNITY_PATH = ' /Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
+        UNITY_FUNCTION_IOS = 'BuilderJenkins.HotfixResiOS'
+        UNITY_FUNCTION_AND = 'BuilderJenkins.HotfixResAndroid'
+    	
+        PROJECT_GIT_PATH_IOS = "${WORKSPACE}/iOS"
+        PROJECT_GIT_PATH_AND = "${WORKSPACE}/Android"
+    	
+        //Upload 설정
+        PROJECT_VERSION_DATA_NAME = 'DataVersion.json'
+        PROJECT_UPLOAD_PATH_IOS = "${PROJECT_GIT_PATH_IOS}/AddressableData/iOS"
+        PROJECT_UPLOAD_PATH_AND = "${PROJECT_GIT_PATH_AND}/AddressableData/Android"
+        PROJECT_UPLOAD_PATH_VER = "${PROJECT_GIT_PATH_IOS}/AddressableData/${PROJECT_VERSION_DATA_NAME}"
+        
+        //Upload S3 설정 (Live 용)
+        S3_BUCKET = 's3://cdn.somaz'
+        S3_PATH = "/somaz-hero/res/${APP_VERSION}"
+        PATH = "$PATH:/usr/local/bin"  // AWS CLI 경로를 환경 변수에 추가
+        
+        //Upload NAS 설정 (개발 용)
+        UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
+        UPLOAD_USER = 'somaz@somaz-cluster.somaz.link'
+    }
+
+    stages {
+        stage('Git') {
+            steps {
+                script {
+                    dir('Android') {
+                        script {
+                           if (fileExists('.git')) {
+                                sh 'git checkout ./'
+                                sh 'git clean -df'
+                            }
+                        }
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "${BRANCH}"]],
+                            doGenerateSubmoduleConfigurations: false,
+                            extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                            userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
+                        ])
+                    }
+                    
+                    dir('iOS') {
+                        script {
+                           if (fileExists('.git')) {
+                                sh 'git checkout ./'
+                                sh 'git clean -df'
+                            }
+                        }
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "${BRANCH}"]],
+                            doGenerateSubmoduleConfigurations: false,
+                            extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                            userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
+                        ])
+                    }
+                }
+            }
+        }
+
+        stage('Unity Build') {
+            steps { 
+                sh """
+                    ${env.UNITY_PATH} -projectPath ${env.PROJECT_GIT_PATH_IOS} -executeMethod ${env.UNITY_FUNCTION_IOS} UnityParams:TestArgs=0 -logFile -quit -batchmode -nographics
+                    ${env.UNITY_PATH} -projectPath ${env.PROJECT_GIT_PATH_AND} -executeMethod ${env.UNITY_FUNCTION_AND} UnityParams:TestArgs=0 -logFile -quit -batchmode -nographics
+                """
+            }
+        }
+        
+        stage('Upload') {
+            steps {
+                script {
+
+                    def envKey = params.GAME_SERVER.toLowerCase()
+                    def UPLOAD_PATH = "/mnt/nfs/somaz/${envKey}/client/res"
+                    def UPLOAD_SERVER_PATH = "${env.UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version"
+
+                    echo "Json load process..."
+                    def jsonData = readJSON file: "${PROJECT_UPLOAD_PATH_VER}"
+                    def appVersion = jsonData['appVersion']
+
+                    def upload_File = "${UPLOAD_PATH}/${appVersion}"
+                    def upload_Ver = "${UPLOAD_PATH}/${appVersion}/${PROJECT_VERSION_DATA_NAME}"
+                    
+         /*           sh """
+                       ssh -i "${UPLOAD_SSH_KEY}" ${UPLOAD_USER} "rm -rf /mnt/nfs/somaz/${envKey}/client/res"
+                    """*/
+
+                    sh """
+                        echo "Nas process..."
+                        ssh -i "${UPLOAD_SSH_KEY}" ${UPLOAD_USER} "mkdir -p ${upload_File}"
+                        rsync -avzr --delete --progress --exclude='*.meta' "${PROJECT_UPLOAD_PATH_IOS}" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_USER}:${upload_File}"
+                        rsync -avzr --delete --progress --exclude='*.meta' "${PROJECT_UPLOAD_PATH_AND}" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_USER}:${upload_File}"
+                        rsync -avzr --delete --progress --exclude='*.meta' "${PROJECT_UPLOAD_PATH_VER}" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_USER}:${upload_Ver}"
+                        echo "Upload End"
+                    """
+
+                    // 서버 버전 파일 업로드 추가
+                    sh """
+                        echo "Server version upload process..."
+                        cp "${PROJECT_UPLOAD_PATH_VER}" "${WORKSPACE}/temp.json"
+                        curl -s -f https://file-server.somaz.link/somaz/${envKey}/server/version/ResVersion.json > "${WORKSPACE}/ResVersion.json" || echo '[]' > "${WORKSPACE}/ResVersion.json"
+                        
+                        NEW_VERSION=\$(/opt/homebrew/bin/jq -r '.version' "${WORKSPACE}/temp.json")
+                        NEW_APP_VERSION=\$(/opt/homebrew/bin/jq -r '.appVersion' "${WORKSPACE}/temp.json")
+                        
+                        /opt/homebrew/bin/jq --arg v "\$NEW_VERSION" --arg av "\$NEW_APP_VERSION" '
+                            if (map(select(.appVersion == \$av)) | length) > 0 then
+                                map(if .appVersion == \$av then {appVersion: \$av, version: \$v} else . end)
+                            else
+                                . + [{appVersion: \$av, version: \$v}]
+                            end
+                        ' "${WORKSPACE}/ResVersion.json" > "${WORKSPACE}/ResVersion.json.tmp"
+                        
+                        mv "${WORKSPACE}/ResVersion.json.tmp" "${WORKSPACE}/ResVersion.json"
+                        rsync -avz "${WORKSPACE}/ResVersion.json" -e "ssh -i ${UPLOAD_SSH_KEY}" "${UPLOAD_SERVER_PATH}/"
+                        rm "${WORKSPACE}/temp.json" "${WORKSPACE}/ResVersion.json"
+                        
+                        echo "Upload End"
+                    """
+
+                    // API 호출을 통한 버전 배포 알림
+                    sh """
+                        echo "Notifying admin API about new Lua version..."
+                        curl -X 'POST' \\
+                          'http://${envKey}-admin.pm.somaz.link/versions/res/publish' \\
+                          -H 'accept: application/json' \\
+                          -H 'X-API-KEY: somaz-super-user'
+                        echo "API notification complete"
+                    """
+
+
+                } 
+            }
+        }
+    }
+}

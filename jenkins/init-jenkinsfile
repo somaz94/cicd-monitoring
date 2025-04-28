@@ -1,0 +1,92 @@
+pipeline {
+    agent any
+    
+    parameters {
+        choice(name: 'GAME_SERVER', choices: ['Dev', 'Staging'], description: 'Select environment')
+        choice(name: 'RESOURCE_TYPE', choices: ['Lua', 'Res'], description: 'Select resource type to reset version')
+    }
+    
+    environment {
+        //Upload NAS 설정 (개발 용)
+        UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
+        UPLOAD_USER = 'somaz@dev-cluster.somaz.link'
+    }
+
+    stages {
+        stage('Reset Version') {
+            steps {
+                script {
+                    // 현재 작업 디렉토리에 임시 파일 생성
+                    writeFile file: 'empty_version.json', text: '[]'
+                    
+                    def envKey = params.GAME_SERVER.toLowerCase()
+                    def typeKey = params.RESOURCE_TYPE
+                    def SERVER_VERSION_PATH = "${UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json"
+                    
+                    // 버전 초기화 확인
+                    echo "Resetting ${typeKey} version for ${envKey} environment"
+                    
+                    // SSH를 통해 빈 JSON 배열([])로 버전 파일 초기화
+                    sh """
+                        scp -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no empty_version.json ${SERVER_VERSION_PATH}
+                        rm empty_version.json
+                    """
+                    
+                    // 초기화 성공 확인
+                    echo "Version has been reset to [] successfully"
+                    
+                    // 원격 서버에서 버전 파일 확인 (선택사항)
+                    sh """
+                        ssh -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no ${UPLOAD_USER} 'cat /mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json'
+                    """
+                }
+            }
+        }
+        
+        stage('API Notification') {
+            steps {
+                script {
+                    def envKey = params.GAME_SERVER.toLowerCase()
+                    def typeKey = params.RESOURCE_TYPE.toLowerCase()
+                    
+                    echo "Sending API notification for ${typeKey} version reset in ${envKey} environment"
+                    
+                    // 환경 및 리소스 타입에 따른 API 엔드포인트 설정
+                    def apiEndpoint = "http://${envKey}-admin.pm.somaz.link/versions/${typeKey}/publish"
+                    
+                    // API 호출을 통한 버전 배포 알림
+                    try {
+                        sh """
+                            echo "Notifying admin API about new ${typeKey} version..."
+                            curl -X 'POST' \\
+                              '${apiEndpoint}' \\
+                              -H 'accept: application/json' \\
+                              -H 'X-API-KEY: somaz-super-user'
+                            echo "API notification complete"
+                        """
+                        echo "Successfully sent notification to ${apiEndpoint}"
+                    } catch (Exception e) {
+                        echo "Warning: API notification failed: ${e.message}"
+                        // 알림 실패가 전체 파이프라인을 중단시키지 않도록 함
+                        echo "Continuing with pipeline despite API notification failure"
+                    }
+                }
+            }
+        }
+        
+        stage('Notification') {
+            steps {
+                echo "Version reset completed for ${params.RESOURCE_TYPE} in ${params.GAME_SERVER} environment"
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Version reset operation completed successfully"
+        }
+        failure {
+            echo "Version reset operation failed"
+        }
+    }
+}
