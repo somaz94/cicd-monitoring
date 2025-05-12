@@ -1,11 +1,22 @@
+// Version Reset Pipeline
+// -------------------
+// This pipeline resets version files for game resources (Lua or Res)
+// in specified environments (Dev or Staging)
+
 pipeline {
     agent any
     
+    // Pipeline Parameters
+    // ----------------
+    // Allow users to select environment and resource type
     parameters {
         choice(name: 'GAME_SERVER', choices: ['Dev', 'Staging'], description: 'Select environment')
         choice(name: 'RESOURCE_TYPE', choices: ['Lua', 'Res'], description: 'Select resource type to reset version')
     }
     
+    // Environment Variables
+    // -----------------
+    // Configuration for NAS upload and SSH access
     environment {
         //Upload NAS 설정 (개발 용)
         UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
@@ -13,29 +24,33 @@ pipeline {
     }
 
     stages {
+        // Stage 1: Reset Version
+        // -------------------
+        // Resets the version file to an empty array
         stage('Reset Version') {
             steps {
                 script {
-                    // 현재 작업 디렉토리에 임시 파일 생성
+                    // Create temporary empty version file
                     writeFile file: 'empty_version.json', text: '[]'
                     
+                    // Set up environment and type variables
                     def envKey = params.GAME_SERVER.toLowerCase()
                     def typeKey = params.RESOURCE_TYPE
                     def SERVER_VERSION_PATH = "${UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json"
                     
-                    // 버전 초기화 확인
+                    // Log version reset operation
                     echo "Resetting ${typeKey} version for ${envKey} environment"
                     
-                    // SSH를 통해 빈 JSON 배열([])로 버전 파일 초기화
+                    // Reset version file using SSH
                     sh """
                         scp -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no empty_version.json ${SERVER_VERSION_PATH}
                         rm empty_version.json
                     """
                     
-                    // 초기화 성공 확인
+                    // Confirm successful reset
                     echo "Version has been reset to [] successfully"
                     
-                    // 원격 서버에서 버전 파일 확인 (선택사항)
+                    // Verify version file on remote server
                     sh """
                         ssh -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no ${UPLOAD_USER} 'cat /mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json'
                     """
@@ -43,6 +58,9 @@ pipeline {
             }
         }
         
+        // Stage 2: API Notification
+        // ----------------------
+        // Notifies the admin API about the version reset
         stage('API Notification') {
             steps {
                 script {
@@ -51,10 +69,10 @@ pipeline {
                     
                     echo "Sending API notification for ${typeKey} version reset in ${envKey} environment"
                     
-                    // 환경 및 리소스 타입에 따른 API 엔드포인트 설정
+                    // Set API endpoint based on environment and resource type
                     def apiEndpoint = "http://${envKey}-admin.pm.somaz.link/versions/${typeKey}/publish"
                     
-                    // API 호출을 통한 버전 배포 알림
+                    // Send notification to admin API
                     try {
                         sh """
                             echo "Notifying admin API about new ${typeKey} version..."
@@ -67,13 +85,16 @@ pipeline {
                         echo "Successfully sent notification to ${apiEndpoint}"
                     } catch (Exception e) {
                         echo "Warning: API notification failed: ${e.message}"
-                        // 알림 실패가 전체 파이프라인을 중단시키지 않도록 함
+                        // Continue pipeline even if notification fails
                         echo "Continuing with pipeline despite API notification failure"
                     }
                 }
             }
         }
         
+        // Stage 3: Final Notification
+        // ------------------------
+        // Provides final status of the version reset operation
         stage('Notification') {
             steps {
                 echo "Version reset completed for ${params.RESOURCE_TYPE} in ${params.GAME_SERVER} environment"
@@ -81,6 +102,9 @@ pipeline {
         }
     }
     
+    // Post-build Actions
+    // ----------------
+    // Handle pipeline completion status
     post {
         success {
             echo "Version reset operation completed successfully"

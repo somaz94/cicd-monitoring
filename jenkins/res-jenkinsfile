@@ -1,35 +1,49 @@
+// Resource Build and Deploy Pipeline
+// -----------------------------
+// This pipeline builds and deploys game resources for both iOS and Android
+// using Unity build process and handles version management
+
 pipeline {
     agent any
     
+    // Environment Variables
+    // -----------------
+    // Configuration for Git, Unity, and deployment paths
     environment {
+        // Git repository configuration
         GIT_URL = 'http://10.10.10.7/client/somaz'
         UNITY_PATH = ' /Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
         UNITY_FUNCTION_IOS = 'BuilderJenkins.HotfixResiOS'
         UNITY_FUNCTION_AND = 'BuilderJenkins.HotfixResAndroid'
     	
+        // Project paths for iOS and Android
         PROJECT_GIT_PATH_IOS = "${WORKSPACE}/iOS"
         PROJECT_GIT_PATH_AND = "${WORKSPACE}/Android"
     	
-        //Upload 설정
+        // Project paths and version data
         PROJECT_VERSION_DATA_NAME = 'DataVersion.json'
         PROJECT_UPLOAD_PATH_IOS = "${PROJECT_GIT_PATH_IOS}/AddressableData/iOS"
         PROJECT_UPLOAD_PATH_AND = "${PROJECT_GIT_PATH_AND}/AddressableData/Android"
         PROJECT_UPLOAD_PATH_VER = "${PROJECT_GIT_PATH_IOS}/AddressableData/${PROJECT_VERSION_DATA_NAME}"
         
-        //Upload S3 설정 (Live 용)
+        // S3 configuration for live deployment
         S3_BUCKET = 's3://cdn.somaz'
         S3_PATH = "/somaz-hero/res/${APP_VERSION}"
-        PATH = "$PATH:/usr/local/bin"  // AWS CLI 경로를 환경 변수에 추가
+        PATH = "$PATH:/usr/local/bin"  // AWS CLI path
         
-        //Upload NAS 설정 (개발 용)
+        // NAS configuration for development deployment
         UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
         UPLOAD_USER = 'somaz@somaz-cluster.somaz.link'
     }
 
     stages {
+        // Stage 1: Git Checkout
+        // ------------------
+        // Clones and updates the repository for both iOS and Android
         stage('Git') {
             steps {
                 script {
+                    // Android repository setup
                     dir('Android') {
                         script {
                            if (fileExists('.git')) {
@@ -41,11 +55,12 @@ pipeline {
                             $class: 'GitSCM',
                             branches: [[name: "${BRANCH}"]],
                             doGenerateSubmoduleConfigurations: false,
-                            extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                            extensions: [[$class: 'CloneOption', timeout: 300]],
                             userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
                         ])
                     }
                     
+                    // iOS repository setup
                     dir('iOS') {
                         script {
                            if (fileExists('.git')) {
@@ -57,7 +72,7 @@ pipeline {
                             $class: 'GitSCM',
                             branches: [[name: "${BRANCH}"]],
                             doGenerateSubmoduleConfigurations: false,
-                            extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                            extensions: [[$class: 'CloneOption', timeout: 300]],
                             userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
                         ])
                     }
@@ -65,6 +80,9 @@ pipeline {
             }
         }
 
+        // Stage 2: Unity Build
+        // -----------------
+        // Builds resources for both iOS and Android using Unity
         stage('Unity Build') {
             steps { 
                 sh """
@@ -74,14 +92,17 @@ pipeline {
             }
         }
         
+        // Stage 3: Upload and Deploy
+        // ----------------------
+        // Uploads built resources and updates version information
         stage('Upload') {
             steps {
                 script {
-
                     def envKey = params.GAME_SERVER.toLowerCase()
                     def UPLOAD_PATH = "/mnt/nfs/somaz/${envKey}/client/res"
                     def UPLOAD_SERVER_PATH = "${env.UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version"
 
+                    // Load version information
                     echo "Json load process..."
                     def jsonData = readJSON file: "${PROJECT_UPLOAD_PATH_VER}"
                     def appVersion = jsonData['appVersion']
@@ -89,10 +110,7 @@ pipeline {
                     def upload_File = "${UPLOAD_PATH}/${appVersion}"
                     def upload_Ver = "${UPLOAD_PATH}/${appVersion}/${PROJECT_VERSION_DATA_NAME}"
                     
-         /*           sh """
-                       ssh -i "${UPLOAD_SSH_KEY}" ${UPLOAD_USER} "rm -rf /mnt/nfs/somaz/${envKey}/client/res"
-                    """*/
-
+                    // Upload to NAS
                     sh """
                         echo "Nas process..."
                         ssh -i "${UPLOAD_SSH_KEY}" ${UPLOAD_USER} "mkdir -p ${upload_File}"
@@ -102,7 +120,7 @@ pipeline {
                         echo "Upload End"
                     """
 
-                    // 서버 버전 파일 업로드 추가
+                    // Update server version file
                     sh """
                         echo "Server version upload process..."
                         cp "${PROJECT_UPLOAD_PATH_VER}" "${WORKSPACE}/temp.json"
@@ -126,7 +144,7 @@ pipeline {
                         echo "Upload End"
                     """
 
-                    // API 호출을 통한 버전 배포 알림
+                    // Notify admin API
                     sh """
                         echo "Notifying admin API about new Lua version..."
                         curl -X 'POST' \\
@@ -135,8 +153,6 @@ pipeline {
                           -H 'X-API-KEY: somaz-super-user'
                         echo "API notification complete"
                     """
-
-
                 } 
             }
         }

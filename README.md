@@ -1,7 +1,6 @@
 # 🛠️ cicd-monitoring
 
-A curated collection of CI/CD pipelines and instructions on how to install 
-and set up the associated monitoring tools across various environments.
+A comprehensive collection of CI/CD pipelines and monitoring tools configurations for various cloud platforms and on-premise environments.
 
 <br/>
 
@@ -9,77 +8,123 @@ and set up the associated monitoring tools across various environments.
 
 ### 🌩️ AWS 
 
-The AWS directory contains configurations and instructions 
-for deploying tools on the Amazon Web Services platform.
+AWS-specific configurations and deployments for monitoring and CI/CD tools.
 
 📁 `aws`
-- `argocd`
-- `grafana`
-- `loki`
-- `prometheus`
+- `argocd` - ArgoCD configurations for AWS
+- `grafana` - Grafana dashboards and configurations
+- `loki` - Loki logging stack setup
+- `prometheus` - Prometheus monitoring configurations
 
 <br/>
 
 ### 🚀 GCP
 
-Configuration files tailored for the Google Cloud Platform.
+Google Cloud Platform specific configurations and deployments.
 
 📁 `gcp`
-- `argocd`
-- `grafana`
-- `loki`
-- `prometheus`
+- `argocd` - ArgoCD configurations for GCP
+- `grafana` - Grafana dashboards and configurations
+- `loki` - Loki logging stack setup
+- `prometheus` - Prometheus monitoring configurations
 
 <br/>
 
 ### 🏠 On-Premise
 
-For on-premises configurations, find setups tailored for your local environment.
+Comprehensive on-premises configurations for various monitoring and CI/CD tools.
 
 📁 `onpremise`
-- `argocd`
-- `jenkins`
-- `elk-stack`
-- `grafana`
-- `ingress-nginx-sidecar-fluenbit`
-- `kube-prometheus-stack`
-- `loki`
-- `promtail`
-- `thanos`
+- `argocd` - Complete ArgoCD setup with Helm charts
+  - `helm/charts` - Helm chart definitions
+  - `helm/templates` - Kubernetes templates for various components
+  - `helm/values` - Configuration values
+- `elk-stack` - Elastic Stack components
+  - `apm-server` - Application Performance Monitoring
+  - `elasticsearch` - Search and analytics engine
+  - `filebeat` - Log shipper
+  - `kibana` - Data visualization
+  - `logstash` - Log processing
+  - `metricbeat` - Metrics collection
+- `grafana` - Monitoring and visualization
+  - `dashboards` - Pre-configured dashboards
+  - `templates` - Kubernetes templates
+- `ingress-nginx-sidecar-fluentbit` - Logging and ingress configuration
+- `jenkins` - CI/CD server configurations
+- `kube-prometheus-stack` - Kubernetes monitoring stack
+  - `charts` - Helm charts
+  - `templates` - Kubernetes templates for various exporters
+- `loki` - Log aggregation system
+  - `templates` - Component configurations
+  - `values` - Deployment values
+- `promtail` - Log collector
+- `thanos` - Long-term metrics storage
 
 <br/>
 
 ### 🦊 GitLab CI/CD
 
-Pipeline configurations designed specifically for GitLab CI/CD.
+GitLab CI/CD pipeline configurations and scripts.
 
 📁 `gitlab-cicd`
+- `script` - Pipeline scripts and utilities
 
 <br/>
 
 ### 🏃 GitLab Runner
 
-Setups and configurations dedicated to the GitLab Runner.
+GitLab Runner configurations and templates.
 
 📁 `gitlab-runner`
+- `templates` - Runner configuration templates
 
 <br/>
 
 ### 🐙 GitHub CI/CD
 
-Configurations optimized for GitHub CI/CD, with specific deployments for AWS and GCP.
+GitHub Actions workflows and configurations for different cloud platforms.
 
 📁 `github-cicd`
 - 🌩️ `aws`
+  - `build-deploy-repo` - Build and deployment workflows
+  - `data-repo` - Data management workflows
 - 🚀 `gcp`
+  - `build-deploy-repo` - Build and deployment workflows
+  - `data-build-deploy-repo` - Combined data and deployment workflows
+  - `data-repo` - Data management workflows
+  - `matrix-strategy` - Matrix build configurations
+  - `upgrade-data-build-deploy-repo` - Upgrade workflows
+- `aws-gcp` - Cross-cloud configurations
+
+<br/>
+
+### 🤖 GitHub Runner
+
+GitHub Actions runner configurations and controller setup.
+
+📁 `github-runner`
+- `actions-runner-controller`
+  - `cr` - Custom Resources
+  - `crds` - Custom Resource Definitions
+  - `templates` - Runner templates
 
 <br/>
 
 ## 🚀 Getting Started
 
-1. Navigate to the specific directory for your desired platform and tool.
-2. Dive into the associated README for detailed instructions and configurations.
-3. Happy deploying!
+1. Choose your target platform (AWS, GCP, or On-Premise)
+2. Navigate to the specific tool directory
+3. Follow the README instructions in each directory for detailed setup steps
+4. Configure the tools according to your environment needs
+
+<br/>
+
+## 📝 Notes
+
+- Each directory contains its own README with specific instructions
+- Configuration files are organized by platform and tool
+- Templates and values are provided for easy customization
+- Some components may require additional setup or dependencies
 
 <br/>
 
