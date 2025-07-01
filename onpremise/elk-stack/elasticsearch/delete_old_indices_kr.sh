@@ -151,7 +151,7 @@ for INDEX in "${INDEX_NAMES[@]}"; do
         }
     }'
     
-    echo "$INDEX에서 오래된 문서 삭제 중..."
+    echo "${INDEX}에서 오래된 문서 삭제 중..."
     RESPONSE=$(curl -s -k -u "$ELASTIC_USER:$ELASTIC_PASSWORD" \
         -X POST "$ELASTIC_HOST/$INDEX/_delete_by_query" \
         -H "Content-Type: application/json" \
@@ -160,24 +160,24 @@ for INDEX in "${INDEX_NAMES[@]}"; do
     # 삭제가 성공했는지 확인하고 삭제된 수 추출
     if echo "$RESPONSE" | grep -q '"deleted"'; then
         DELETED_COUNT=$(echo "$RESPONSE" | grep -o '"deleted":[0-9]*' | cut -d':' -f2)
-        echo "✓ 인덱스 $INDEX에서 $DELETED_COUNT개 문서를 성공적으로 삭제했습니다"
+        echo "✓ 인덱스 ${INDEX}에서 ${DELETED_COUNT}개 문서를 성공적으로 삭제했습니다"
     else
-        echo "✗ 인덱스 $INDEX에서 문서 삭제에 실패했습니다"
+        echo "✗ 인덱스 ${INDEX}에서 문서 삭제에 실패했습니다"
         echo "응답: $RESPONSE"
     fi
 
     # 강제 병합이 요청된 경우
     if [ "$FORCE_MERGE" = true ]; then
-        echo "인덱스 강제 병합 중: $INDEX..."
+        echo "인덱스 강제 병합 중: ${INDEX}..."
         MERGE_RESPONSE=$(curl -s -k -u "$ELASTIC_USER:$ELASTIC_PASSWORD" \
             -X POST "$ELASTIC_HOST/$INDEX/_forcemerge?only_expunge_deletes=true" \
             -H "Content-Type: application/json")
         
         # 강제 병합이 성공했는지 확인
         if echo "$MERGE_RESPONSE" | grep -q '"successful"'; then
-            echo "✓ 인덱스 $INDEX를 성공적으로 강제 병합했습니다"
+            echo "✓ 인덱스 ${INDEX}를 성공적으로 강제 병합했습니다"
         else
-            echo "✗ 인덱스 $INDEX 강제 병합에 실패했습니다"
+            echo "✗ 인덱스 ${INDEX} 강제 병합에 실패했습니다"
             echo "응답: $MERGE_RESPONSE"
         fi
     fi
@@ -185,4 +185,3 @@ for INDEX in "${INDEX_NAMES[@]}"; do
 done
 
 echo "문서 정리 프로세스가 완료되었습니다."
-
