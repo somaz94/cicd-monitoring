@@ -27,36 +27,38 @@ FORCE_MERGE=false
 # 날짜 형식
 TODAY=$(date +%Y.%m.%d)
 
-# 도움말 메시지 출력 함수
+# 도움말 출력 함수
 show_help() {
-    cat << EOF
-사용법: $(basename $0) [옵션] [인덱스명...]
+  cat << EOF
+사용법: $(basename "$0") [옵션] [INDEX 이름들...]
 
-지정된 Elasticsearch 인덱스에서 보존 기간에 따라 오래된 문서를 삭제합니다.
+설명:
+  지정한 Elasticsearch 인덱스에서, 설정한 보존 기간보다 오래된 문서를 삭제합니다.
 
 옵션:
-    -h, --help              이 도움말 메시지 보기
-    -d, --days 일수         데이터 보존 일수 (기본값: 30, 최소값: ${MIN_RETENTION_DAYS})
-    -i, --indices 인덱스    쉼표로 구분된 정리할 인덱스 이름 목록
-    -l, --list             사용 가능한 모든 인덱스 목록 보기
-    -s, --status           모든 인덱스의 현재 상태 보기
-    -f, --force-merge      삭제 후 디스크 공간 최적화를 위한 강제 병합 수행
+  -h, --help              이 도움말 메시지를 출력합니다
+  -d, --days DAYS         보존 기간 (일 단위, 기본: 30일, 최소: ${MIN_RETENTION_DAYS}일)
+  -i, --indices LIST      삭제할 인덱스 이름 목록 (쉼표로 구분된 문자열)
+  -l, --list              사용 가능한 모든 인덱스를 나열합니다
+  -s, --status            모든 인덱스의 상태를 출력합니다
+  -f, --force-merge       삭제 후 디스크 최적화를 위한 강제 병합 실행
 
 예시:
-    $(basename $0)                                    # 기본 인덱스 정리 (30일 보존)
-    $(basename $0) -d 60                             # 기본 인덱스 정리 (60일 보존)
-    $(basename $0) index1 index2                     # 지정된 인덱스 정리 (30일 보존)
-    $(basename $0) -d 60 index1 index2               # 지정된 인덱스 정리 (60일 보존)
-    $(basename $0) -i "index1,index2" -d 60          # 쉼표로 구분된 목록으로 인덱스 정리
-    $(basename $0) -l                                # 사용 가능한 인덱스 목록 보기
-    $(basename $0) -s                                # 모든 인덱스의 현재 상태 보기
-    $(basename $0) -f index1                         # index1 정리 후 강제 병합
-    $(basename $0) -d 60 -f index1 index2           # 60일 보존으로 정리 후 강제 병합
+  $(basename "$0")                                # 기본 인덱스를 30일 기준으로 정리
+  $(basename "$0") -d 60                          # 기본 인덱스를 60일 기준으로 정리
+  $(basename "$0") index1 index2                  # 특정 인덱스를 30일 기준으로 정리
+  $(basename "$0") -d 60 index1 index2            # 특정 인덱스를 60일 기준으로 정리
+  $(basename "$0") -i "index1,index2" -d 60       # 쉼표로 구분된 인덱스를 60일 기준으로 정리
+  $(basename "$0") -l                             # 인덱스 목록 보기
+  $(basename "$0") -s                             # 인덱스 상태 확인
+  $(basename "$0") -f index1                      # index1 삭제 후 강제 병합 실행
+  $(basename "$0") -d 60 -f index1 index2         # index1, index2를 60일 기준 삭제 + 병합
 
-기본 정리 대상 인덱스: ${DEFAULT_INDICES[@]}
-참고: 안전을 위해 최소 보존 기간은 ${MIN_RETENTION_DAYS}일입니다.
+기본 삭제 대상 인덱스: ${DEFAULT_INDICES[@]}
+
+⚠️ 참고: 안전을 위해 최소 보존 기간은 ${MIN_RETENTION_DAYS}일입니다.
 EOF
-    exit 0
+  exit 0
 }
 
 # 명령행 인수 파싱
