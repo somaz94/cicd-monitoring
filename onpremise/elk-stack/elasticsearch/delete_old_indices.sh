@@ -13,7 +13,9 @@ ELASTIC_HOST="http://elasticsearch.somaz.link"
 INDEX_NAMES=()
 
 # Default indices to clean if none specified
-DEFAULT_INDICES=("" "")
+# Example: DEFAULT_INDICES=("logstash-*" "filebeat-*" "metricbeat-*")
+# Leave empty to require explicit index specification
+DEFAULT_INDICES=()
 
 # Retention period settings
 # Minimum number of days to keep data
@@ -43,8 +45,6 @@ Options:
   -f, --force-merge       Force merge indices after deletion to optimize disk space
 
 Examples:
-  $(basename $0)                                     # Clean default indices (${RETENTION_DAYS} days retention)
-  $(basename $0) -d 60                               # Clean default indices (60 days retention)
   $(basename $0) index1 index2                       # Clean specified indices (${RETENTION_DAYS} days retention)
   $(basename $0) -d 60 index1 index2                 # Clean specified indices (60 days retention)
   $(basename $0) -i "index1,index2" -d 60            # Clean indices using comma-separated list
@@ -53,9 +53,10 @@ Examples:
   $(basename $0) -f index1                           # Clean and force merge index1
   $(basename $0) -d 60 -f index1 index2              # Clean with 60 days retention and force merge
 
-Default indices to clean: ${DEFAULT_INDICES[@]}
-
-Note: Minimum retention period is ${MIN_RETENTION_DAYS} days for safety.
+Note: 
+- You must specify at least one index to clean
+- Minimum retention period is ${MIN_RETENTION_DAYS} days for safety
+- Use -l option to list all available indices first
 EOF
     exit 0
 }
@@ -116,6 +117,19 @@ fi
 # If no indices specified, use default indices
 if [ ${#INDEX_NAMES[@]} -eq 0 ]; then
     INDEX_NAMES=("${DEFAULT_INDICES[@]}")
+fi
+
+# Check if indices are actually specified (not empty)
+if [ ${#INDEX_NAMES[@]} -eq 0 ] || [ -z "${INDEX_NAMES[0]}" ]; then
+    echo "Error: No indices specified for cleanup." >&2
+    echo "Please specify indices using one of the following methods:" >&2
+    echo "  1. As arguments: $(basename $0) index1 index2" >&2
+    echo "  2. Using -i option: $(basename $0) -i \"index1,index2\"" >&2
+    echo "  3. Set DEFAULT_INDICES in the script" >&2
+    echo "" >&2
+    echo "Use '$(basename $0) -l' to list all available indices." >&2
+    echo "Use '$(basename $0) --help' for more information." >&2
+    exit 1
 fi
 
 # Check OS type and use appropriate date command

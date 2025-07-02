@@ -13,7 +13,9 @@ ELASTIC_HOST="http://elasticsearch.somaz.link"
 INDEX_NAMES=()
 
 # 지정되지 않은 경우 기본 인덱스
-DEFAULT_INDICES=("" "")
+# 예시: DEFAULT_INDICES=("logstash-*" "filebeat-*" "metricbeat-*")
+# 명시적 인덱스 지정을 요구하려면 비워두세요
+DEFAULT_INDICES=()
 
 # 보존 기간 설정
 # 최소 보존 일수
@@ -37,15 +39,13 @@ show_help() {
 
 옵션:
   -h, --help              이 도움말 메시지를 출력합니다
-  -d, --days DAYS         보존 기간 (일 단위, 기본: ${RETENTION_DAYS}알, 최소: ${MIN_RETENTION_DAYS}일)
-  -i, --indices LIST      삭제할 인덱스 이름 목록 (쉼표로 구분된 문자알)
+  -d, --days DAYS         보존 기간 (일 단위, 기본: ${RETENTION_DAYS}일, 최소: ${MIN_RETENTION_DAYS}일)
+  -i, --indices LIST      삭제할 인덱스 이름 목록 (쉼표로 구분된 문자열)
   -l, --list              사용 가능한 모든 인덱스를 나열합니다
   -s, --status            모든 인덱스의 상태를 출력합니다
   -f, --force-merge       삭제 후 디스크 최적화를 위한 강제 병합 실행
 
 예시:
-  $(basename "$0")                                # 기본 인덱스를 ${RETENTION_DAYS}일 기준으로 정리
-  $(basename "$0") -d 60                          # 기본 인덱스를 60일 기준으로 정리
   $(basename "$0") index1 index2                  # 특정 인덱스를 ${RETENTION_DAYS}일 기준으로 정리
   $(basename "$0") -d 60 index1 index2            # 특정 인덱스를 60일 기준으로 정리
   $(basename "$0") -i "index1,index2" -d 60       # 쉼표로 구분된 인덱스를 60일 기준으로 정리
@@ -54,9 +54,10 @@ show_help() {
   $(basename "$0") -f index1                      # index1 삭제 후 강제 병합 실행
   $(basename "$0") -d 60 -f index1 index2         # index1, index2를 60일 기준 삭제 + 병합
 
-기본 삭제 대상 인덱스: ${DEFAULT_INDICES[@]}
-
-⚠️ 참고: 안전을 위해 최소 보존 기간은 ${MIN_RETENTION_DAYS}일입니다.
+참고사항:
+- 최소 하나 이상의 인덱스를 지정해야 합니다
+- 안전을 위해 최소 보존 기간은 ${MIN_RETENTION_DAYS}일입니다
+- 먼저 -l 옵션을 사용하여 사용 가능한 인덱스 목록을 확인하세요
 EOF
   exit 0
 }
@@ -117,6 +118,19 @@ fi
 # 인덱스가 지정되지 않은 경우 기본 인덱스 사용
 if [ ${#INDEX_NAMES[@]} -eq 0 ]; then
     INDEX_NAMES=("${DEFAULT_INDICES[@]}")
+fi
+
+# 실제로 인덱스가 지정되었는지 확인 (비어있지 않은지)
+if [ ${#INDEX_NAMES[@]} -eq 0 ] || [ -z "${INDEX_NAMES[0]}" ]; then
+    echo "오류: 정리할 인덱스가 지정되지 않았습니다." >&2
+    echo "다음 방법 중 하나로 인덱스를 지정해 주세요:" >&2
+    echo "  1. 인수로 전달: $(basename $0) index1 index2" >&2
+    echo "  2. -i 옵션 사용: $(basename $0) -i \"index1,index2\"" >&2
+    echo "  3. 스크립트에서 DEFAULT_INDICES 설정" >&2
+    echo "" >&2
+    echo "사용 가능한 인덱스 목록을 보려면 '$(basename $0) -l'을 사용하세요." >&2
+    echo "자세한 정보는 '$(basename $0) --help'를 참조하세요." >&2
+    exit 1
 fi
 
 # OS 타입 확인하고 적절한 date 명령 사용
