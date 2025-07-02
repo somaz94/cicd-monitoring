@@ -36,16 +36,16 @@ Delete old documents from specified Elasticsearch indices based on retention per
 
 Options:
   -h, --help              Show this help message
-  -d, --days DAYS         Number of days to retain data (default: 30, minimum: ${MIN_RETENTION_DAYS})
+  -d, --days DAYS         Number of days to retain data (default: ${RETENTION_DAYS}, minimum: ${MIN_RETENTION_DAYS})
   -i, --indices INDICES   Comma-separated list of index names to clean
   -l, --list              List all available indices
   -s, --status            Show current status of all indices
   -f, --force-merge       Force merge indices after deletion to optimize disk space
 
 Examples:
-  $(basename $0)                                     # Clean default indices (30 days retention)
+  $(basename $0)                                     # Clean default indices (${RETENTION_DAYS} days retention)
   $(basename $0) -d 60                               # Clean default indices (60 days retention)
-  $(basename $0) index1 index2                       # Clean specified indices (30 days retention)
+  $(basename $0) index1 index2                       # Clean specified indices (${RETENTION_DAYS} days retention)
   $(basename $0) -d 60 index1 index2                 # Clean specified indices (60 days retention)
   $(basename $0) -i "index1,index2" -d 60            # Clean indices using comma-separated list
   $(basename $0) -l                                  # List all available indices

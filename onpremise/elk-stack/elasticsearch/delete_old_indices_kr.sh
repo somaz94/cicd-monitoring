@@ -37,16 +37,16 @@ show_help() {
 
 옵션:
   -h, --help              이 도움말 메시지를 출력합니다
-  -d, --days DAYS         보존 기간 (일 단위, 기본: 30일, 최소: ${MIN_RETENTION_DAYS}일)
-  -i, --indices LIST      삭제할 인덱스 이름 목록 (쉼표로 구분된 문자열)
+  -d, --days DAYS         보존 기간 (일 단위, 기본: ${RETENTION_DAYS}알, 최소: ${MIN_RETENTION_DAYS}일)
+  -i, --indices LIST      삭제할 인덱스 이름 목록 (쉼표로 구분된 문자알)
   -l, --list              사용 가능한 모든 인덱스를 나열합니다
   -s, --status            모든 인덱스의 상태를 출력합니다
   -f, --force-merge       삭제 후 디스크 최적화를 위한 강제 병합 실행
 
 예시:
-  $(basename "$0")                                # 기본 인덱스를 30일 기준으로 정리
+  $(basename "$0")                                # 기본 인덱스를 ${RETENTION_DAYS}일 기준으로 정리
   $(basename "$0") -d 60                          # 기본 인덱스를 60일 기준으로 정리
-  $(basename "$0") index1 index2                  # 특정 인덱스를 30일 기준으로 정리
+  $(basename "$0") index1 index2                  # 특정 인덱스를 ${RETENTION_DAYS}일 기준으로 정리
   $(basename "$0") -d 60 index1 index2            # 특정 인덱스를 60일 기준으로 정리
   $(basename "$0") -i "index1,index2" -d 60       # 쉼표로 구분된 인덱스를 60일 기준으로 정리
   $(basename "$0") -l                             # 인덱스 목록 보기
