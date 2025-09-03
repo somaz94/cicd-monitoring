@@ -16,7 +16,7 @@ image:
 
 ## How many runner pods to launch.
 ##
-replicas: 1
+replicas: 2
 
 ## How many old ReplicaSets for this Deployment you want to retain
 revisionHistoryLimit: 5
@@ -30,7 +30,7 @@ gitlabUrl: http://gitlab.somaz.link/
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
 ## ref: (we don't have docs for that yet, but we want to use an existing token)
 ##
-runnerToken: "glrt-xxxxx" # your runner token
+runnerToken: "glrt-xxxxxxxxxxxx"
 
 ## Configure the maximum number of concurrent jobs
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
@@ -133,7 +133,7 @@ runners:
   ##
   ## ref: https://docs.gitlab.com/ee/ci/runners/new_creation_workflow.html
   ##
-  tags: "build-image" # your image tag 
+  tags: "build-image"
 
 ## Configure securitycontext for the main container
 ## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
@@ -145,3 +145,9 @@ securityContext:
   privileged: true               # 권한이 부여된 모드로 실행을 허용합니다.
   capabilities:
     drop: []                      # 모든 리눅스 캡 능성을 유지합니다.
+  
+persistentVolumes:
+  enabled: false
+
+persistentVolumeClaims:
+  enabled: false

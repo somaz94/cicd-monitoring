@@ -1,0 +1,29 @@
+{{- if .Values.efs.persistentVolumes.enabled }}
+{{- range .Values.efs.persistentVolumes.items }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "filebeat.labels" $ | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .storage }}
+  volumeMode: {{ .volumeMode | default "Filesystem" }}
+  accessModes:
+    {{- toYaml .accessModes | nindent 4 }}
+  persistentVolumeReclaimPolicy: {{ .reclaimPolicy | default "Retain" }}
+  storageClassName: {{ .storageClassName }}
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: {{ required "EFS fileSystemId is required" .fileSystemId }}{{- if .accessPointId }}::{{ .accessPointId }}{{- end }}
+    {{- if or (not .accessPointId) .subPath }}
+    volumeAttributes:
+      {{- if and (not .accessPointId) .subPath }}
+      path: "{{ .subPath }}"
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+

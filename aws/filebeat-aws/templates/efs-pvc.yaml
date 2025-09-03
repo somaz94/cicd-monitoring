@@ -1,0 +1,26 @@
+{{- if .Values.efs.persistentVolumeClaims.enabled }}
+{{- range .Values.efs.persistentVolumeClaims.items }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "filebeat.labels" $ | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .accessModes | nindent 4 }}
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: {{ .storage }}
+  storageClassName: {{ .storageClassName }}
+  {{- if .selector }}
+  {{- if .selector.volumeName }}
+  volumeName: {{ .selector.volumeName }}  # Static PV 바인딩
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

@@ -1,7 +1,7 @@
 apiVersion: v1
 name: gitlab-runner
-version: 0.79.1
-appVersion: 18.2.1
+version: 0.80.0
+appVersion: 18.3.0
 description: GitLab Runner
 keywords:
 - git

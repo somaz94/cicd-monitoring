@@ -1,0 +1,19 @@
+repositories:
+  - name: gitlab
+    url: https://charts.gitlab.io
+
+releases:
+  - name: build-image
+    namespace: luckyday
+    chart: gitlab/gitlab-runner
+    version: 0.80.0
+    values:
+      - values/build.yaml
+
+  # # test
+  # - name: projectm-client-build-image
+  #   namespace: gitlab-runner
+  #   chart: . # Use local Chart directory
+  #   version: 0.71.0
+  #   values:
+  #     - values/projectm-client-build.yaml

@@ -1,0 +1,29 @@
+repositories:
+  - name: elastic
+    url: https://helm.elastic.co
+
+releases:
+  - name: filebeat
+    namespace: somaz
+    chart: .
+    # -- Version of the filebeat chart to use.
+    # -- This should match the version in the Chart.yaml file.
+    # -- If you want to use a local chart, you can specify the path to the chart directory.
+    version: 8.5.1 # Chart.yaml version reference
+    values:
+      - values/mgmt.yaml
+
+# # Hooks to ensure proper installation and upgrades
+# hooks:
+#   - events: ["presync"]
+#     showlogs: true
+#     command: "kubectl"
+#     args:
+#       - "create"
+#       - "namespace"
+#       - "monitoring"
+#       - "--dry-run=client"
+#       - "-o"
+#       - "yaml"
+#       - "||"
+#       - "true"

@@ -1,0 +1,28 @@
+{{- if .Values.persistentVolumes.enabled }}
+{{- range $persistentVolume := .Values.persistentVolumes.items }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $persistentVolume.name }}
+  labels:
+    type: {{ $persistentVolume.name }}
+  {{- if $persistentVolume.annotations }}
+  annotations:
+    {{- range $key, $value := $persistentVolume.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  storageClassName: {{ $persistentVolume.storageClassName }}
+  capacity:
+    storage: {{ $persistentVolume.storage }}
+  accessModes:
+    {{- toYaml $persistentVolume.accessModes | nindent 4 }}
+  volumeMode: {{ $persistentVolume.volumeMode }}
+  persistentVolumeReclaimPolicy: {{ $persistentVolume.reclaimPolicy }}
+  nfs:
+    path: {{ $persistentVolume.path }}
+    server: {{ $persistentVolume.server }}
+{{- end }}
+{{- end }}

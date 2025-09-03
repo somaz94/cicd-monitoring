@@ -1,0 +1,143 @@
+pipeline {
+    agent any
+    
+    environment {
+        APP_NAME = 'somaz'
+        GIT_URL = 'http://10.10.10.7/client/somaz'
+        UNITY_PATH = '/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
+        UNITY_FUNCTION = 'BuilderJenkins.Build'
+        PROJECT_GIT_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS'
+        PROJECT_XCODE_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS/XCode'
+        ORIGINAL_VERSION = ""
+        PLIST_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS/XCode/ios-build/Info.plist'
+    }
+    
+    stages {
+        stage('Git') {
+            steps {
+                script {
+                    if (fileExists('.git')) {
+                        sh 'git checkout ./'
+                        sh 'git clean -df'
+                    }
+                }
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${BRANCH}"]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [[$class: 'CloneOption', timeout: 300]], // Set the timeout here
+                    userRemoteConfigs: [[credentialsId: 'Jenkins', url: "${env.GIT_URL}"]]
+                ])
+            }
+        }
+        
+        stage('Unity') {
+            steps {
+                script {
+                    def command = """
+                        ${env.UNITY_PATH} -logFile - -batchmode -nographics -quit \\
+                        -projectPath ${env.PROJECT_GIT_PATH} \\
+                        -executeMethod ${env.UNITY_FUNCTION} \\
+                        UnityParams:BuildPlatform=iOS*DeepProfiling=false*Version=${APP_VERSION}*BuildNumber=1*Development=true*AutoConnectProfiler=false*BuildXcodePath=${env.PROJECT_XCODE_PATH}*DontShowSelectServer=false*AddressableReset=false*DebugMode=false*TestServer=false*Review=false
+                    """
+                    
+                    def result = sh(script: command, returnStatus: true)
+                    if (result != 0) {
+                        error("Unity build failed with exit code: ${result}")
+                    }
+                    echo "Unity build completed successfully"
+                }
+            }
+        }
+        
+        stage('Backup Bundle Version') {
+            steps {
+                script {
+                    // Unity 빌드 후 생성된 Info.plist에서 Bundle Version 백업
+                    if (fileExists(env.PLIST_PATH)) {
+                        env.ORIGINAL_VERSION = sh(
+                            script: "/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' '${env.PLIST_PATH}'",
+                            returnStdout: true
+                        ).trim()
+                        echo "Backed up Bundle Version: ${env.ORIGINAL_VERSION}"
+                    } else {
+                        echo "Info.plist not found at ${env.PLIST_PATH}, skipping version backup"
+                    }
+                }
+            }
+        }
+        
+        stage('Increment Bundle Version') {
+            steps {
+                script {
+                    if (env.ORIGINAL_VERSION != "") {
+                        def newVersion = (env.ORIGINAL_VERSION as Integer) + 1
+                        sh "/usr/libexec/PlistBuddy -c 'Set :CFBundleVersion ${newVersion}' '${env.PLIST_PATH}'"
+                        echo "Bundle Version updated: ${env.ORIGINAL_VERSION} → ${newVersion}"
+                        
+                        // 프로젝트 설정에서도 버전 업데이트 (Unity에서 덮어쓰기 방지)
+                        sh "find '${env.PROJECT_XCODE_PATH}' -name '*.plist' -exec /usr/libexec/PlistBuddy -c 'Set :CFBundleVersion ${newVersion}' {} \\; 2>/dev/null || true"
+                    } else {
+                        echo "No original version found, skipping version increment"
+                    }
+                }
+            }
+        }
+        
+        stage('XCode') {
+            steps {
+                sh """
+                    echo "Create Archive starting..."
+                    cd ${env.PROJECT_XCODE_PATH}
+                    /usr/bin/xcodebuild  -workspace Unity-iPhone.xcworkspace -scheme Unity-iPhone -sdk iphoneos -configuration Release archive -archivePath './ios-build/archive.xcarchive' clean
+                    echo "Create Archive finished..."
+                """
+                
+                sh """
+                    echo "Create ipa starting..."
+                    cd ${env.PROJECT_XCODE_PATH}/ios-build
+                    /usr/bin/xcodebuild  -exportArchive -archivePath 'archive.xcarchive' -exportPath '.' -allowProvisioningUpdates -exportOptionsPlist '/Volumes/ExtremeSSD/JenkinsWorkspace/ios-conf/exportOptions.plist' 
+                    echo "Create ipa finished..."
+                """
+                
+                sh """
+                    echo "TestFlight upload starting"
+                    cd ${env.PROJECT_XCODE_PATH}/ios-build
+                    /usr/bin/xcrun altool --upload-app --type ios --file ${env.APP_NAME}.ipa --username client@somaz.link --password nxxx-axxx-gxxx-fxxx
+                    echo "TestFlight upload completed"    
+                """
+            }
+        }
+    }
+    
+    post {
+        failure {
+            script {
+                echo "Build failed! Rolling back Bundle Version..."
+                if (env.ORIGINAL_VERSION != "" && fileExists(env.PLIST_PATH)) {
+                    sh "/usr/libexec/PlistBuddy -c 'Set :CFBundleVersion ${env.ORIGINAL_VERSION}' '${env.PLIST_PATH}'"
+                    echo "Bundle Version rolled back to: ${env.ORIGINAL_VERSION}"
+                } else {
+                    echo "No original version to rollback or Info.plist not found"
+                }
+            }
+        }
+        
+        success {
+            echo "Build succeeded! Bundle Version updated successfully."
+        }
+        
+        always {
+            // 현재 Bundle Version 확인
+            script {
+                if (fileExists(env.PLIST_PATH)) {
+                    def currentVersion = sh(
+                        script: "/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' '${env.PLIST_PATH}'",
+                        returnStdout: true
+                    ).trim()
+                    echo "Final Bundle Version: ${currentVersion}"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,237 @@
+---
+daemonset:
+  # Annotations to apply to the daemonset
+  annotations: {}
+  # additionals labels
+  labels: {}
+  affinity: {}
+  # Include the daemonset
+  enabled: false
+
+deployment:
+  # Annotations to apply to the deployment
+  annotations: {}
+  # additionals labels
+  labels: {}
+  affinity: {}
+  # Include the deployment
+  enabled: true
+  # Extra environment variables for Filebeat container.
+  envFrom: []
+  # - configMapRef:
+  #     name: config-secret
+  extraEnvs:
+    - name: "ELASTICSEARCH_USERNAME"
+      value: "somaz"
+    - name: "ELASTICSEARCH_PASSWORD"
+      value: "somaz123!"
+    - name: "TZ"
+      value: "Asia/Seoul"
+  # Allows you to add any config files in /usr/share/filebeat
+  extraVolumes: []
+  # - name: extras
+  #   emptyDir: {}
+  extraVolumeMounts: []
+  # - name: extras
+  #   mountPath: /usr/share/extras
+  #   readOnly: true
+  # such as filebeat.yml for deployment
+  filebeatConfig:
+    filebeat.yml: |
+      filebeat.inputs:
+      - type: log
+        paths:
+          - /usr/share/filebeat/app/somaz/alpha/game/logs/*  # 마운트된 경로의 로그 파일
+          - /usr/share/filebeat/app/somaz/alpha/game/logs/**/*
+        fields:
+          log_source: "alpha-somaz-game"  # 이 값이 Elasticsearch 인덱스 이름이 됨
+          environment: "alpha"
+          app: "somaz"
+          component: "game"
+        fields_under_root: true
+        json.keys_under_root: true      # JSON 필드를 루트 레벨로 승격
+        json.add_error_key: true        # JSON 파싱 에러 시 에러 필드 추가
+        json.expand_keys: true          # 추가: 중첩된 JSON 문자열을 객체로 확장
+        processors:
+          - decode_json_fields:
+              fields: ["data"]
+              process_array: true
+              max_depth: 2
+              target: ""
+              overwrite_keys: true
+          - script:
+              lang: javascript
+              source: |
+                function process(event) {
+                  if (event.data && event.data.requestBody) {
+                    try {
+                      event.data.requestBody = JSON.parse(event.data.requestBody);
+                    } catch (e) {}
+                  }
+                  if (event.data && event.data.responseBody) {
+                    try {
+                      event.data.responseBody = JSON.parse(event.data.responseBody);
+                    } catch (e) {}
+                  }
+                  if (event.stack && Array.isArray(event.stack)) {
+                    try {
+                      event.stack = event.stack.map(function(str) {
+                        return str.replace(/\\n/g, '\n');
+                      });
+                    } catch (e) {}
+                  }
+                  return event;
+                }
+      - type: log
+        paths:
+          - /usr/share/filebeat/app/somaz/alpha/battle/logs/*  # 마운트된 경로의 로그 파일
+          - /usr/share/filebeat/app/somaz/alpha/battle/logs/**/*
+        fields:
+          log_source: "alpha-somaz-battle"  # 이 값이 Elasticsearch 인덱스 이름이 됨
+          environment: "alpha"
+          app: "somaz"
+          component: "battle"
+        fields_under_root: true
+        json.keys_under_root: true      # JSON 필드를 루트 레벨로 승격
+        json.add_error_key: true        # JSON 파싱 에러 시 에러 필드 추가
+        json.expand_keys: true          # 추가: 중첩된 JSON 문자열을 객체로 확장
+        processors:
+          - decode_json_fields:
+              fields: ["data"]
+              process_array: true
+              max_depth: 2
+              target: ""
+              overwrite_keys: true
+          - rename:
+              fields:
+                - from: "Properties.data"
+                  to: "data"
+          - script:
+              lang: javascript
+              source: |
+                function process(event) {
+                  if (event.data && event.data.requestBody) {
+                    try {
+                      event.data.requestBody = JSON.parse(event.data.requestBody);
+                    } catch (e) {}
+                  }
+                  if (event.data && event.data.responseBody) {
+                    try {
+                      event.data.responseBody = JSON.parse(event.data.responseBody);
+                    } catch (e) {}
+                  }
+                  if (event.stack && Array.isArray(event.stack)) {
+                    try {
+                      event.stack = event.stack.map(function(str) {
+                        return str.replace(/\\n/g, '\n');
+                      });
+                    } catch (e) {}
+                  }
+                  return event;
+                }
+
+      output.logstash:
+        hosts: ["somaz.iptime.org:32087"]
+        
+  nodeSelector:
+    eks.amazonaws.com/nodegroup: Somaz-NodeGroup-worker-node
+  # A list of secrets and their paths to mount inside the pod
+  # This is useful for mounting certificates for security other sensitive values
+  secretMounts: []
+  #  - name: filebeat-certificates
+  #    secretName: filebeat-certificates
+  #    path: /usr/share/filebeat/certs
+  #
+  # - User that the container will execute as.
+  # Not necessary to run as root (0) as the Filebeat Deployment use cases do not need access to Kubernetes Node internals
+  # - Typically not necessarily unless running within environments such as OpenShift.
+  securityContext:
+    runAsUser: 0
+    privileged: false
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits:
+      cpu: "1000m"
+      memory: "500Mi"
+  tolerations: []
+
+persistentVolumeClaims:
+  enabled: false
+
+persistentVolumes:
+  enabled: false
+
+efs:
+  persistentVolumes:
+    enabled: true
+    items:
+      - name: "alpha-somaz-game-app-logs-pv-filebeat"
+        fileSystemId: "fs-xxxxxxxxxxxx"
+        accessPointId: "fsap-xxxxxxxxxxx"  # Terraform으로 생성된 Access Point ID
+        storage: "5Gi"
+        volumeMode: Filesystem
+        accessModes:
+          - ReadWriteMany
+        reclaimPolicy: Retain
+        storageClassName: "efs-sc"
+
+      - name: "alpha-somaz-battle-app-logs-pv-filebeat"
+        fileSystemId: "fs-xxxxxxxxxxxx"
+        accessPointId: "fsap-xxxxxxxxxxx"  # Terraform으로 생성된 Access Point ID
+        storage: "5Gi"
+        volumeMode: Filesystem
+        accessModes:
+          - ReadWriteMany
+        reclaimPolicy: Retain
+        storageClassName: "efs-sc"
+
+  persistentVolumeClaims:
+    enabled: true
+    items:
+      - name: "alpha-somaz-game-app-logs-pvc-filebeat"
+        accessModes:
+          - ReadWriteMany
+        storageClassName: "efs-sc"
+        storage: "5Gi"
+        mountPath: "/usr/share/filebeat/app/somaz/alpha/game/logs"
+        selector:
+          volumeName: "alpha-somaz-game-app-logs-pv-filebeat"
+
+      - name: "alpha-somaz-battle-app-logs-pvc-filebeat"
+        accessModes:
+          - ReadWriteMany
+        storageClassName: "efs-sc"
+        storage: "5Gi"
+        mountPath: "/usr/share/filebeat/app/somaz/alpha/battle/logs"
+        selector:
+          volumeName: "alpha-somaz-battle-app-logs-pv-filebeat"
+
+# Replicas being used for the filebeat deployment
+replicas: 1
+
+extraContainers: ""
+# - name: dummy-init
+#   image: busybox
+#   command: ['echo', 'hey']
+
+extraInitContainers: []
+# - name: dummy-init
+
+# Root directory where Filebeat will write data to in order to persist registry data across pod restarts (file position and other metadata).
+hostPathRoot: /var/lib
+
+dnsConfig: {}
+# options:
+#   - name: ndots
+#     value: "2"
+hostAliases: []
+#- ip: "127.0.0.1"
+#  hostnames:
+#  - "foo.local"
+#  - "bar.local"
+image: "docker.elastic.co/beats/filebeat"
+imageTag: "8.5.1"
+imagePullPolicy: "IfNotPresent"
+imagePullSecrets: []

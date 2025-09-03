@@ -1,0 +1,165 @@
+## GitLab Runner Image
+##
+## By default it's using registry.gitlab.com/gitlab-org/gitlab-runner:alpine-v{VERSION}
+## where {VERSION} is taken from Chart.yaml from appVersion field
+##
+## ref: https://gitlab.com/gitlab-org/gitlab-runner/container_registry/29383?orderBy=NAME&sort=asc&search[]=alpine-v&search[]=
+##
+## Note: If you change the image to the ubuntu release
+##       don't forget to change the securityContext;
+##       these images run on different user IDs.
+##
+image:
+  registry: registry.gitlab.com
+  image: gitlab-org/gitlab-runner
+  # tag: alpine-v{{.Chart.AppVersion}}
+
+## How many runner pods to launch.
+##
+replicas: 1
+
+## How many old ReplicaSets for this Deployment you want to retain
+revisionHistoryLimit: 5
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/
+##
+nodeSelector: 
+  # Example: The gitlab runner manager should not run on spot instances so you can assign
+  # them to the regular worker nodes only.
+  # node-role.kubernetes.io/worker: "true"
+  eks.amazonaws.com/nodegroup: Somaz-NodeGroup-worker-node
+## The GitLab Server URL (with protocol) that want to register the runner against
+## ref: https://docs.gitlab.com/runner/commands/index.html#gitlab-runner-register
+##
+gitlabUrl: http://somaz.iptime.org:32090/
+
+## The Runner Token for adding new Runners to the GitLab Server. This must
+## be retrieved from your GitLab instance. It is the token of an already registered runner.
+## ref: (we don't have docs for that yet, but we want to use an existing token)
+##
+runnerToken: "glrt-9-ixxxxxxxxaaaxxxxxxxxxxxxxxzxxxxx"
+
+## Configure the maximum number of concurrent jobs
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+##
+concurrent: 10
+
+## Number of seconds until the forceful shutdown operation times out and exits the process.
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+##
+shutdown_timeout: 0
+
+## Defines in seconds how often to check GitLab for new builds
+## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+##
+checkInterval: 3
+
+## For RBAC support:
+rbac:
+  ## Specifies whether a Role and RoleBinding should be created
+  ## If this value is set to `true`, `serviceAccount.create` should also be set to either `true` or `false`
+  ##
+  create: true
+  ## Define the generated serviceAccountName when create is set to true
+  ## It defaults to "gitlab-runner.fullname" if not provided
+  ## DEPRECATED: Please use `serviceAccount.name` instead
+  generatedServiceAccountName: ""
+
+  ## Define list of rules to be added to the rbac role permissions.
+  ## Each rule supports the keys:
+  ## - apiGroups: default "" (indicates the core API group) if missing or empty.
+  ## - resources: default "*" if missing or empty.
+  ## - verbs: default "*" if missing or empty.
+  ##
+  ## Read more about the recommended rules on the following link
+  ##
+  ## ref: https://docs.gitlab.com/runner/executors/kubernetes/index.html#configure-runner-api-permissions
+  ##
+  rules:
+    - apiGroups: ["extensions", "apps"]
+      resources: ["deployments"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    - apiGroups: [""]
+      resources: ["pods","services","secrets","pods/exec", "serviceaccounts", "pods/attach"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    # - resources: ["events"]
+    #   verbs: ["list", "watch"]
+    # - resources: ["namespaces"]
+    #   verbs: ["create", "delete"]
+    # - resources: ["pods"]
+    #   verbs: ["create","delete","get"]
+    # - apiGroups: [""]
+    #   resources: ["pods/attach","pods/exec"]
+    #   verbs: ["get","create","patch","delete"]
+    # - apiGroups: [""]
+    #   resources: ["pods/log"]
+    #   verbs: ["get","list"]
+    # - resources: ["secrets"]
+    #   verbs: ["create","delete","get","update"]
+    # - resources: ["serviceaccounts"]
+    #   verbs: ["get"]
+    # - resources: ["services"]
+    #   verbs: ["create","get"]
+
+  ## Use podSecurity Policy
+  ## ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+  podSecurityPolicy:
+    enabled: true
+    resourceNames:
+      - gitlab-runner
+
+  ## Specify one or more imagePullSecrets used for pulling the runner image
+  ##
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account
+  ##
+  ## DEPRECATED: Please use `serviceAccount.imagePullSecrets` instead
+  ##
+  imagePullSecrets: []
+
+serviceAccount:
+  ## Specifies whether a ServiceAccount should be created
+  ##
+  ## TODO: Set default to `false`
+  create: true
+
+## Configuration for the Pods that the runner launches for each new job
+##
+runners:
+  # runner configuration, where the multi line string is evaluated as a
+  # template so you can specify helm values inside of it.
+  #
+  # tpl: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
+  # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+  config: |
+    [[runners]]
+      url = "http://somaz.iptime.org:32090/"
+      clone_url = "http://somaz.iptime.org:32090/"
+      [runners.kubernetes]
+        namespace = "{{.Release.Namespace}}"
+        image = "alpine"
+        helper_image = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v18.3.0"
+        helper_image_flavor = "arm64"
+
+  ## DEPRECATED: Specify the tags associated with the runner. Comma-separated list of tags.
+  ##
+  ## ref: https://docs.gitlab.com/ee/ci/runners/new_creation_workflow.html
+  ##
+  tags: "build-image-aws"
+
+## Configure securitycontext for the main container
+## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+##
+securityContext:
+  allowPrivilegeEscalation: true  # 권한 확대를 허용합니다.
+  readOnlyRootFilesystem: false   # 루트 파일 시스템에 쓸 수 있게 합니다.
+  runAsNonRoot: false             # 루트로 실행할 수 있게 합니다.
+  privileged: true               # 권한이 부여된 모드로 실행을 허용합니다.
+  capabilities:
+    drop: []                      # 모든 리눅스 캡 능성을 유지합니다.
+  
+persistentVolumes:
+  enabled: false
+
+persistentVolumeClaims:
+  enabled: false

@@ -1,0 +1,33 @@
+repositories:
+  - name: gitlab
+    url: https://charts.gitlab.io
+
+releases:
+  - name: build-image
+    namespace: gitlab-runner
+    chart: gitlab/gitlab-runner
+    version: 0.79.1
+    values:
+      - values/build.yaml
+
+  - name: deploy-image
+    namespace: gitlab-runner
+    chart: gitlab/gitlab-runner
+    version: 0.79.1
+    values:
+      - values/deploy.yaml
+
+  - name: old-build-deploy-image
+    namespace: gitlab-runner
+    chart: gitlab/gitlab-runner
+    version: 0.70.3
+    values:
+      - values/old-gitlab-runner.yaml 
+
+  # # test
+  # - name: projectm-client-build-image
+  #   namespace: gitlab-runner
+  #   chart: . # Use local Chart directory
+  #   version: 0.71.0
+  #   values:
+  #     - values/projectm-client-build.yaml
