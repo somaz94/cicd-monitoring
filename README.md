@@ -1,16 +1,18 @@
-# 🛠️ cicd-monitoring
+# cicd-monitoring
 
 A comprehensive collection of CI/CD pipelines and monitoring tools configurations for various cloud platforms and on-premise environments.
 
 <br/>
 
-## 🌐 Directory Structure
+## Directory Structure
 
-### 🌩️ AWS 
+<br/>
+
+### AWS 
 
 AWS-specific configurations and deployments for monitoring and CI/CD tools.
 
-📁 `aws`
+`aws`
 - `argocd` - ArgoCD configurations for AWS
 - `grafana` - Grafana dashboards and configurations
 - `loki` - Loki logging stack setup
@@ -18,11 +20,11 @@ AWS-specific configurations and deployments for monitoring and CI/CD tools.
 
 <br/>
 
-### 🚀 GCP
+### GCP
 
 Google Cloud Platform specific configurations and deployments.
 
-📁 `gcp`
+`gcp`
 - `argocd` - ArgoCD configurations for GCP
 - `grafana` - Grafana dashboards and configurations
 - `loki` - Loki logging stack setup
@@ -30,7 +32,7 @@ Google Cloud Platform specific configurations and deployments.
 
 <br/>
 
-### 🏠 On-Premise
+### On-Premise
 
 Comprehensive on-premises configurations for various monitoring and CI/CD tools.
 
@@ -62,7 +64,7 @@ Comprehensive on-premises configurations for various monitoring and CI/CD tools.
 
 <br/>
 
-### 🦊 GitLab CI/CD
+### GitLab CI/CD
 
 GitLab CI/CD pipeline configurations and scripts.
 
@@ -71,7 +73,7 @@ GitLab CI/CD pipeline configurations and scripts.
 
 <br/>
 
-### 🏃 GitLab Runner
+### GitLab Runner
 
 GitLab Runner configurations and templates.
 
@@ -80,15 +82,15 @@ GitLab Runner configurations and templates.
 
 <br/>
 
-### 🐙 GitHub CI/CD
+### GitHub CI/CD
 
 GitHub Actions workflows and configurations for different cloud platforms.
 
 📁 `github-cicd`
-- 🌩️ `aws`
+- `aws`
   - `build-deploy-repo` - Build and deployment workflows
   - `data-repo` - Data management workflows
-- 🚀 `gcp`
+- `gcp`
   - `build-deploy-repo` - Build and deployment workflows
   - `data-build-deploy-repo` - Combined data and deployment workflows
   - `data-repo` - Data management workflows
@@ -98,7 +100,7 @@ GitHub Actions workflows and configurations for different cloud platforms.
 
 <br/>
 
-### 🤖 GitHub Runner
+### GitHub Runner
 
 GitHub Actions runner configurations and controller setup.
 
@@ -110,7 +112,7 @@ GitHub Actions runner configurations and controller setup.
 
 <br/>
 
-## 🚀 Getting Started
+## Getting Started
 
 1. Choose your target platform (AWS, GCP, or On-Premise)
 2. Navigate to the specific tool directory
@@ -119,7 +121,7 @@ GitHub Actions runner configurations and controller setup.
 
 <br/>
 
-## 📝 Notes
+## Notes
 
 - Each directory contains its own README with specific instructions
 - Configuration files are organized by platform and tool
