@@ -40,5 +40,5 @@ helm upgrade grafana grafana/grafana -n monitoring -f values.yaml # Upgrade Meth
 Modify the `Domain`, `host` in all yaml files.
 
 ## Reference
-[Grafana Helmet Charts](https://github.com/grafana/helm-charts)
+[Grafana Helm Charts](https://github.com/grafana/helm-charts)
 

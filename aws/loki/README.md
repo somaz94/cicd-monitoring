@@ -40,4 +40,4 @@ helm upgrade loki  grafana/loki --version 2.16.0 -n monitoring -f values.yaml # 
 Modify the `Domain`, `host` part in all yaml files.
 
 ## Reference
-[Grafana Helmet Charts](https://github.com/grafana/helm-charts)
+[Grafana Helm Charts](https://github.com/grafana/helm-charts)

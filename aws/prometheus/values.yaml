@@ -12,7 +12,7 @@ server:
     limits:
       cpu: 1000m
       memory: 1024Mi
-  requests:
+    requests:
       cpu: 1000m
       memory: 1024Mi
   securityContext:
@@ -32,7 +32,7 @@ server:
       alb.ingress.kubernetes.io/backend-protocol: HTTP
       alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
       alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:5xxxxxxxxxxx:certificate/bxxxxxx-6xxx-4xxx-bxxx-4xxxxxxxxxx
-      alb.ingress.kuberentes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
       alb.ingress.kubernetes.io/group.name: 'mgmt'
     hosts:
       - prometheus.somaz.link
