@@ -1,9 +1,9 @@
 server:
-  enabled: "true"
+  enabled: true
 
   persistentVolume:
     enabled: true
-    storageClass: nfs-client # Select Storage Class
+    storageClass: nfs-client
     accessModes:
       - ReadWriteMany
     size: 10Gi
@@ -12,7 +12,7 @@ server:
     limits:
       cpu: 1000m
       memory: 1024Mi
-  requests:
+    requests:
       cpu: 1000m
       memory: 1024Mi
   securityContext:
@@ -27,7 +27,7 @@ alertmanager:
 
   persistence:
     enabled: true
-    storageClass: nfs-client # Select Storage Class
+    storageClass: nfs-client
     accessModes:
       - ReadWriteMany
     size: 10Gi

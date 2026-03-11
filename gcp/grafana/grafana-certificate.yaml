@@ -4,5 +4,5 @@ metadata:
   name: grafana-certificate
 spec:
   domains:
-    - grafana.somaz.link # change
+    - grafana.somaz.link
 

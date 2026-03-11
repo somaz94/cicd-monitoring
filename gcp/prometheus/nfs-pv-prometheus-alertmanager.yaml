@@ -10,9 +10,8 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  # storageClassName: nfs
   storageClassName: nfs-client
   nfs:
-    path: /nfs/grafana
+    path: /nfs/prometheus-alertmanager
     server: <nfs-server-ip>
 

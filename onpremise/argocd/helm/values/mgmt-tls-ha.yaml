@@ -37,7 +37,7 @@ redisSecretInit:
 
 ## Server
 server:
-  replicas: 1
+  replicas: 2
   # Argo CD server ingress configuration
   ingress:
     # -- Enable an ingress resource for the Argo CD server
@@ -85,7 +85,7 @@ server:
       # -- Certificate issuer kind. Either `Issuer` or `ClusterIssuer`
       kind: "ClusterIssuer"
       # -- Certificate issuer name. Eg. `letsencrypt`
-      name: "route53-issuer" # TODO: change to <your-issuer-name>
+      name: "route53-issuer"
     # Private key of the certificate
     privateKey:
       # -- Rotation policy of private key when certificate is re-issued. Either: `Never` or `Always`

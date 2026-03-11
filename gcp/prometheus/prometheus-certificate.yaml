@@ -4,5 +4,5 @@ metadata:
   name: prometheus-certificate
 spec:
   domains:
-    - promehteus.somaz.link # change
+    - prometheus.somaz.link
 

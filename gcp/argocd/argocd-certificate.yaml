@@ -4,4 +4,4 @@ metadata:
   name: argocd-certificate
 spec:
   domains:
-    - argocd.somaz.link # Modified your Domain
+    - argocd.somaz.link

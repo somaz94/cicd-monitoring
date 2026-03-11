@@ -4,5 +4,5 @@ metadata:
   name: loki-certificate
 spec:
   domains:
-    - loki.somaz.link # change
+    - loki.somaz.link
 
