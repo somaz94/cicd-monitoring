@@ -3,7 +3,7 @@ stages:
   - generator
   - prepare
   - gcloud
-  - build # buld images & push to private image registry at once
+  - build # build images & push to private image registry at once
   - update
 
 # 스크립트에서 사용할 변수 설정

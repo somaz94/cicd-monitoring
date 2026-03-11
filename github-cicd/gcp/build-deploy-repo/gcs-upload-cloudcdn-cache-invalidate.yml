@@ -127,7 +127,7 @@ jobs:
             python .github/workflows/set_content_type.py ${{ secrets.GCS_BUCKET_DEV }} "${file}"
           done < out/html_files.txt
        
-      - name: Invalidate cache CloudFront
+      - name: Invalidate cache CloudCDN
         run: |
           gcloud compute url-maps list
           gcloud compute url-maps invalidate-cdn-cache ${{ secrets.GCP_CLOUDCDN_URL_MAP_DEV }} \

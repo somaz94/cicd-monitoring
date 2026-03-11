@@ -107,7 +107,7 @@ jobs:
             exit 1
           fi
 
-      - name: Uplaod data files to Bastion Server
+      - name: Upload data files to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets.GCP_SOMAZ_BASTION_PEM }}

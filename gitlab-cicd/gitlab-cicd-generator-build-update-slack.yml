@@ -2,7 +2,7 @@ stages:
   - generator
   - prepare
   - gcloud
-  - build # buld images & push to private image registry at once
+  - build # build images & push to private image registry at once
   - update
   - notify
 

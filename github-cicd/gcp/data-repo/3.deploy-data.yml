@@ -118,7 +118,7 @@ jobs:
           gsutil ls -d gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/"
           gsutil ls -d gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
 
-      - name: Invalidate cache CloudFront
+      - name: Invalidate cache CloudCDN
         if: github.ref_name != 'production'
         env:
           GCP_SM_PROJECT: ${{ secrets[env.GCP_SM_PROJECT_NAME] }}
@@ -130,7 +130,7 @@ jobs:
           --global \
           --project ${{ env.GCP_SM_PROJECT }}
 
-      - name: Invalidate cache CloudFront Proudction
+      - name: Invalidate cache CloudCDN Production
         if: github.ref_name == 'production'
         env:
           GCP_SM_PROJECT: ${{ secrets[env.GCP_SM_PROJECT_NAME] }}        
@@ -165,7 +165,7 @@ jobs:
         with:
           secrets: GCP_SM_BASTION_IP
 
-      # - name: Uplaod data files to Bastion Server
+      # - name: Upload data files to Bastion Server
       #   uses: easingthemes/ssh-deploy@main
       #   env:
       #     SSH_PRIVATE_KEY: ${{ secrets.GCP_ASP_BASTION_PEM }}
@@ -176,7 +176,7 @@ jobs:
       #     ARGS: "-rltDvzO --delete"
       #     # ARGS: "-avzr --delete"
 
-      - name: Uplaod data files to Bastion Server
+      - name: Upload data files to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets.GCP_SM_BASTION_PEM }}
@@ -186,7 +186,7 @@ jobs:
           TARGET: /home/somaz/${{ inputs.environment }}-${{ env.PROJECT }}
           ARGS: "-rltDvzO --delete"
 
-      # - name: Uplaod data reload api shell script to Bastion Server
+      # - name: Upload data reload api shell script to Bastion Server
       #   uses: easingthemes/ssh-deploy@main
       #   env:
       #     SSH_PRIVATE_KEY: ${{ secrets.GCP_ASP_BASTION_PEM }}
@@ -196,7 +196,7 @@ jobs:
       #     TARGET: "/home/somaz/"
       #     ARGS: "-rltDvzO --delete"
 
-      - name: Uplaod data reload api shell script to Bastion Server
+      - name: Upload data reload api shell script to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets.GCP_SM_BASTION_PEM }}

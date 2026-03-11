@@ -67,7 +67,7 @@ jobs:
         with:
           secrets: BASTION_PEM,BASTION_DNS
 
-      - name: Uplaod data files to Bastion Server
+      - name: Upload data files to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets[env.BASTION_PEM_NAME] }}
@@ -77,7 +77,7 @@ jobs:
           TARGET: /home/ec2-user/${{ inputs.environment }}
           ARGS: "-avzr --delete"
 
-      - name: Uplaod data reload api shell script to Bastion Server
+      - name: Upload data reload api shell script to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
           SSH_PRIVATE_KEY: ${{ secrets[env.BASTION_PEM_NAME] }}

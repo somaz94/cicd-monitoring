@@ -3,7 +3,7 @@ stages:
   - generator
   - prepare
   - gcloud
-  - build # buld images & push to private image registry at once
+  - build # build images & push to private image registry at once
   - update
   - notify
 
@@ -249,7 +249,7 @@ generator:
     - |
       if [ "$CI_JOB_STATUS" = "success" ]; then
         echo "✅ 성공" > generator_status.txt
-      elif [ "$인I_JOB_STATUS" = "failed" ]; then
+      elif [ "$CI_JOB_STATUS" = "failed" ]; then
         echo "❌ 실패" > generator_status.txt
       elif [ "$CI_JOB_STATUS" = "canceled" ]; then
         echo "⚠️ 취소" > generator_status.txt

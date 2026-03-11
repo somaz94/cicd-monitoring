@@ -6,14 +6,14 @@ releases:
   - name: build-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.79.1
+    version: 0.81.0
     values:
       - values/build.yaml
 
   - name: deploy-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.79.1
+    version: 0.81.0
     values:
       - values/deploy.yaml
 

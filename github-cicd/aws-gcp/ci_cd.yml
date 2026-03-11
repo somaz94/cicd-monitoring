@@ -92,7 +92,7 @@ jobs:
           file: backend/${{ matrix.service }}.Dockerfile
           push: true
           tags: |
-            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_MGMT_PROJECT}}/${{ env.PROJECT_NAME }}-${{ matrix.service }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:lastet,
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_MGMT_PROJECT}}/${{ env.PROJECT_NAME }}-${{ matrix.service }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest,
             ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_MGMT_PROJECT }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ steps.vars.outputs.short_sha }}
           build-args: |
             CI=true
@@ -108,7 +108,7 @@ jobs:
           file: backend/${{ matrix.service }}.Dockerfile
           push: true
           tags: >-
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:lastet,
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:latest,
             ${{ steps.login-ecr.outputs.registry }}/${{ env.PROJECT_NAME }}-${{ matrix.service }}:${{ steps.vars.outputs.short_sha }}
           build-args: |
             CI=true      

@@ -1,0 +1,11 @@
+repositories:
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+
+releases:
+  - name: loki
+    namespace: monitoring
+    chart: .
+    version: 6.12.0
+    values:
+      - values/somaz-onpremise.yaml

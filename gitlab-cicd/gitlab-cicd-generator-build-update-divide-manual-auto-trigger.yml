@@ -2,7 +2,7 @@ stages:
   #- test # test code 가 명확해지면 빌드 전에 테스트 하도록 작업할 예정
   - generator
   - prepare
-  - build # buld images & push to private image registry at once
+  - build # build images & push to private image registry at once
   - update
 
 # 스크립트에서 사용할 변수 설정
@@ -269,7 +269,7 @@ build_auto_image_web:
     - echo [INFO] CI_REGISTRY_IMAGE_WEB is $CI_REGISTRY_IMAGE_WEB
     - echo [INFO] CI_COMMIT_REF_NAME is $CI_COMMIT_REF_NAME
     - echo [INFO] BUILD_TAG is $BUILD_TAG
-    - echo [INFO] IMAGE_URL_WEBis $IMAGE_URL_WEB
+    - echo [INFO] IMAGE_URL_WEB is $IMAGE_URL_WEB
     - echo [INFO] BUILD_TAG_LATEST is $BUILD_TAG_LATEST
     - echo [INFO] IMAGE_URL_LATEST_WEB is $IMAGE_URL_LATEST_WEB
     - echo [INFO] CI_PROJECT_DIR is $CI_PROJECT_DIR
