@@ -28,13 +28,13 @@ metadata:
   name: grafana-server-ingress
   namespace: monitoring
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: "somaz-gke-grafana-lb-ip" # change
+    kubernetes.io/ingress.global-static-ip-name: "somaz-gke-grafana-lb-ip"
     networking.gke.io/managed-certificates: "grafana-certificate"
     kubernetes.io/ingress.class: "gce"
     networking.gke.io/v1beta1.FrontendConfig: grafana-frontend-config
 spec:
   rules:
-  - host: grafana.somaz.link # change
+  - host: grafana.somaz.link
     http:
       paths:
       - pathType: Prefix

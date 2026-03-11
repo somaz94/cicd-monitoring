@@ -10,7 +10,6 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  # storageClassName: nfs
   storageClassName: nfs-client
   nfs:
     path: /nfs/grafana
