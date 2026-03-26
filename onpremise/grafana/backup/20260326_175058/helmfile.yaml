@@ -7,7 +7,7 @@ releases:
     namespace: monitoring
     createNamespace: true
     chart: grafana/grafana
-    version: 10.5.15
+    version: 8.5.1
     values:
       - values/mgmt.yaml
 
