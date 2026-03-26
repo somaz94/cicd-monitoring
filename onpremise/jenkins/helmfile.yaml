@@ -1,0 +1,27 @@
+repositories:
+  - name: jenkins
+    url: https://charts.jenkins.io
+
+releases:
+  - name: jenkins
+    namespace: jenkins
+    createNamespace: true
+    chart: jenkins/jenkins
+    version: 5.9.9
+    values:
+      - values/mgmt.yaml
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "jenkins"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

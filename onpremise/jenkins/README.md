@@ -1,79 +1,99 @@
-# Jenkins Installation Guide on Kubernetes
+# Jenkins Helm Chart
+
+Manages Jenkins CI/CD server using Helmfile.
 
 <br/>
 
-## Table of Contents
-- [Create Jenkins Namespace](#create-jenkins-namespace)
-- [Install certmanager and letsencrypt Setting](#install-certmanager-and-letsencrypt-setting)
-- [Install nfs-provisioner](#install-nfs-provisioner)
-- [Install Jenkins and Upgrade](#install-jenkins-and-upgrade)
-- [ADD Ingress](#add-ingress)
-- [Jenkins CLI](#jenkins-cli)
-- [Create API Token](#create-api-token)
-- [Additional Information](#additional-information)
+## Directory Structure
 
-<br/>
-
-## Create Jenkins Namespace
-```bash
-kubectl create ns jenkins
+```
+jenkins/
+├── Chart.yaml          # Version tracking (no local templates)
+├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values/
+│   └── mgmt.yaml       # Custom values (manually managed)
+├── upgrade.sh          # Version upgrade script
+├── backup/             # Auto backup on upgrade
+├── _backup/            # Old plain YAML files (pre-helmfile migration)
+└── README.md
 ```
 
 <br/>
 
-## Install certmanager and letsencrypt Setting
-- [certmanager-letsencrypt](https://github.com/somaz94/certmanager-letsencrypt)
+## Prerequisites
+
+- Kubernetes cluster
+- Helm 3
+- Helmfile
+- Ingress controller (nginx)
+- StorageClass (e.g., `nfs-client`)
 
 <br/>
 
-## Install nfs-provisioner
-- [nfs-subdir-external-provisioner](https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner)
+## Quick Start
 
-<br/>
-
-## Install Jenkins and Upgrade
 ```bash
-helm install jenkins -f jenkins-values.yaml -n jenkins jenkins/jenkins
-helm upgrade jenkins -f jenkins-values.yaml -n jenkins jenkins/jenkins # Upgrade Method
+# Validate configuration
+helmfile lint
+
+# Preview changes
+helmfile diff
+
+# Deploy
+helmfile apply
+
+# Delete
+helmfile destroy
 ```
 
 <br/>
 
-## ADD Ingress
+## Upgrade
+
 ```bash
-kubectl apply -f jenkins-ingress.yaml -n jenkins
+# Check latest version and upgrade
+./upgrade.sh
+
+# Preview changes only
+./upgrade.sh --dry-run
+
+# Upgrade to a specific version
+./upgrade.sh --version 5.9.9
+
+# Rollback from backup
+./upgrade.sh --rollback
 ```
 
 <br/>
 
 ## Jenkins CLI
+
 ```bash
-wget http://jenkins.somaz.link/jnlpJars/jenkins-cli.jar
+wget http://jenkins.somaz.example.com/jnlpJars/jenkins-cli.jar
 
-# Check Version
-java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token> -version
-Version: 2.414.1
+# Check version
+java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> -version
 
-# Copy Job
-java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token> copy-job <origin-job> <copy-job>
+# Copy job
+java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> copy-job <origin-job> <copy-job>
 
-# Reload Configuration
-java -jar jenkins-cli.jar -s http://jenkins.somaz.link/ -auth <user>:<api-token> reload-configuration
+# Reload configuration
+java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> reload-configuration
 ```
 
 <br/>
 
-## Create API Token
-To create an API Token, follow the steps below:
+## API Token
 
-1. Navigate to the Jenkins Dashboard.
-2. Go to Jenkins Management.
-3. Click on Users.
-4. Select your username.
-5. Click on Settings.
-6. Under API Token, click on 'ADD new Token'.
+1. Navigate to Jenkins Dashboard
+2. Go to Jenkins Management > Users
+3. Select your username > Settings
+4. Under API Token, click 'ADD new Token'
 
 <br/>
 
-## Additional Notes
-Modify the Domain, host, part in all yaml files.
+## References
+
+- https://github.com/jenkinsci/helm-charts
+- https://www.jenkins.io/doc/

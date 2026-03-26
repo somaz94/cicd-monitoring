@@ -1,0 +1,130 @@
+controller:
+  image:
+    registry: "docker.io"
+    repository: "jenkins/jenkins"
+    tag: "2.541.3-lts-jdk21"
+  imagePullPolicy: "Always"
+
+  numExecutors: 0
+  executorMode: "NORMAL"
+
+  adminUser: "admin"
+  # adminPassword: <defaults to random>
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "256Mi"
+    limits:
+      cpu: "1500m"
+      memory: "2048Mi"
+
+  runAsUser: 1000
+  fsGroup: 1000
+
+  servicePort: 8080
+  targetPort: 8080
+  serviceType: ClusterIP
+
+  healthProbes: true
+  probes:
+    startupProbe:
+      httpGet:
+        path: '{{ default "" .Values.controller.jenkinsUriPrefix }}/login'
+        port: http
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 12
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: '{{ default "" .Values.controller.jenkinsUriPrefix }}/login'
+        port: http
+      periodSeconds: 10
+      timeoutSeconds: 5
+    readinessProbe:
+      failureThreshold: 3
+      httpGet:
+        path: '{{ default "" .Values.controller.jenkinsUriPrefix }}/login'
+        port: http
+      periodSeconds: 10
+      timeoutSeconds: 5
+
+  installLatestPlugins: true
+  installLatestSpecifiedPlugins: false
+
+  JCasC:
+    defaultConfig: true
+    securityRealm: |-
+      local:
+        allowsSignup: false
+        enableCaptcha: false
+        users:
+        - id: "${chart-admin-username}"
+          name: "Jenkins Admin"
+          password: "${chart-admin-password}"
+    authorizationStrategy: |-
+      loggedInUsersCanDoAnything:
+        allowAnonymousRead: false
+
+  sidecars:
+    configAutoReload:
+      enabled: true
+
+  # ── HTTP ingress (active) ──
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/proxy-body-size: "2G"
+    hostName: jenkins.somaz.example.com
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  #
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: "nginx"
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/proxy-body-size: "2G"
+  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+  #   hostName: jenkins.somaz.example.com
+  #   tls:
+  #     - secretName: jenkins-tls
+  #       hosts:
+  #         - jenkins.somaz.example.com
+
+  prometheus:
+    enabled: false
+
+agent:
+  enabled: true
+  image: "jenkins/inbound-agent"
+  tag: "3292.v76d2f5a_1b_580-1"
+  resources:
+    requests:
+      cpu: "512m"
+      memory: "512Mi"
+    limits:
+      cpu: "512m"
+      memory: "512Mi"
+  containerCap: 10
+  podRetention: "Never"
+
+persistence:
+  enabled: true
+  storageClass: "nfs-client"
+  accessMode: "ReadWriteOnce"
+  size: "30Gi"
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
