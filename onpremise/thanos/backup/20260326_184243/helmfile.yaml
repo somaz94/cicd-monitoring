@@ -7,7 +7,7 @@ releases:
     namespace: monitoring
     createNamespace: true
     chart: bitnami/thanos
-    version: 17.3.1
+    version: 15.7.23
     values:
       - values/mgmt.yaml
 
@@ -16,7 +16,7 @@ releases:
   #   namespace: monitoring
   #   createNamespace: true
   #   chart: bitnami/thanos
-  #   version: 17.3.1
+  #   version: 15.7.23
   #   values:
   #     - values/mgmt-multicluster.yaml
 
