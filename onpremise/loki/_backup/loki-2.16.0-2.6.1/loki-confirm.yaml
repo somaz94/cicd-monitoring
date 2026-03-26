@@ -94,7 +94,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   nfs:
     path: /data/loki
-    server: nfs-server.nerdystar.io
+    server: nfs-server.somaz.example.com
 ---
 # Source: loki/templates/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -327,16 +327,16 @@ metadata:
     release: loki
     heritage: Helm
   annotations:
-    cert-manager.io/cluster-issuer: clouddns-issuer
+    cert-manager.io/cluster-issuer: cloudflare-issuer
     kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   tls:
     - hosts:
-        - "loki.fgn.nerdystar.io"
+        - "loki.somaz.example.com"
       secretName: loki-tls-gcp
   rules:
-    - host: "loki.fgn.nerdystar.io"
+    - host: "loki.somaz.example.com"
       http:
         paths:
           - path: /

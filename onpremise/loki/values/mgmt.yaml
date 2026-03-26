@@ -1,0 +1,130 @@
+global:
+  clusterDomain: "cluster.local"
+  dnsService: "coredns"
+  dnsNamespace: "kube-system"
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+    - from: "2024-01-01"
+      store: tsdb
+      index:
+        prefix: loki_index_
+        period: 24h
+      object_store: filesystem
+      schema: v13
+
+singleBinary:
+  replicas: 1
+  # -- Schedule singleBinary on specific nodes using tolerations and nodeSelector.
+  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+  # tolerations:
+  #   - key: "monitoring"
+  #     operator: "Equal"
+  #     effect: "NoSchedule"
+  # nodeSelector:
+  #   local-path: enabled
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+
+gateway:
+  enabled: true
+  # -- Schedule gateway on specific nodes using tolerations and nodeSelector.
+  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+  # tolerations:
+  #   - key: "monitoring"
+  #     operator: "Equal"
+  #     effect: "NoSchedule"
+  # nodeSelector:
+  #   local-path: enabled
+  service:
+    type: NodePort
+    nodePort: 31400
+
+  # ── HTTP ingress (active) ──
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - host: loki-gateway.somaz.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  #
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+  #   hosts:
+  #     - host: loki-gateway.somaz.example.com
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+  #   tls:
+  #     - secretName: loki-gateway-tls
+  #       hosts:
+  #         - loki-gateway.somaz.example.com
+
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+tableManager:
+  enabled: false
+
+# Zero out replica counts of other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+test:
+  enabled: false
+lokiCanary:
+  enabled: false

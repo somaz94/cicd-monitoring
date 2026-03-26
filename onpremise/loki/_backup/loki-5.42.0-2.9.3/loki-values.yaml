@@ -6,7 +6,7 @@ global:
   priorityClassName: null
   # -- configures cluster domain ("cluster.local" by default)
   clusterDomain: "cluster.local"
-  # -- configures DNS service name (수정)
+  # -- configures DNS service name (Modified)
   dnsService: "coredns"
   # -- configures DNS service namespace
   dnsNamespace: "kube-system"
@@ -255,7 +255,7 @@ loki:
   server:
     http_listen_port: 3100
     grpc_listen_port: 9095
-  # -- Limits config 수정
+  # -- Limits config Modified
   limits_config:
     reject_old_samples: true
     reject_old_samples_max_age: 168h
@@ -272,7 +272,7 @@ loki:
     path_prefix: /var/loki
     replication_factor: 1
     compactor_address: '{{ include "loki.compactorAddress" . }}'
-  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config. 수정
+  # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config. Modified
   storage:
     bucketNames:
       chunks: chunks
@@ -1156,7 +1156,7 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
-# Configuration for the single binary node(s) 수정
+# Configuration for the single binary node(s) Modified
 singleBinary:
   # -- Number of replicas for the single binary
   replicas: 1
@@ -1247,7 +1247,7 @@ singleBinary:
       matchLabels:
         type: loki
 
-# 추가
+# Added
 persistentVolumes:
   - name: loki-pv
     type: loki
@@ -1258,7 +1258,7 @@ persistentVolumes:
     reclaimPolicy: Retain
     storageClassName: nfs-client
     path: /data/loki
-    server: nfs-server.nerdystar.io
+    server: nfs-server.somaz.example.com
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
@@ -1275,7 +1275,7 @@ ingress:
   #      proxy_set_header X-Scope-OrgID $remote_user;
     # kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /
-    cert-manager.io/cluster-issuer: clouddns-issuer
+    cert-manager.io/cluster-issuer: cloudflare-issuer
   labels: {}
   #    blackbox.monitoring.exclude: "true"
   paths:
@@ -1303,7 +1303,7 @@ ingress:
 
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
-    - host: loki.somaz.link
+    - host: loki.somaz.example.com
       paths:
         - pathType: Prefix
           path: "/"
@@ -1319,7 +1319,7 @@ ingress:
   #    secretName: loki-distributed-tls
    - secretName: loki-tls-gcp
      hosts:
-       - loki.somaz.link
+       - loki.somaz.example.com
 
 # Configuration for the memberlist service
 memberlist:
@@ -1445,7 +1445,7 @@ gateway:
     annotations: {}
     # -- Labels for gateway service
     labels: {}
-  # Gateway ingress configuration 수정
+  # Gateway ingress configuration Modified
   ingress:
     # -- Specifies whether an ingress for the gateway should be created
     enabled: true
@@ -1455,12 +1455,12 @@ gateway:
     annotations:
       # kubernetes.io/ingress.class: nginx
       nginx.ingress.kubernetes.io/rewrite-target: /
-      cert-manager.io/cluster-issuer: clouddns-issuer
+      cert-manager.io/cluster-issuer: cloudflare-issuer
     # -- Labels for the gateway ingress
     labels: {}
     # -- Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating
     hosts:
-      - host: loki-gateway.somaz.link
+      - host: loki-gateway.somaz.example.com
         paths:
           - pathType: Prefix
             path: "/"
@@ -1473,7 +1473,7 @@ gateway:
     tls:
       - secretName: loki-gateway-tls-gcp
         hosts:
-          - loki-gateway.somaz.link
+          - loki-gateway.somaz.example.com
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway

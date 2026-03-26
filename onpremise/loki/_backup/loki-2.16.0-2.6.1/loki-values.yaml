@@ -10,7 +10,7 @@ image:
   # pullSecrets:
   #   - myRegistryKeySecretName
 
-# 수정
+# Modified
 ingress:
   enabled: true
   # For Kubernetes >= 1.18 you should specify the ingress-controller via the field ingressClassName
@@ -19,11 +19,11 @@ ingress:
   annotations:
     # kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/rewrite-target: /
-    cert-manager.io/cluster-issuer: clouddns-issuer
+    cert-manager.io/cluster-issuer: cloudflare-issuer
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
-    - host: loki.somaz.link
+    - host: loki.somaz.example.com
       paths:
         - pathType: Prefix
           path: "/"
@@ -38,7 +38,7 @@ ingress:
   #      - chart-example.local
    - secretName: loki-tls-gcp
      hosts:
-       - loki.somaz.link
+       - loki.somaz.example.com
 
 ## Affinity for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
@@ -116,11 +116,11 @@ config:
       directory: /data/loki/chunks
   chunk_store_config:
     max_look_back_period: 0s
-# 수정
+# Modified
   table_manager:
     retention_deletes_enabled: true
-    retention_period: 168h # 7일
-    # retention_period: 2160h # 90일
+    retention_period: 168h # 7 days
+    # retention_period: 2160h # 90 days
   compactor:
     working_directory: /data/loki/boltdb-shipper-compactor
     shared_store: filesystem
@@ -165,7 +165,7 @@ nodeSelector: {}
 ## If you set enabled as "True", you need :
 ## - create a pv which above 10Gi and has same namespace with loki
 ## - keep storageClassName same with below setting
-# 수정
+# Modified
 persistence:
   enabled: true
   storageClassName: nfs-client
@@ -181,7 +181,7 @@ persistence:
   # existingClaim:
   # storageClassName:
 
-# 추가
+# Added
 persistentVolumes:
   - name: loki-pv
     type: loki-pv
@@ -192,7 +192,7 @@ persistentVolumes:
     reclaimPolicy: Retain
     storageClassName: nfs-client
     path: /data/loki
-    server: nfs-server.somaz.link
+    server: nfs-server.somaz.example.com
 
 ## Pod Labels
 podLabels: {}
@@ -270,7 +270,7 @@ podDisruptionBudget: {}
 updateStrategy:
   type: RollingUpdate
 
-# 수정
+# Modified
 serviceMonitor:
   enabled: true
   interval: ""
