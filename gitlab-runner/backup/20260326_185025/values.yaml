@@ -314,9 +314,6 @@ metrics:
   ## Configure a prometheus-operator serviceMonitor to allow autodetection of
   ## the scraping target. Requires enabling the service resource below.
   ##
-  ## DEPRECATED: Use podMonitor instead. ServiceMonitor requires a Service and
-  ## cannot collect metrics during graceful shutdown when pods are marked NotReady.
-  ##
   serviceMonitor:
     enabled: false
 
@@ -359,69 +356,14 @@ metrics:
     ##
     # metricRelabelings: []
 
-  ## A list of RelabelConfigs to apply to samples before scraping
-  ##
-  ## ref: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
-  ##
-  ## relabelings: []
-
-  ## Configure a prometheus-operator podMonitor to scrape metrics directly from pods.
-  ##
-  ## RECOMMENDED: PodMonitor is the preferred method for collecting metrics as it:
-  ## - Scrapes metrics directly from pods without requiring a Service
-  ## - Continues to collect metrics during graceful shutdown when pods are marked NotReady
-  ## - Provides better visibility into shutdown metrics and termination behavior
-  ##
-  podMonitor:
-    enabled: false
-
-    ## Namespace where PodMonitor should be installed. Defaults to the
-    ## same namespace where the release will be installed.
-    ##
-    namespace: ""
-
-    ## Provide additional labels to the pod monitor resource
-    ##
-    ## labels: {}
-
-    ## Provide annotations to the pod monitor resource
-    ##
-    ## annotations: {}
-
-    ## Define a scrape interval (otherwise prometheus default is used)
-    ##
-    ## ref: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
-    ##
-    # interval: ""
-
-    ## Specify the scrape protocol scheme e.g., https or http
-    ##
-    # scheme: "http"
-
-    ## Supply a tls configuration for the pod monitor
-    ##
-    ## ref: https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/charts/crds/crds/crd-podmonitors.yaml
-    ##
-    # tlsConfig: {}
-
-    ## The URI path where prometheus metrics can be scraped from
-    ##
-    # path: "/metrics"
-
-    ## A list of MetricRelabelConfigs to apply to samples before ingestion
-    ##
-    ## ref: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs
-    ##
-    # metricRelabelings: []
-
     ## A list of RelabelConfigs to apply to samples before scraping
     ##
     ## ref: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
     ##
     ## relabelings: []
 
-## Configure a service resource (optional, only needed if using the deprecated
-## ServiceMonitor instead of the recommended PodMonitor)
+## Configure a service resource e.g., to allow scraping metrics via
+## prometheus-operator serviceMonitor
 service:
   enabled: false
 
@@ -705,11 +647,6 @@ extraEnvFrom: {}
   #     name: s3access
   #     key: secretkey
 
-## Additional environment variables refs
-extraEnvFromRefs: []
-  # - secretRef:
-  #     name: gitlab-runner-cache-config
-
 ## list of hosts and IPs that will be injected into the pod's hosts file
 hostAliases: []
   # Example:
@@ -824,7 +761,7 @@ volumes: []
 ## Array of extra K8s manifests to deploy
 ##
 extraObjects: []
-# - apiVersion: external-secrets.io/v1
+# - apiVersion: external-secrets.io/v1beta1
 #   kind: ExternalSecret
 #   metadata:
 #     name: '{{ include "gitlab-runner.secret" . }}'
@@ -857,4 +794,3 @@ extraObjects: []
 #        exec:
 #          command: [ "sh", "-c", "until docker info; do sleep 1; done;" ]
 extraContainers: []
-
