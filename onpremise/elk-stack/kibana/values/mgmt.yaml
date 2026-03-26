@@ -37,6 +37,7 @@ service:
   loadBalancerSourceRanges: []
   httpPortName: http
 
+# ── HTTP ingress (active) ──
 ingress:
   enabled: true
   className: "nginx"
@@ -48,7 +49,26 @@ ingress:
     - host: kibana.somaz.example.com
       paths:
         - path: /
-  tls:
-    - secretName: kibana-tls
-      hosts:
-        - kibana.somaz.example.com
+
+# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+# Ref: https://github.com/somaz94/certmanager-letsencrypt
+#
+# ingress:
+#   enabled: true
+#   className: "nginx"
+#   pathtype: ImplementationSpecific
+#   annotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+#   hosts:
+#     - host: kibana.somaz.example.com
+#       paths:
+#         - path: /
+#   tls:
+#     - secretName: kibana-tls
+#       hosts:
+#         - kibana.somaz.example.com

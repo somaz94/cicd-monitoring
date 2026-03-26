@@ -124,25 +124,33 @@ redisSecretInit:
 ## Server
 server:
   replicas: 1
-  # Argo CD server ingress configuration
+  # ── HTTP ingress (active) ──
   ingress:
-    # -- Enable an ingress resource for the Argo CD server
     enabled: true
-    ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#option-1-ssl-passthrough
     annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
-      # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-      # nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-
-    # -- Defines which ingress controller will implement the resource
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"
     ingressClassName: "nginx"
-
-    # -- The path to Argo CD server
     path: /
-
-    # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
     pathType: Prefix
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  #
+  # ingress:
+  #   enabled: true
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+  #   ingressClassName: "nginx"
+  #   path: /
+  #   pathType: Prefix
+  #   tls: true
 
 ## Repo Server
 repoServer:

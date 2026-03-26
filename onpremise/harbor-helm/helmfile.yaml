@@ -1,0 +1,44 @@
+repositories:
+  - name: harbor
+    url: https://helm.goharbor.io
+
+releases:
+  - name: harbor
+    namespace: harbor
+    createNamespace: true
+    chart: harbor/harbor
+    version: 1.18.3
+    values:
+      - values/mgmt.yaml
+
+# helmDefaults:
+#   wait: true
+#   timeout: 900  # Harbor may need more time for installation, set to 15 minutes
+#   atomic: true
+#   cleanupOnFail: true
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "harbor"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"
+
+  # Harbor requires database and storage, check if StorageClass exists
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "get"
+      - "sc"
+      - "--no-headers"
+      - "||"
+      - "true" 

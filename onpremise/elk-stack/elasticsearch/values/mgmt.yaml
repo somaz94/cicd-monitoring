@@ -123,11 +123,12 @@ clusterHealthCheckParams: "wait_for_status=green&timeout=1s"
 
 # Enabling this will publicly expose your Elasticsearch instance.
 # Only enable this if you have security enabled on your cluster
+# ── HTTP ingress (active) ──
 ingress:
   enabled: true
   annotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "false"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
   className: "nginx"
   pathtype: ImplementationSpecific
@@ -135,10 +136,31 @@ ingress:
     - host: elasticsearch.somaz.example.com
       paths:
         - path: /
-  tls:
-    - secretName: elasticsearch-tls
-      hosts:
-        - elasticsearch.somaz.example.com
+
+# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+# Ref: https://github.com/somaz94/certmanager-letsencrypt
+#
+# ingress:
+#   enabled: true
+#   annotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+#   className: "nginx"
+#   pathtype: ImplementationSpecific
+#   hosts:
+#     - host: elasticsearch.somaz.example.com
+#       paths:
+#         - path: /
+#   tls:
+#     - secretName: elasticsearch-tls
+#       hosts:
+#         - elasticsearch.somaz.example.com
 
 sysctlInitContainer:
   enabled: true

@@ -42,17 +42,40 @@ serviceMonitor:
   enabled: true
   path: /metrics
 
+# ── HTTP ingress (active) ──
 ingress:
   enabled: true
   ingressClassName: nginx
   annotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  labels: {}
   path: /
   pathType: Prefix
   hosts:
     - grafana.somaz.example.com
+
+# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+# Ref: https://github.com/somaz94/certmanager-letsencrypt
+#
+# ingress:
+#   enabled: true
+#   ingressClassName: nginx
+#   annotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+#   path: /
+#   pathType: Prefix
+#   hosts:
+#     - grafana.somaz.example.com
+#   tls:
+#     - secretName: grafana-tls
+#       hosts:
+#         - grafana.somaz.example.com
 
 resources: {}
 #  limits:

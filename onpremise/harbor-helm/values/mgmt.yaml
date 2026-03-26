@@ -1,0 +1,260 @@
+# ── HTTP expose (active) ──
+expose:
+  type: ingress
+  tls:
+    enabled: false
+    certSource: none
+  ingress:
+    hosts:
+      core: harbor.somaz.example.com
+    controller: default
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+  clusterIP:
+    name: harbor
+    ports:
+      httpPort: 80
+      httpsPort: 443
+
+externalURL: http://harbor.somaz.example.com
+
+# ── HTTPS expose with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+# Ref: https://github.com/somaz94/certmanager-letsencrypt
+#
+# expose:
+#   type: ingress
+#   tls:
+#     enabled: true
+#     certSource: secret
+#     secret:
+#       secretName: harbor-tls
+#   ingress:
+#     hosts:
+#       core: harbor.somaz.example.com
+#     controller: default
+#     className: "nginx"
+#     annotations:
+#       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#       nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+#       cert-manager.io/cluster-issuer: "cloudflare-issuer"
+#   clusterIP:
+#     name: harbor
+#     ports:
+#       httpPort: 80
+#       httpsPort: 443
+#
+# externalURL: https://harbor.somaz.example.com
+
+persistence:
+  enabled: true
+  resourcePolicy: "keep"
+  persistentVolumeClaim:
+    registry:
+      storageClass: "nfs-client-server"
+      accessMode: ReadWriteOnce
+      size: 5Gi
+    jobservice:
+      jobLog:
+        storageClass: "nfs-client-server"
+        accessMode: ReadWriteOnce
+        size: 1Gi
+    database:
+      storageClass: "nfs-client-server"
+      accessMode: ReadWriteOnce
+      size: 1Gi
+    redis:
+      storageClass: "nfs-client-server"
+      accessMode: ReadWriteOnce
+      size: 1Gi
+    trivy:
+      storageClass: "nfs-client-server"
+      accessMode: ReadWriteOnce
+      size: 5Gi
+  imageChartStorage:
+    disableredirect: false
+    type: filesystem
+    filesystem:
+      rootdirectory: /storage
+      #maxthreads: 100
+
+existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
+harborAdminPassword: "examplePassword123!"
+
+# debug, info, warning, error or fatal
+logLevel: info
+
+# Run the migration job via helm hook
+enableMigrateHelmHook: false
+
+metrics:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+
+trace:
+  enabled: false
+
+cache:
+  # default is not enabled.
+  enabled: true
+  # default keep cache for one day.
+  expireHours: 24
+
+
+# If service exposed via "ingress", the Nginx will not be used
+nginx:
+  image:
+    repository: goharbor/nginx-photon
+    tag: v2.14.3
+  automountServiceAccountToken: false
+  replicas: 1
+  revisionHistoryLimit: 10
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
+
+portal:
+  image:
+    repository: goharbor/harbor-portal
+    tag: v2.14.3
+  replicas: 1
+  revisionHistoryLimit: 10
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
+
+core:
+  image:
+    repository: goharbor/harbor-core
+    tag: v2.14.3
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
+
+jobservice:
+  image:
+    repository: goharbor/harbor-jobservice
+    tag: v2.14.3
+  replicas: 1
+  revisionHistoryLimit: 10
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
+
+registry:
+  registry:
+    image:
+      repository: goharbor/registry-photon
+      tag: v2.14.3
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 1
+  controller:
+    image:
+      repository: goharbor/harbor-registryctl
+      tag: v2.14.3
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 1Gi
+        cpu: 1
+  replicas: 1
+  revisionHistoryLimit: 10
+  upload_purging:
+    enabled: true
+    age: 168h
+    interval: 24h
+    dryrun: false
+
+trivy:
+  enabled: true
+  image:
+    # repository the repository for Trivy adapter image
+    repository: goharbor/trivy-adapter-photon
+    # tag the tag for Trivy adapter image
+    tag: v2.14.3
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
+
+database:
+  type: internal
+  internal:
+    image:
+      repository: goharbor/harbor-db
+      tag: v2.14.3
+    password: "examplePassword123!"
+    # shmSizeLimit: 512Mi
+    shmSizeLimit: 2048Mi
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 200m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+redis:
+  type: internal
+  internal:
+    image:
+      repository: goharbor/redis-photon
+      tag: v2.14.3
+
+exporter:
+  image:
+    repository: goharbor/harbor-exporter
+    tag: v2.14.3
+  replicas: 1
+  revisionHistoryLimit: 10
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 1
