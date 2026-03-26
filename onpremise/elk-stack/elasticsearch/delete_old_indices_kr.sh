@@ -6,8 +6,8 @@
 
 # Elasticsearch 연결 설정
 ELASTIC_USER="elastic"
-ELASTIC_PASSWORD="somaz123!"
-ELASTIC_HOST="http://elasticsearch.somaz.link"
+ELASTIC_PASSWORD="examplePassword123!"
+ELASTIC_HOST="http://elasticsearch.somaz.example.com"
 
 # 정리할 인덱스 이름 (배열)
 INDEX_NAMES=()

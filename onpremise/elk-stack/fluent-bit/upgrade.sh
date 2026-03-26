@@ -1,0 +1,619 @@
+#!/bin/bash
+set -euo pipefail
+
+# ============================================================
+# Configuration (ONLY section that differs between scripts)
+# To reuse this script for other LOCAL Helm charts with custom
+# templates, copy this file and modify the variables below.
+# ============================================================
+SCRIPT_NAME="Fluent Bit Helm Chart Upgrade Script (Local Chart)"
+HELM_REPO_NAME="fluent"
+HELM_REPO_URL="https://fluent.github.io/helm-charts"
+HELM_CHART="fluent/fluent-bit"
+CHANGELOG_URL="https://github.com/fluent/helm-charts/tree/main/charts/fluent-bit"
+
+# Custom templates that do NOT exist in upstream (will be preserved)
+CUSTOM_TEMPLATES=("pv.yaml" "pvc.yaml")
+
+# Patch for _pod.tpl: PVC volume block to inject into upstream template
+# Inserted before the extraVolumes block in the volumes section
+CUSTOM_POD_PATCH='{{- if and .Values.persistentVolumeClaims.enabled .Values.persistentVolumeClaims.items }}
+{{- range $persistentVolumeClaim := .Values.persistentVolumeClaims.items }}
+  - name: {{ $persistentVolumeClaim.name }}
+    persistentVolumeClaim:
+      claimName: {{ $persistentVolumeClaim.name }}
+{{- end }}
+{{- end }}'
+# ============================================================
+
+CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKUP_DIR="$CHART_DIR/backup"
+VALUES_DIR="$CHART_DIR/values"
+TEMPLATES_DIR="$CHART_DIR/templates"
+EXTRA_DIRS=("ci" "dashboards")  # Additional upstream dirs to sync
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+KEEP_BACKUPS=5
+
+# -----------------------------------------------
+# Functions
+# -----------------------------------------------
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [COMMAND] [OPTIONS]
+
+$SCRIPT_NAME
+Checks for new versions, backs up current files (including templates),
+downloads the upstream chart, and applies the upgrade while preserving
+custom templates (pv.yaml, pvc.yaml) and _pod.tpl patches.
+
+Commands:
+  (default)           Check latest version and upgrade
+  --version <VER>     Upgrade to a specific chart version
+  --exclude <PATTERN> Exclude values files matching pattern from comparison (comma-separated)
+  --dry-run           Preview changes only (no files will be modified)
+  --rollback          Restore from a previous backup
+  --list-backups      List available backups
+  --cleanup-backups   Keep only the last $KEEP_BACKUPS backups, remove older ones
+  -h, --help          Show this help message
+
+Examples:
+  $(basename "$0")                                # Upgrade to latest
+  $(basename "$0") --dry-run                      # Preview upgrade without changes
+  $(basename "$0") --version 0.49.0               # Upgrade to specific version
+  $(basename "$0") --exclude old-release,test     # Exclude patterns from comparison
+  $(basename "$0") --dry-run --version 0.49.0     # Combine flags
+  $(basename "$0") --rollback                     # Restore from backup
+  $(basename "$0") --list-backups                 # Show available backups
+  $(basename "$0") --cleanup-backups              # Remove old backups (keep last $KEEP_BACKUPS)
+EOF
+  exit 0
+}
+
+list_backups() {
+  echo "Available backups:"
+  echo ""
+  if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -d "$BACKUP_DIR"/2* 2>/dev/null)" ]; then
+    echo "  No backups found."
+    exit 0
+  fi
+
+  local i=1
+  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
+    local dirname=$(basename "$dir")
+    local chart_ver="unknown"
+    [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}')
+    local tpl_count=0
+    [ -d "$dir/templates" ] && tpl_count=$(ls "$dir/templates/" 2>/dev/null | wc -l | tr -d ' ')
+    local val_count=$(ls "$dir"/*.yaml 2>/dev/null | grep -v Chart.yaml | grep -v helmfile.yaml | wc -l | tr -d ' ')
+    printf "  [%d] %s (Chart: %s) — templates: %s, values: %s\n" "$i" "$dirname" "$chart_ver" "$tpl_count" "$val_count"
+    i=$((i + 1))
+  done
+  echo ""
+}
+
+do_rollback() {
+  if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -d "$BACKUP_DIR"/2* 2>/dev/null)" ]; then
+    echo "No backups found."
+    exit 1
+  fi
+
+  list_backups
+
+  local backups=()
+  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
+    backups+=("$dir")
+  done
+
+  read -rp "Select backup number to restore [1]: " choice
+  choice=${choice:-1}
+
+  if [[ ! "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt "${#backups[@]}" ]; then
+    echo "Invalid selection."
+    exit 1
+  fi
+
+  local selected="${backups[$((choice - 1))]}"
+  local dirname=$(basename "$selected")
+  echo ""
+  echo "Restoring from backup/$dirname..."
+
+  # Restore Chart.yaml and helmfile.yaml
+  [ -f "$selected/Chart.yaml" ] && cp "$selected/Chart.yaml" "$CHART_DIR/Chart.yaml" && echo "  Restored Chart.yaml"
+  [ -f "$selected/values.yaml" ] && cp "$selected/values.yaml" "$CHART_DIR/values.yaml" && echo "  Restored values.yaml"
+  [ -f "$selected/helmfile.yaml" ] && cp "$selected/helmfile.yaml" "$CHART_DIR/helmfile.yaml" && echo "  Restored helmfile.yaml"
+
+  # Restore templates
+  if [ -d "$selected/templates" ]; then
+    rm -rf "$TEMPLATES_DIR"
+    cp -r "$selected/templates" "$TEMPLATES_DIR"
+    echo "  Restored templates/ ($(ls "$TEMPLATES_DIR" | wc -l | tr -d ' ') files)"
+  fi
+
+  # Restore extra dirs (ci, dashboards, etc.)
+  for edir in "${EXTRA_DIRS[@]}"; do
+    if [ -d "$selected/$edir" ]; then
+      rm -rf "$CHART_DIR/$edir"
+      cp -r "$selected/$edir" "$CHART_DIR/$edir"
+      echo "  Restored $edir/"
+    else
+      echo "  Skipped $edir/ (not in this backup)"
+    fi
+  done
+
+  # Restore custom values
+  for f in "$selected"/*.yaml; do
+    local fname=$(basename "$f")
+    if [ "$fname" != "Chart.yaml" ] && [ "$fname" != "values.yaml" ] && [ "$fname" != "helmfile.yaml" ]; then
+      cp "$f" "$VALUES_DIR/$fname"
+      echo "  Restored values/$fname"
+    fi
+  done
+
+  echo ""
+  echo "Rollback complete! Run 'helmfile diff' to verify."
+}
+
+cleanup_backups() {
+  if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -d "$BACKUP_DIR"/2* 2>/dev/null)" ]; then
+    echo "No backups found."
+    exit 0
+  fi
+
+  local total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
+  echo "Total backups: $total (keeping last $KEEP_BACKUPS)"
+
+  if [ "$total" -le "$KEEP_BACKUPS" ]; then
+    echo "Nothing to clean up."
+    exit 0
+  fi
+
+  local to_delete=$((total - KEEP_BACKUPS))
+  echo "Removing $to_delete old backup(s)..."
+
+  ls -dt "$BACKUP_DIR"/2*/ | tail -n "$to_delete" | while read -r dir; do
+    local dirname=$(basename "$dir")
+    rm -rf "$dir"
+    echo "  Removed: $dirname"
+  done
+
+  echo "Done."
+}
+
+is_excluded() {
+  local filename="$1"
+  if [ -z "$EXCLUDE_PATTERNS" ]; then
+    return 1
+  fi
+  IFS=',' read -ra patterns <<< "$EXCLUDE_PATTERNS"
+  for pattern in "${patterns[@]}"; do
+    if [[ "$filename" == *"$pattern"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+patch_pod_tpl() {
+  local pod_tpl="$1"
+
+  # Check if patch already exists
+  if grep -q "persistentVolumeClaims.enabled" "$pod_tpl" 2>/dev/null; then
+    echo "  _pod.tpl: PVC patch already present, skipping"
+    return 0
+  fi
+
+  # Find the insertion point: before the extraVolumes block
+  # The pattern is: {{- if .Values.extraVolumes }}
+  local marker='{{- if .Values.extraVolumes }}'
+  if ! grep -qF "$marker" "$pod_tpl"; then
+    echo "  WARNING: Could not find extraVolumes marker in _pod.tpl"
+    echo "  Manual patching may be required for PVC volume support"
+    return 1
+  fi
+
+  # Insert PVC block before the extraVolumes block using a temp patch file
+  local patchfile=$(mktemp)
+  echo "$CUSTOM_POD_PATCH" > "$patchfile"
+
+  local tmpfile=$(mktemp)
+  while IFS= read -r line; do
+    if [[ "$line" == *"if .Values.extraVolumes"* ]]; then
+      cat "$patchfile"
+    fi
+    echo "$line"
+  done < "$pod_tpl" > "$tmpfile"
+  mv "$tmpfile" "$pod_tpl"
+  rm -f "$patchfile"
+
+  echo "  _pod.tpl: PVC patch applied successfully"
+  return 0
+}
+
+# -----------------------------------------------
+# Argument parsing
+# -----------------------------------------------
+
+DRY_RUN=false
+TARGET_VERSION=""
+EXCLUDE_PATTERNS=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)          usage ;;
+    --list-backups)     list_backups; exit 0 ;;
+    --rollback)         do_rollback; exit 0 ;;
+    --cleanup-backups)  cleanup_backups; exit 0 ;;
+    --dry-run)          DRY_RUN=true; shift ;;
+    --exclude)
+      EXCLUDE_PATTERNS="${2:-}"
+      if [ -z "$EXCLUDE_PATTERNS" ]; then
+        echo "ERROR: --exclude requires a pattern (e.g., --exclude old-release,test)"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --version)
+      TARGET_VERSION="${2:-}"
+      if [ -z "$TARGET_VERSION" ]; then
+        echo "ERROR: --version requires a version number"
+        exit 1
+      fi
+      shift 2
+      ;;
+    *)   echo "Unknown option: $1"; echo ""; usage ;;
+  esac
+done
+
+# -----------------------------------------------
+# Main upgrade flow
+# -----------------------------------------------
+
+echo "================================================"
+echo " $SCRIPT_NAME"
+if $DRY_RUN; then
+  echo " Mode: DRY-RUN (no files will be changed)"
+fi
+if [ -n "$TARGET_VERSION" ]; then
+  echo " Target: v$TARGET_VERSION"
+fi
+if [ -n "$EXCLUDE_PATTERNS" ]; then
+  echo " Exclude: $EXCLUDE_PATTERNS"
+fi
+echo "================================================"
+
+# Step 1: Check current version
+echo ""
+echo "[Step 1/8] Checking current version..."
+CURRENT_VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
+CURRENT_APP_VERSION=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
+echo "  Installed - Chart: $CURRENT_VERSION / App: $CURRENT_APP_VERSION"
+
+if [ -f "$CHART_DIR/helmfile.yaml" ]; then
+  echo ""
+  echo "  Helmfile releases:"
+  awk '/^releases:/,0' "$CHART_DIR/helmfile.yaml" | grep -v '#' | awk '
+    /- name:/ { name=$3 }
+    /version:/ { if (name != "") { printf "    - %-30s version: %s\n", name, $2; name="" } }
+  '
+fi
+
+# Step 2: Fetch latest version from helm repo
+echo ""
+echo "[Step 2/8] Checking latest version..."
+
+helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" > /dev/null 2>&1 || true
+helm repo update > /dev/null 2>&1 || true
+
+LATEST_INFO=$(helm search repo "$HELM_CHART" --output json 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+if data:
+    print(data[0].get('version', ''))
+    print(data[0].get('app_version', ''))
+" 2>/dev/null || true)
+
+LATEST_VERSION_FOUND=$(echo "$LATEST_INFO" | head -1)
+LATEST_APP_VERSION=$(echo "$LATEST_INFO" | tail -1)
+
+if [ -z "$LATEST_VERSION_FOUND" ]; then
+  echo "  ERROR: Failed to fetch latest version."
+  echo "  Try: helm repo add $HELM_REPO_NAME $HELM_REPO_URL && helm repo update"
+  exit 1
+fi
+
+if [ -n "$TARGET_VERSION" ]; then
+  echo "  Latest available - Chart: $LATEST_VERSION_FOUND / App: $LATEST_APP_VERSION"
+  LATEST_VERSION="$TARGET_VERSION"
+  echo "  Using target     - Chart: $TARGET_VERSION"
+else
+  LATEST_VERSION="$LATEST_VERSION_FOUND"
+  echo "  Latest    - Chart: $LATEST_VERSION / App: $LATEST_APP_VERSION"
+fi
+
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+  echo ""
+  echo "  Already up to date! Nothing to do."
+  exit 0
+fi
+
+echo ""
+echo "  Upgrade: $CURRENT_VERSION -> $LATEST_VERSION"
+echo "  Changelog: $CHANGELOG_URL"
+
+# Step 3: Download upstream chart
+echo ""
+echo "[Step 3/8] Downloading upstream chart v$LATEST_VERSION..."
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+helm pull "$HELM_CHART" --version "$LATEST_VERSION" --untar --untardir "$TEMP_DIR" 2>/dev/null
+UPSTREAM_DIR="$TEMP_DIR/fluent-bit"
+
+if [ ! -d "$UPSTREAM_DIR/templates" ]; then
+  echo "  ERROR: Failed to download chart for version $LATEST_VERSION"
+  exit 1
+fi
+
+LATEST_APP_VERSION=$(grep '^appVersion:' "$UPSTREAM_DIR/Chart.yaml" | awk '{print $2}')
+UPSTREAM_TPL_COUNT=$(find "$UPSTREAM_DIR/templates" -type f | wc -l | tr -d ' ')
+echo "  Downloaded successfully (App: $LATEST_APP_VERSION, Templates: $UPSTREAM_TPL_COUNT files)"
+
+# Step 4: Show Chart.yaml changes
+echo ""
+echo "[Step 4/8] Chart.yaml diff (current vs target)..."
+echo "------------------------------------------------"
+diff "$CHART_DIR/Chart.yaml" "$UPSTREAM_DIR/Chart.yaml" || true
+echo "------------------------------------------------"
+
+# Step 5: Show values.yaml and template changes
+echo ""
+echo "[Step 5/8] values.yaml diff (current vs target)..."
+DIFF_LINES=$( (diff "$CHART_DIR/values.yaml" "$UPSTREAM_DIR/values.yaml" || true) | wc -l | tr -d ' ')
+echo "  Total diff lines: $DIFF_LINES (showing first 80)"
+echo "------------------------------------------------"
+(diff "$CHART_DIR/values.yaml" "$UPSTREAM_DIR/values.yaml" || true) | head -80
+echo "------------------------------------------------"
+
+echo ""
+echo "  Template changes:"
+CHANGED=0
+ADDED=0
+REMOVED=0
+
+# Check modified and removed templates
+for local_tpl in "$TEMPLATES_DIR"/*.yaml "$TEMPLATES_DIR"/*.tpl "$TEMPLATES_DIR"/*.txt; do
+  [ ! -f "$local_tpl" ] && continue
+  local_name=$(basename "$local_tpl")
+
+  # Skip custom templates
+  is_custom=false
+  for ct in "${CUSTOM_TEMPLATES[@]}"; do
+    [ "$local_name" = "$ct" ] && is_custom=true && break
+  done
+  $is_custom && continue
+
+  if [ -f "$UPSTREAM_DIR/templates/$local_name" ]; then
+    if ! diff -q "$local_tpl" "$UPSTREAM_DIR/templates/$local_name" > /dev/null 2>&1; then
+      echo "    MODIFIED: templates/$local_name"
+      CHANGED=$((CHANGED + 1))
+    fi
+  else
+    echo "    REMOVED:  templates/$local_name (not in upstream)"
+    REMOVED=$((REMOVED + 1))
+  fi
+done
+
+# Check for new templates in upstream
+for upstream_tpl in "$UPSTREAM_DIR/templates"/*.yaml "$UPSTREAM_DIR/templates"/*.tpl "$UPSTREAM_DIR/templates"/*.txt; do
+  [ ! -f "$upstream_tpl" ] && continue
+  upstream_name=$(basename "$upstream_tpl")
+  if [ ! -f "$TEMPLATES_DIR/$upstream_name" ]; then
+    echo "    NEW:      templates/$upstream_name"
+    ADDED=$((ADDED + 1))
+  fi
+done
+
+# Check tests subdirectory
+for upstream_tpl in "$UPSTREAM_DIR/templates/tests"/*.yaml; do
+  [ ! -f "$upstream_tpl" ] && continue
+  upstream_name=$(basename "$upstream_tpl")
+  if [ -f "$TEMPLATES_DIR/tests/$upstream_name" ]; then
+    if ! diff -q "$TEMPLATES_DIR/tests/$upstream_name" "$upstream_tpl" > /dev/null 2>&1; then
+      echo "    MODIFIED: templates/tests/$upstream_name"
+      CHANGED=$((CHANGED + 1))
+    fi
+  else
+    echo "    NEW:      templates/tests/$upstream_name"
+    ADDED=$((ADDED + 1))
+  fi
+done
+
+echo "  Summary: $CHANGED modified, $ADDED new, $REMOVED removed"
+echo "  Custom templates preserved: ${CUSTOM_TEMPLATES[*]}"
+
+# Step 6: Show _pod.tpl patch diff
+echo ""
+echo "[Step 6/8] Custom _pod.tpl patch check..."
+if grep -q "persistentVolumeClaims.enabled" "$UPSTREAM_DIR/templates/_pod.tpl" 2>/dev/null; then
+  echo "  Upstream _pod.tpl already includes PVC support! No patching needed."
+else
+  echo "  Upstream _pod.tpl does NOT include PVC support."
+  echo "  Will inject PVC volume block after upgrade."
+  echo ""
+  echo "  Patch to apply:"
+  echo "  ------------------------------------------------"
+  echo "$CUSTOM_POD_PATCH" | sed 's/^/  /'
+  echo "  ------------------------------------------------"
+fi
+
+# Step 7: Check custom values for breaking changes
+echo ""
+echo "[Step 7/8] Checking custom values for breaking changes..."
+
+if [ -n "$EXCLUDE_PATTERNS" ]; then
+  echo "  Excluding patterns: $EXCLUDE_PATTERNS"
+fi
+
+for values_file in "$VALUES_DIR"/*.yaml; do
+  [ ! -f "$values_file" ] && continue
+  filename=$(basename "$values_file")
+
+  if is_excluded "$filename"; then
+    echo ""
+    echo "=== values/$filename === (SKIPPED)"
+    continue
+  fi
+
+  echo ""
+  echo "=== values/$filename ==="
+
+  REMOVED_KEYS=$( (diff \
+    <(grep -E '^[a-zA-Z]' "$CHART_DIR/values.yaml" | sed 's/:.*//' | sort -u) \
+    <(grep -E '^[a-zA-Z]' "$UPSTREAM_DIR/values.yaml" | sed 's/:.*//' | sort -u) \
+    || true) | grep '^<' | sed 's/^< //' || true)
+
+  if [ -n "$REMOVED_KEYS" ]; then
+    echo "  !!  Removed top-level keys in target values.yaml:"
+    echo "$REMOVED_KEYS" | while read -r key; do
+      if grep -q "^$key:" "$values_file" 2>/dev/null; then
+        echo "    - $key  <-- USED in your $filename!"
+      else
+        echo "    - $key"
+      fi
+    done
+  fi
+
+  NEW_KEYS=$( (diff \
+    <(grep -E '^[a-zA-Z]' "$CHART_DIR/values.yaml" | sed 's/:.*//' | sort -u) \
+    <(grep -E '^[a-zA-Z]' "$UPSTREAM_DIR/values.yaml" | sed 's/:.*//' | sort -u) \
+    || true) | grep '^>' | sed 's/^> //' || true)
+
+  if [ -n "$NEW_KEYS" ]; then
+    echo "  ++  New top-level keys in target values.yaml:"
+    echo "$NEW_KEYS" | while read -r key; do echo "    - $key"; done
+  fi
+
+  if [ -z "$REMOVED_KEYS" ] && [ -z "$NEW_KEYS" ]; then
+    echo "  OK  No breaking top-level key changes detected"
+  fi
+done
+
+# Step 8: Apply changes (or exit if dry-run)
+echo ""
+if $DRY_RUN; then
+  echo "[Step 8/8] DRY-RUN complete. No files were changed."
+  echo ""
+  echo "  To apply: ./upgrade.sh"
+  [ -n "$TARGET_VERSION" ] && echo "  To apply: ./upgrade.sh --version $TARGET_VERSION"
+  exit 0
+fi
+
+echo "[Step 8/8] Applying upgrade..."
+
+# Create backup (includes templates)
+mkdir -p "$BACKUP_DIR/$TIMESTAMP/templates"
+cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
+cp "$CHART_DIR/values.yaml" "$BACKUP_DIR/$TIMESTAMP/values.yaml"
+[ -f "$CHART_DIR/helmfile.yaml" ] && cp "$CHART_DIR/helmfile.yaml" "$BACKUP_DIR/$TIMESTAMP/helmfile.yaml"
+
+# Backup all templates (including subdirectories)
+cp -r "$TEMPLATES_DIR"/* "$BACKUP_DIR/$TIMESTAMP/templates/" 2>/dev/null || true
+if [ -d "$TEMPLATES_DIR/tests" ]; then
+  mkdir -p "$BACKUP_DIR/$TIMESTAMP/templates/tests"
+  cp -r "$TEMPLATES_DIR/tests"/* "$BACKUP_DIR/$TIMESTAMP/templates/tests/" 2>/dev/null || true
+fi
+
+# Backup extra dirs (ci, dashboards, etc.)
+for edir in "${EXTRA_DIRS[@]}"; do
+  if [ -d "$CHART_DIR/$edir" ]; then
+    cp -r "$CHART_DIR/$edir" "$BACKUP_DIR/$TIMESTAMP/$edir"
+  fi
+done
+
+# Backup custom values
+for values_file in "$VALUES_DIR"/*.yaml; do
+  [ -f "$values_file" ] || continue
+  is_excluded "$(basename "$values_file")" && continue
+  cp "$values_file" "$BACKUP_DIR/$TIMESTAMP/$(basename "$values_file")"
+done
+
+echo "  Backed up to: backup/$TIMESTAMP/"
+echo "    - Chart.yaml, values.yaml"
+echo "    - templates/ ($(find "$BACKUP_DIR/$TIMESTAMP/templates" -type f | wc -l | tr -d ' ') files)"
+for edir in "${EXTRA_DIRS[@]}"; do
+  [ -d "$BACKUP_DIR/$TIMESTAMP/$edir" ] && echo "    - $edir/"
+done
+
+# Save custom templates to temp
+for ct in "${CUSTOM_TEMPLATES[@]}"; do
+  if [ -f "$TEMPLATES_DIR/$ct" ]; then
+    cp "$TEMPLATES_DIR/$ct" "$TEMP_DIR/custom_$ct"
+  fi
+done
+
+# Replace templates with upstream
+rm -rf "$TEMPLATES_DIR"
+cp -r "$UPSTREAM_DIR/templates" "$TEMPLATES_DIR"
+echo ""
+echo "  Replaced templates/ with upstream ($(find "$TEMPLATES_DIR" -type f | wc -l | tr -d ' ') files)"
+
+# Restore custom templates
+for ct in "${CUSTOM_TEMPLATES[@]}"; do
+  if [ -f "$TEMP_DIR/custom_$ct" ]; then
+    cp "$TEMP_DIR/custom_$ct" "$TEMPLATES_DIR/$ct"
+    echo "  Preserved custom: templates/$ct"
+  fi
+done
+
+# Patch _pod.tpl
+if ! grep -q "persistentVolumeClaims.enabled" "$TEMPLATES_DIR/_pod.tpl" 2>/dev/null; then
+  patch_pod_tpl "$TEMPLATES_DIR/_pod.tpl"
+else
+  echo "  _pod.tpl: PVC support already in upstream, no patch needed"
+fi
+
+# Update extra dirs (ci, dashboards, etc.)
+for edir in "${EXTRA_DIRS[@]}"; do
+  if [ -d "$UPSTREAM_DIR/$edir" ]; then
+    rm -rf "$CHART_DIR/$edir"
+    cp -r "$UPSTREAM_DIR/$edir" "$CHART_DIR/$edir"
+    echo "  Updated $edir/"
+  fi
+done
+
+# Update Chart.yaml and values.yaml
+cp "$UPSTREAM_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml"
+echo ""
+echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_APP_VERSION)"
+
+cp "$UPSTREAM_DIR/values.yaml" "$CHART_DIR/values.yaml"
+echo "  Updated values.yaml"
+
+# Update helmfile.yaml version
+if [ -f "$CHART_DIR/helmfile.yaml" ]; then
+  UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
+  sed -i '' "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml"
+  echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
+fi
+
+echo ""
+echo "================================================"
+echo " Upgrade complete! ($CURRENT_VERSION -> $LATEST_VERSION)"
+echo ""
+echo " Changelog: $CHANGELOG_URL"
+echo ""
+echo " Custom templates preserved:"
+for ct in "${CUSTOM_TEMPLATES[@]}"; do
+  echo "   - templates/$ct"
+done
+echo "   - templates/_pod.tpl (PVC patch)"
+echo ""
+echo " Next steps:"
+echo "   1. Review values/ files for any needed changes"
+echo "   2. Run: helmfile diff"
+echo "   3. Run: helmfile apply"
+echo ""
+echo " To rollback:"
+echo "   ./upgrade.sh --rollback"
+echo "================================================"

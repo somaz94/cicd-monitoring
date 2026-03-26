@@ -1,0 +1,275 @@
+---
+# Fluent Bit configuration for mgmt environment
+kind: Deployment
+replicaCount: 1
+
+image:
+  repository: cr.fluentbit.io/fluent/fluent-bit
+  tag: "3.1.4"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+rbac:
+  create: true
+  nodeAccess: false
+
+podSecurityContext: {}
+
+securityContext:
+  runAsUser: 0
+  privileged: false
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+tolerations: []
+
+nodeSelector: {}
+
+affinity: {}
+
+env:
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "elasticsearch-master"
+  - name: FLUENT_ELASTICSEARCH_PORT
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_USER
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: username
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+
+# Volume mounts for log collection
+extraVolumeMounts:
+  - name: dev-app-game-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/app/dev/game
+    readOnly: true
+  - name: dev-app-battle-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/app/dev/battle
+    readOnly: true
+  - name: stg-app-game-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/app/staging/game
+    readOnly: true
+  - name: qa-app-game-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/app/qa/game
+    readOnly: true
+
+config:
+  service: |
+    [SERVICE]
+        Daemon Off
+        Flush 1
+        Log_Level info
+        Parsers_File /fluent-bit/etc/parsers.conf
+        Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+        Health_Check On
+
+  inputs: |
+    # Dev Game logs
+    [INPUT]
+        Name tail
+        Path /fluent-bit/logs/app/dev/game/*
+        Path_Key filepath
+        Tag app.dev.game
+        Parser app_json
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head true
+        Ignore_Older 0
+
+    # Dev Battle logs
+    [INPUT]
+        Name tail
+        Path /fluent-bit/logs/app/dev/battle/*
+        Path_Key filepath
+        Tag app.dev.battle
+        Parser app_json
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head true
+        Ignore_Older 0
+
+    # Staging Game logs
+    [INPUT]
+        Name tail
+        Path /fluent-bit/logs/app/staging/game/*
+        Path_Key filepath
+        Tag app.stg.game
+        Parser app_json
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head true
+        Ignore_Older 0
+
+    # QA Game logs
+    [INPUT]
+        Name tail
+        Path /fluent-bit/logs/app/qa/game/*
+        Path_Key filepath
+        Tag app.qa.game
+        Parser app_json
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head true
+        Ignore_Older 0
+
+  filters: |
+    # Add metadata for dev game logs
+    [FILTER]
+        Name modify
+        Match app.dev.game
+        Set log_source dev-app-game
+        Set environment dev
+        Set app myapp
+        Set component game
+
+    # Add metadata for dev battle logs
+    [FILTER]
+        Name modify
+        Match app.dev.battle
+        Set log_source dev-app-battle
+        Set environment dev
+        Set app myapp
+        Set component battle
+
+    # Add metadata for staging game logs
+    [FILTER]
+        Name modify
+        Match app.stg.game
+        Set log_source stg-app-game
+        Set environment stg
+        Set app myapp
+        Set component game
+
+    # Add metadata for qa game logs
+    [FILTER]
+        Name modify
+        Match app.qa.game
+        Set log_source qa-app-game
+        Set environment qa
+        Set app myapp
+        Set component game
+
+  outputs: |
+    # Send to Fluentd for further processing
+    [OUTPUT]
+        Name forward
+        Match app.*
+        Host fluentd
+        Port 24224
+        Retry_Limit 5
+
+  customParsers: |
+    [PARSER]
+        Name app_json
+        Format json
+        Time_Keep On
+        Time_Key @timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+    [PARSER]
+        Name docker_no_time
+        Format json
+        Time_Keep Off
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+logLevel: info
+
+# PersistentVolumes for log collection
+persistentVolumes:
+  enabled: true
+  items:
+    - name: dev-app-game-logs-pv-fluentbit
+      storage: 5Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteMany
+      reclaimPolicy: Retain
+      storageClassName: nfs-client-nopath
+      path: /volume1/nfs/app/dev/server/logs/game
+      server: 10.0.0.5
+    - name: dev-app-battle-logs-pv-fluentbit
+      storage: 5Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteMany
+      reclaimPolicy: Retain
+      storageClassName: nfs-client-nopath
+      path: /volume1/nfs/app/dev/server/logs/battle
+      server: 10.0.0.5
+    - name: stg-app-game-logs-pv-fluentbit
+      storage: 5Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteMany
+      reclaimPolicy: Retain
+      storageClassName: nfs-client-nopath
+      path: /volume1/nfs/app/staging/server/logs/game
+      server: 10.0.0.5
+    - name: qa-app-game-logs-pv-fluentbit
+      storage: 5Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteMany
+      reclaimPolicy: Retain
+      storageClassName: nfs-client-nopath
+      path: /volume1/nfs/app/qa/server/logs/game
+      server: 10.0.0.5
+
+# PersistentVolumeClaims for log collection
+persistentVolumeClaims:
+  enabled: true
+  items:
+    - name: dev-app-game-logs-pvc-fluentbit
+      accessModes:
+        - ReadWriteMany
+      storageClassName: nfs-client-nopath
+      storage: 5Gi
+      selector:
+        volumeName: dev-app-game-logs-pv-fluentbit
+    - name: dev-app-battle-logs-pvc-fluentbit
+      accessModes:
+        - ReadWriteMany
+      storageClassName: nfs-client-nopath
+      storage: 5Gi
+      selector:
+        volumeName: dev-app-battle-logs-pv-fluentbit
+    - name: stg-app-game-logs-pvc-fluentbit
+      accessModes:
+        - ReadWriteMany
+      storageClassName: nfs-client-nopath
+      storage: 5Gi
+      selector:
+        volumeName: stg-app-game-logs-pv-fluentbit
+    - name: qa-app-game-logs-pvc-fluentbit
+      accessModes:
+        - ReadWriteMany
+      storageClassName: nfs-client-nopath
+      storage: 5Gi
+      selector:
+        volumeName: qa-app-game-logs-pv-fluentbit

@@ -1,0 +1,11 @@
+repositories:
+  - name: fluent
+    url: https://fluent.github.io/helm-charts
+
+releases:
+  - name: fluentd
+    namespace: monitoring
+    chart: fluent/fluentd
+    version: 0.5.3
+    values:
+      - values/mgmt.yaml

@@ -1,0 +1,43 @@
+repositories:
+  - name: argo
+    url: https://argoproj.github.io/argo-helm
+  - name: dandydeveloper
+    url: https://dandydeveloper.github.io/charts/
+
+releases:
+  - name: argocd
+    namespace: argocd
+    createNamespace: true
+    chart: argo/argo-cd
+    version: 9.4.15
+    values:
+      - values/mgmt.yaml
+
+# helmDefaults:
+#   wait: true
+#   timeout: 600
+#   atomic: true
+#   cleanupOnFail: true
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "helm"
+    args:
+      - "dependency"
+      - "update"
+      - "."
+
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "argocd"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

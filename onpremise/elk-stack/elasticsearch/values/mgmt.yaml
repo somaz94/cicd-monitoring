@@ -37,7 +37,7 @@ esConfig: {}
 # Disable it to use your own elastic-credential Secret.
 secret:
   enabled: true
-  password: "somaz123!" # generated randomly if not defined
+  password: "examplePassword123!" # generated randomly if not defined
 
 image: "docker.elastic.co/elasticsearch/elasticsearch"
 imageTag: "8.5.1"
@@ -132,14 +132,14 @@ ingress:
   className: "nginx"
   pathtype: ImplementationSpecific
   hosts:
-    - host: elasticsearch.somaz.link
+    - host: elasticsearch.somaz.example.com
       paths:
         - path: /
   tls:
     - secretName: elasticsearch-tls
       hosts:
-        - elasticsearch.somaz.link
-  
+        - elasticsearch.somaz.example.com
+
 sysctlInitContainer:
   enabled: true
 
@@ -156,7 +156,6 @@ networkPolicy:
 
   http:
     enabled: false
-
 
   transport:
     ## Note that all Elasticsearch Pods can talk to themselves using transport port even if enabled.

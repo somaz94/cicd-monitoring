@@ -1,0 +1,11 @@
+repositories:
+  - name: fluent
+    url: https://fluent.github.io/helm-charts
+
+releases:
+  - name: fluent-bit
+    namespace: monitoring
+    chart: .
+    version: 0.56.0
+    values:
+      - values/mgmt.yaml

@@ -6,8 +6,8 @@
 
 # Elasticsearch connection settings
 ELASTIC_USER="elastic"
-ELASTIC_PASSWORD="somaz123!"
-ELASTIC_HOST="http://elasticsearch.somaz.link"
+ELASTIC_PASSWORD="examplePassword123!"
+ELASTIC_HOST="http://elasticsearch.somaz.example.com"
 
 # Index names to clean (array)
 INDEX_NAMES=()

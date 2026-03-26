@@ -1,0 +1,217 @@
+# DaemonSet, Deployment or StatefulSet
+kind: "StatefulSet"
+variant: elasticsearch7
+replicaCount: 1
+
+image:
+  repository: "fluent/fluentd-kubernetes-daemonset"
+  tag: "v1.16-debian-elasticsearch7-1"
+
+
+env:
+  - name: FLUENT_ELASTICSEARCH_HOST
+    value: "elasticsearch-master"
+  - name: FLUENT_ELASTICSEARCH_PORT
+    value: "9200"
+  - name: FLUENT_ELASTICSEARCH_USER
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: username
+  - name: FLUENT_ELASTICSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+  - name: FLUENT_ELASTICSEARCH_SCHEME
+    value: "https"
+  - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
+    value: "false"
+
+envFrom: []
+
+volumes:
+  - name: elastic-certs
+    secret:
+      secretName: elasticsearch-master-certs
+
+volumeMounts:
+  - name: elastic-certs
+    mountPath: /certs
+
+persistence:
+  enabled: true
+  storageClass: "nfs-client-server"
+  accessMode: ReadWriteOnce
+  size: 10Gi
+
+service:
+  enabled: true
+  type: "ClusterIP"
+  annotations: {}
+  ports:
+  - name: "forwarder"
+    protocol: TCP
+    containerPort: 24224
+
+metrics:
+  serviceMonitor:
+    enabled: false
+
+  prometheusRule:
+    enabled: false
+
+dashboards:
+  enabled: "false"
+
+fileConfigs:
+  01_sources.conf: |-
+    <system>
+      log_level info
+    </system>
+
+    # Input from Fluent Bit
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+      tag app.*
+    </source>
+
+    # Prometheus metrics
+    <source>
+      @type prometheus
+      bind 0.0.0.0
+      port 24231
+      metrics_path /metrics
+    </source>
+
+    <source>
+      @type prometheus_monitor
+      <labels>
+        host ${hostname}
+      </labels>
+    </source>
+
+    <source>
+      @type prometheus_output_monitor
+      <labels>
+        host ${hostname}
+      </labels>
+    </source>
+
+  02_filters.conf: |-
+    # Step 1: Fallback JSON parsing
+    # In case fluent-bit's app_json parser failed
+    <filter app.**>
+      @type parser
+      key_name log
+      reserve_data true
+      reserve_time true
+      <parse>
+        @type json
+      </parse>
+      emit_invalid_record_to_error false
+    </filter>
+
+    # Step 2: Pino -> Winston normalization
+    # Convert Pino format (numeric level, time, msg) to Winston format (string level, timestamp, message)
+    <filter app.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; else; record["level"] || "info"; end}
+        message ${m = record["msg"] || record["message"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
+        label ${record["label"] || "unknown"}
+      </record>
+    </filter>
+
+    # Step 3: Timestamp normalization + cleanup
+    # Pino time(Unix ms) / Winston timestamp(ISO8601) -> @timestamp (Asia/Seoul)
+    <filter app.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        @timestamp ${if record["time"].is_a?(Integer); t = Time.at(record["time"]/1000.0); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
+      </record>
+      remove_keys time,msg,filepath,req,log
+    </filter>
+
+    # Step 4: Nested JSON handling in data field
+    # Convert requestBody, responseBody, requestHeader to JSON strings (ES text mapping compatible)
+    <filter app.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        data ${d = record["data"]; d = (JSON.parse(d) rescue d) if d.is_a?(String); if d.is_a?(Hash); ["requestBody", "responseBody", "requestHeader"].each do |k| ; if d.dig(k).is_a?(Hash); d[k] = d[k].to_json; elsif d.dig(k).is_a?(String); d[k] = (JSON.parse(d[k]).to_json rescue d[k]); end; end; end; d}
+      </record>
+    </filter>
+
+    # Step 5: Stack array newline unescape
+    <filter app.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        stack ${s = record["stack"]; s.is_a?(Array) ? s.map do |l| l.to_s.gsub('\\n', "\n").gsub('\\"', '"') end : s rescue s}
+      </record>
+    </filter>
+
+  03_outputs.conf: |-
+    # Output to Elasticsearch with dynamic index based on log_source
+    <match app.**>
+      @type elasticsearch
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
+      password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
+      scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
+      ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
+      ca_file /certs/ca.crt
+      ssl_version TLSv1_2
+
+      # Dynamic index name based on log_source field
+      index_name ${log_source}
+      type_name _doc
+      suppress_type_name true
+
+      # Buffer settings for performance
+      <buffer tag,log_source>
+        @type file
+        path /var/log/fluent/elasticsearch-buffers
+        flush_mode interval
+        flush_interval 10s
+        flush_thread_count 4
+        chunk_limit_size 16MB
+        queue_limit_length 64
+        retry_type exponential_backoff
+        retry_wait 1s
+        retry_max_times 10
+        overflow_action block
+        total_limit_size 2GB
+      </buffer>
+
+      # Performance settings
+      bulk_message_request_threshold 1024
+      flush_at_shutdown true
+
+      # Error handling - send failed records to file
+      <secondary>
+        @type file
+        path /var/log/failed-records
+        <format>
+          @type single_value
+          message_key message
+        </format>
+      </secondary>
+    </match>
+
+resources:
+  requests:
+    cpu: "200m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+rbac:
+  create: true
