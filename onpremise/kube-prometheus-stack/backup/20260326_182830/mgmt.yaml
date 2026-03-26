@@ -1,0 +1,180 @@
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+  service:
+    type: NodePort
+  # -- Schedule alertmanager on specific nodes using tolerations and nodeSelector.
+  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+  # tolerations:
+  #   - key: "monitoring"
+  #     operator: "Equal"
+  #     effect: "NoSchedule"
+  # nodeSelector:
+  #   local-path: enabled
+  serviceMonitor:
+    selfMonitor: true
+
+grafana:
+  enabled: false
+
+kubelet:
+  enabled: true
+  namespace: kube-system
+
+kubeControllerManager:
+  enabled: true
+
+coreDns:
+  enabled: true
+
+kubeDns:
+  enabled: false
+
+kubeScheduler:
+  enabled: true
+
+kubeProxy:
+  enabled: true
+
+kubeEtcd:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  namespaceOverride: ""
+  rbac:
+    create: true
+  releaseLabel: true
+  prometheus:
+    monitor:
+      enabled: true
+
+kubeApiServer:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+  operatingSystems:
+    linux:
+      enabled: true
+    darwin:
+      enabled: true
+  forceDeployDashboards: false
+
+prometheusOperator:
+  enabled: true
+  # -- Schedule prometheus-operator on specific nodes using tolerations and nodeSelector.
+  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+  # tolerations:
+  #   - key: "monitoring"
+  #     operator: "Equal"
+  #     effect: "NoSchedule"
+  # nodeSelector:
+  #   local-path: enabled
+  thanosImage:
+    registry: quay.io
+    repository: thanos/thanos
+    tag: v0.36.1
+    sha: ""
+
+prometheus:
+  enabled: true
+  thanosService:
+    enabled: true
+  thanosServiceMonitor:
+    enabled: true
+  thanosServiceExternal:
+    enabled: true
+    type: NodePort
+
+  # ── HTTP ingress (active) ──
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - prometheus.somaz.example.com
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  #
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+  #   hosts:
+  #     - prometheus.somaz.example.com
+  #   tls:
+  #     - secretName: prometheus-tls
+  #       hosts:
+  #         - prometheus.somaz.example.com
+
+  serviceMonitor:
+    disableCompaction: true
+    selfMonitor: true
+    # -- Schedule serviceMonitor on specific nodes using tolerations and nodeSelector.
+    # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+    # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+    # tolerations:
+    #   - key: "monitoring"
+    #     operator: "Equal"
+    #     effect: "NoSchedule"
+    # nodeSelector:
+    #   local-path: enabled
+    replicas: 1
+    shards: 1
+    # resources:
+    #   requests:
+    #     cpu: 4
+    #     memory: 10Gi
+    #   limits:
+    #     cpu: 4
+    #     memory: 10Gi
+
+  prometheusSpec:
+    # -- Schedule prometheus on specific nodes using tolerations and nodeSelector.
+    # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
+    # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
+    # tolerations:
+    #   - key: "monitoring"
+    #     operator: "Equal"
+    #     effect: "NoSchedule"
+    # nodeSelector:
+    #   local-path: enabled
+    replicas: 1
+    thanos:
+      baseImage: quay.io/thanos/thanos
+      version: v0.36.1
+      objectStorageConfig:
+        existingSecret:
+          name: thanos-objstore
+          key: objstore.yml
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+    externalLabels:
+      provider: somaz
+      region: seoul1
+      cluster: mgmt
+      cluster_id: somaz-seoul1-mgmt
+    retention: 10d
