@@ -7,7 +7,7 @@ releases:
     namespace: monitoring
     createNamespace: true
     chart: grafana/promtail
-    version: 6.17.1
+    version: 6.16.5
     values:
       - values/mgmt.yaml
 
