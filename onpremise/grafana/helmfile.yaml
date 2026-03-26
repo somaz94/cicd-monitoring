@@ -5,7 +5,23 @@ repositories:
 releases:
   - name: grafana
     namespace: monitoring
-    chart: .
+    createNamespace: true
+    chart: grafana/grafana
     version: 8.5.1
     values:
-      - values/somaz-onpremise.yaml
+      - values/mgmt.yaml
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "monitoring"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"
