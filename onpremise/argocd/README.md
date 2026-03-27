@@ -1,20 +1,6 @@
-# ArgoCD
+# ArgoCD On-Premise Helm Chart
 
-<br/>
-
-## Overview
-
-ArgoCD deployment using Helmfile with the official [argo-cd](https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd) Helm chart.
-
-<br/>
-
-## Components
-
-| Component | Version |
-|-----------|---------|
-| Helm Chart | `argo-cd` v9.4.15 |
-| ArgoCD | v3.3.4 |
-| Redis HA | v4.34.11 (dependency) |
+Manages ArgoCD on on-premise Kubernetes using Helmfile. Configured with nginx ingress, GitLab SSO (Dex), Slack notifications, and Redis HA.
 
 <br/>
 
@@ -22,14 +8,25 @@ ArgoCD deployment using Helmfile with the official [argo-cd](https://github.com/
 
 ```
 argocd/
-├── Chart.yaml          # Chart metadata and dependencies
-├── helmfile.yaml       # Helmfile release configuration
-├── .helmignore         # Helm ignore patterns
+├── Chart.yaml          # Version tracking (no local templates)
+├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
 ├── values/
-│   └── mgmt.yaml       # Management cluster values
-├── upgrade.sh          # Automated upgrade script
+│   └── mgmt.yaml       # Management environment configuration
+├── upgrade.sh          # Version upgrade script
+├── backup/             # Auto backup on upgrade
+├── _backup/            # Old files (local chart templates, dependencies)
 └── README.md
 ```
+
+<br/>
+
+## Prerequisites
+
+- Kubernetes cluster
+- Helm 3
+- Helmfile
+- Nginx Ingress Controller
 
 <br/>
 
@@ -43,49 +40,31 @@ argocd/
 
 <br/>
 
-## Installation
+## Quick Start
 
 ```bash
-# Add Helm repositories
-helm repo add argo https://argoproj.github.io/argo-helm
-helm repo add dandydeveloper https://dandydeveloper.github.io/charts/
-helm repo update
-
-# Install with Helmfile
-helmfile apply
+helmfile lint     # Validate
+helmfile diff     # Preview
+helmfile apply    # Deploy
+helmfile destroy  # Delete
 ```
 
 <br/>
 
 ## Upgrade
 
-Use the automated upgrade script:
-
 ```bash
-# Check and upgrade to latest version
-./upgrade.sh
-
-# Preview changes without applying
-./upgrade.sh --dry-run
-
-# Upgrade to a specific version
-./upgrade.sh --version 10.0.0
-
-# List available backups
-./upgrade.sh --list-backups
-
-# Rollback to a previous version
-./upgrade.sh --rollback
-
-# Clean up old backups (keeps last 5)
-./upgrade.sh --cleanup-backups
+./upgrade.sh              # Upgrade to latest
+./upgrade.sh --dry-run    # Preview only
+./upgrade.sh --version 10.0.0  # Specific version
+./upgrade.sh --rollback   # Restore from backup
 ```
 
 <br/>
 
 ## Values Configuration
 
-The `values/mgmt.yaml` file contains the full configuration for the management cluster, including:
+The `values/mgmt.yaml` contains:
 
 - Server ingress with TLS
 - Dex SSO configuration (GitLab connector)
@@ -97,21 +76,7 @@ The `values/mgmt.yaml` file contains the full configuration for the management c
 
 <br/>
 
-## Helm Lint
+## References
 
-```bash
-# Basic lint
-helm lint . -f values/mgmt.yaml
-
-# Strict mode
-helm lint . -f values/mgmt.yaml --strict
-
-# Debug mode
-helm lint . -f values/mgmt.yaml --debug
-
-# Lint all values files
-for f in values/*.yaml; do
-  echo "=== Linting $f ==="
-  helm lint . -f "$f" --strict
-done
-```
+- https://argo-cd.readthedocs.io/en/stable/
+- https://github.com/argoproj/argo-helm

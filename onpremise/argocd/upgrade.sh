@@ -11,7 +11,7 @@ HELM_REPO_NAME="argo"
 HELM_REPO_URL="https://argoproj.github.io/argo-helm"
 HELM_CHART="argo/argo-cd"
 CHANGELOG_URL="https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd"
-CHART_TYPE="local"  # "local" = manages Chart.yaml + values.yaml / "external" = helmfile + values/ only
+CHART_TYPE="external"  # "local" = manages Chart.yaml + values.yaml / "external" = helmfile + values/ only
 # ============================================================
 
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
