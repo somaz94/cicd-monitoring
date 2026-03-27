@@ -1,0 +1,155 @@
+---
+global:
+  clusterDomain: "cluster.local"
+  dnsService: "coredns"
+  dnsNamespace: "kube-system"
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+    - from: "2024-01-01"
+      store: tsdb
+      index:
+        prefix: loki_index_
+        period: 24h
+      object_store: filesystem
+      schema: v13
+
+singleBinary:
+  replicas: 1
+  # -- Schedule singleBinary on specific EKS nodes using nodeSelector.
+  # nodeSelector:
+  #   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+  persistence:
+    enabled: true
+    storageClass: "efs-sc"
+    accessModes:
+      - ReadWriteMany
+    size: 10Gi
+  # ── Persistence with EBS alternative (ReadWriteOnce) ──
+  # persistence:
+  #   enabled: true
+  #   storageClass: "ebs-sc"
+  #   accessModes:
+  #     - ReadWriteOnce
+  #   size: 10Gi
+
+gateway:
+  enabled: true
+  # -- Schedule gateway on specific EKS nodes using nodeSelector.
+  # nodeSelector:
+  #   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+  service:
+    type: ClusterIP
+
+  # ── AWS ALB ingress (active) ──
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      # -- Ingress Group: share a single ALB across multiple ingress resources
+      alb.ingress.kubernetes.io/group.name: example-shared-alb
+      alb.ingress.kubernetes.io/group.order: "30"
+      # -- Health check configuration
+      alb.ingress.kubernetes.io/healthcheck-path: /
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+      # -- Listener configuration
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      # -- ACM certificate for HTTPS termination
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      # -- Tagging
+      alb.ingress.kubernetes.io/tags: "Environment=mgmt,Service=loki"
+      # -- Target group tuning
+      alb.ingress.kubernetes.io/target-group-attributes: |
+        deregistration_delay.timeout_seconds=30,
+        stickiness.enabled=false
+    ingressClassName: "alb"
+    hosts:
+      - host: loki.somaz.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+
+  # ── Nginx ingress alternative ──
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #   hosts:
+  #     - host: loki.somaz.example.com
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
+  #   hosts:
+  #     - host: loki.somaz.example.com
+  #       paths:
+  #         - path: /
+  #           pathType: Prefix
+  #   tls:
+  #     - secretName: loki-gateway-tls
+  #       hosts:
+  #         - loki.somaz.example.com
+
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+tableManager:
+  enabled: false
+
+# Zero out replica counts of other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+test:
+  enabled: false
+lokiCanary:
+  enabled: false
