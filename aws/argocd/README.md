@@ -49,19 +49,42 @@ argocd/
 
 ### AWS ALB Ingress
 
-The ingress is configured to use AWS Application Load Balancer:
+The ingress is configured to use AWS Application Load Balancer with **Ingress Group** for ALB sharing:
 
 ```yaml
 server:
   ingress:
     enabled: true
     annotations:
-      alb.ingress.kubernetes.io/backend-protocol: HTTPS
-      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      # Share a single ALB across multiple ingress resources
+      alb.ingress.kubernetes.io/group.name: example-shared-alb
+      alb.ingress.kubernetes.io/group.order: "10"
+      # Health check
+      alb.ingress.kubernetes.io/healthcheck-path: /healthz
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      # HTTPS only with ACM certificate
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
+      # Target group tuning
+      alb.ingress.kubernetes.io/target-group-attributes: |
+        deregistration_delay.timeout_seconds=30,
+        stickiness.enabled=false
     ingressClassName: "alb"
 ```
+
+#### ALB Sharing (Ingress Group)
+
+Multiple services can share a single ALB by using the same `group.name`:
+
+| Annotation | Description |
+|-----------|-------------|
+| `group.name` | All ingresses with the same name share one ALB (reduces cost) |
+| `group.order` | Rule priority within the shared ALB (1-1000, lower = higher priority) |
+| `load-balancer-name` | Optional: set a custom ALB name |
+| `tags` | Optional: add AWS tags for cost tracking |
 
 > **Note:** Update `certificate-arn` with your ACM certificate ARN.
 

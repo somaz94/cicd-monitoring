@@ -115,25 +115,42 @@ redisSecretInit:
 server:
   replicas: 1
   # ── AWS ALB ingress (active) ──
+  # Uses AWS ALB Ingress Controller (aws-load-balancer-controller)
   ingress:
     enabled: true
     annotations:
-      alb.ingress.kubernetes.io/backend-protocol: HTTPS
-      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-      alb.ingress.kubernetes.io/healthcheck-path: /
-      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
-      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
       alb.ingress.kubernetes.io/scheme: internet-facing
       alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      # -- Ingress Group: share a single ALB across multiple ingress resources
+      # All ingresses with the same group.name use the same ALB, reducing cost
+      # group.order controls rule priority (1-1000, lower = higher priority)
+      alb.ingress.kubernetes.io/group.name: example-shared-alb
+      alb.ingress.kubernetes.io/group.order: "10"
+      # -- Health check configuration
+      alb.ingress.kubernetes.io/healthcheck-path: /healthz
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+      # -- Listener configuration
+      # HTTPS only (recommended), or add HTTP for redirect
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+      # alb.ingress.kubernetes.io/ssl-redirect: "443"
+      # -- ACM certificate for HTTPS termination
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      # -- ALB naming and tagging
+      # alb.ingress.kubernetes.io/load-balancer-name: example-shared-alb-loadbalancer
+      alb.ingress.kubernetes.io/tags: "Environment=mgmt,Service=argocd"
+      # -- Target group tuning
+      alb.ingress.kubernetes.io/target-group-attributes: |
+        deregistration_delay.timeout_seconds=30,
+        stickiness.enabled=false
     ingressClassName: "alb"
     path: /*
     pathType: ImplementationSpecific
 
   # ── Nginx ingress alternative ──
-  # Prerequisites:
-  #   1. Install nginx-ingress-controller
-  #   2. (Optional) Install cert-manager for HTTPS
-  #
+  # Use this instead of ALB when running nginx-ingress-controller
   # ingress:
   #   enabled: true
   #   annotations:
@@ -142,6 +159,21 @@ server:
   #   ingressClassName: "nginx"
   #   path: /
   #   pathType: Prefix
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
+  # ingress:
+  #   enabled: true
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+  #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
+  #   ingressClassName: "nginx"
+  #   path: /
+  #   pathType: Prefix
+  #   tls: true
 
 ## Repo Server
 repoServer:
