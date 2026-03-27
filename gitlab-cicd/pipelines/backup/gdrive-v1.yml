@@ -1,0 +1,37 @@
+stages:
+  - gdrive-upload
+
+variables:
+  CONFIG: $RCLONE_CONFIG
+
+
+.change_files: &change_files
+  changes:
+    - ExampleAWS/**/*
+    - ExampleProject/**/*
+    - "!.gitlab-ci.yml"
+    - "!.gitignore"
+
+gdrive-upload:
+  stage: gdrive-upload
+  image: rclone/rclone:latest
+  interruptible: true
+  retry:
+    max: 1 # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
+  script:
+    - rclone config show --config $CONFIG
+    - rclone sync ./ExampleAWS "Design Docs:ExampleAWS" --progress --config $CONFIG
+    - rclone sync ./ExampleProject "Design Docs:ExampleProject" --progress --config $CONFIG
+
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files

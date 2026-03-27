@@ -1,0 +1,35 @@
+# Harbor Registry Kaniko build template
+# Usage: extends: .build_kaniko
+
+.build_kaniko:
+  extends: .build_kaniko_base
+  image:
+    name: registry.example.com/library/kaniko-project/executor:v1.24.0-debug
+    entrypoint: [""]
+  before_script:
+    - echo "[INFO] Start build image for Harbor registry"
+    - echo "[INFO] CI_REGISTRY is $CI_REGISTRY"
+    - echo "[INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE"
+    - !reference [.build_kaniko_base, before_script]
+    - echo "[INFO] IMAGE_URL is $IMAGE_URL"
+    - >
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+  script:
+    # Dockerfile resolution (Harbor: DOCKERFILE_NAME -> SERVICE.Dockerfile -> Dockerfile)
+    - export DOCKERFILE_VAR_NAME="${DOCKERFILE_NAME}"
+    - export DOCKERFILE_SUFFIX=".Dockerfile"
+    - export DOCKERFILE_FALLBACK=""
+    - !reference [.resolve_dockerfile]
+    - >
+      /kaniko/executor
+      --cache=true
+      --cache-ttl=24h
+      --snapshot-mode=redo
+      --context $CI_PROJECT_DIR
+      --dockerfile $DOCKERFILE_PATH
+      --destination $IMAGE_URL
+      --destination $IMAGE_URL_LATEST
+      --build-arg NODE_ENV=$NAMESPACE
+      --build-arg BRANCH=$CI_COMMIT_REF_NAME
+      --skip-tls-verify
+      --insecure-pull

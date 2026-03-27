@@ -1,9 +1,8 @@
 stages:
   - upload_data_server
   - upload_data_client
-# 스크립트에서 사용할 변수 설정
-# CI_COMMIT_REF_NAME 파이프라인 실행하는 현재 브랜치명
-#variables:
+# Variables used in scripts
+# CI_COMMIT_REF_NAME is the current branch name running the pipeline
 
 variables:
   STAGES:
@@ -15,9 +14,6 @@ variables:
 
 .change_files_server: &change_files_server
   changes:
-#    - CommonEnum/*
-#    - CSV
-#     - Convertor/ServerJson/*
     - Convertor/ServerJson/version/*
     - Convertor/ServerJson/enum/*
 
@@ -31,11 +27,11 @@ upload_data_server:
     - apk update && apk add openssh-client rsync git
     - eval $(ssh-agent -s)
     - >
-      if [[ "$CI_COMMIT_REF_NAME" =~ ^somaz- ]]; then
-        echo "Using development SSH key for somaz"
-        SSH_KEY="${DEV_SOMAZ_SSH_PRIVATE_KEY}"
+      if [[ "$CI_COMMIT_REF_NAME" =~ ^special- ]]; then
+        echo "Using development SSH key"
+        SSH_KEY="${DEV_SSH_PRIVATE_KEY}"
       else
-        echo "Using default somaz SSH key"
+        echo "Using default SSH key"
         SSH_KEY="${NFS_SSH_PRIVATE_KEY}"
       fi
     - echo "${SSH_KEY}" | ssh-add -
@@ -43,11 +39,11 @@ upload_data_server:
     - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
   script:
     - >
-      if [[ "$CI_COMMIT_REF_NAME" =~ ^somaz- ]]; then
-        DESTINATION="root@master-node-somaz-dev.somaz.io:/data/sgn_cdn/gamedata/$CI_COMMIT_REF_NAME/"
-        rsync -avzr --delete --progress -e "ssh -p 36422" Convertor/ServerJson/* root@master-node-somaz-dev.somaz.io:/data/sgn_cdn/gamedata/$CI_COMMIT_REF_NAME/
+      if [[ "$CI_COMMIT_REF_NAME" =~ ^special- ]]; then
+        DESTINATION="root@master-node-special-dev.example.com:/data/cdn/gamedata/$CI_COMMIT_REF_NAME/"
+        rsync -avzr --delete --progress -e "ssh -p 36422" Convertor/ServerJson/* root@master-node-special-dev.example.com:/data/cdn/gamedata/$CI_COMMIT_REF_NAME/
       else
-        DESTINATION="oozoo@nfs-server.somaz.io:/data/sgn_cdn/gamedata/$CI_COMMIT_REF_NAME/"
+        DESTINATION="appuser@nfs-server.example.com:/data/cdn/gamedata/$CI_COMMIT_REF_NAME/"
         rsync -avzr --delete --progress Convertor/ServerJson/* "$DESTINATION"
       fi
   artifacts:
@@ -57,16 +53,15 @@ upload_data_server:
   after_script:
     - apk add curl
     - apk add git
-    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.email "cicd@example.com"
     - git config --global user.name "cicd"
-    - git clone http://cicd:${CICD_ACCESS_TOKEN}@gitlab.somaz.io/infra/kubernetes-infra.git
+    - git clone http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/infra/kubernetes-infra.git
     - export ENV_REF=$(cat kubernetes-infra/applied/argocd/applicationset/environment_branch/${CI_COMMIT_REF_NAME}.txt)
     - echo $ENV_REF
-    - rm -rf kubernetes-infra  # Cleanup    
+    - rm -rf kubernetes-infra  # Cleanup
     - CHANGED_ServerJson=$(git diff --name-only HEAD~1 HEAD | grep ServerJson | grep -E '\.json$' | awk -F/ '{print $NF}' | awk -F. '{print $1}')
-    # - "curl -X POST -F token=${GAMESERVER_TRIGGER_TOKEN} -F ref=${CI_COMMIT_REF_NAME} -F variables[project_id]=${CI_PROJECT_ID} -F variables[changed_ServerJson]=\"${CHANGED_ServerJson}\" -F variables[job_id]=${CI_JOB_ID}  http://gitlab.somaz.io/api/v4/projects/100/trigger/pipeline"
     - >
-      curl -X POST -F token=${GAMESERVER_TRIGGER_TOKEN} -F ref=${ENV_REF} -F variables[project_id]=${CI_PROJECT_ID} -F variables[changed_ServerJson]="${CHANGED_ServerJson}" -F variables[job_id]=${CI_JOB_ID} -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} http://gitlab.somaz.io/api/v4/projects/100/trigger/pipeline
+      curl -X POST -F token=${GAMESERVER_TRIGGER_TOKEN} -F ref=${ENV_REF} -F variables[project_id]=${CI_PROJECT_ID} -F variables[changed_ServerJson]="${CHANGED_ServerJson}" -F variables[job_id]=${CI_JOB_ID} -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} http://gitlab.example.com/api/v4/projects/100/trigger/pipeline
   tags:
     - build-image
   rules:
@@ -110,29 +105,3 @@ upload_data_client:
     - if: '$CI_PIPELINE_SOURCE == "push"'
       <<: *change_files_client
     - if: '$CI_PIPELINE_SOURCE == "web" && $STAGES == "upload_data_client"'
-
-# upload_data_client:
-#   stage: upload_data_client
-#   image: google/cloud-sdk:alpine # Use the Google Cloud SDK Docker image
-
-#   before_script:
-#     - set -x
-#     - echo $GCLOUD_SERVICE_KEY | base64 -d > ${HOME}/gcloud-service-key.json
-#     - cat ${HOME}/gcloud-service-key.json
-#     - echo '172.217.26.234 oauth2.googleapis.com' >> /etc/hosts
-#     - echo '142.250.206.234 cloudresourcemanager.googleapis.com' >> /etc/hosts
-#     - gcloud auth activate-service-account --key-file=${HOME}/gcloud-service-key.json --verbosity=debug 
-#     - gcloud --verbosity=debug config set project $GCLOUD_PROJECT_ID
-#   script:
-#     # Use gsutil to sync files to GCP Cloud Storage
-#     - gsutil -D -m rsync -r -d Convertor/ClientJson/ gs://${GCS_BUCKET_NAME}/gamedata/$CI_COMMIT_REF_NAME/latest/
-#   artifacts:
-#     paths:
-#       - Convertor/ClientJson/*
-#     expire_in: 1 days
-#   tags:
-#     - build-image
-#   rules:
-#     - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "dev1")'
-#       <<: *change_files_client
-#     - if: '$CI_PIPELINE_SOURCE == "web" && ($CI_COMMIT_REF_NAME == "dev1")'

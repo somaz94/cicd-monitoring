@@ -1,0 +1,10 @@
+variables:
+  # Service names
+  GAME_SERVICE: "game"
+  ADMIN_SERVICE: "admin"
+  APP_ADMIN_SERVICE: "app-admin"
+  BATTLE_SERVICE: "battle"
+
+  # Data processing variables (master-data, server projects)
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id

@@ -1,0 +1,41 @@
+# Google Drive source backup template
+# Usage: extends: .backup_gdrive
+#
+# Required CI/CD Variables:
+#   GITLAB_BACKUP_RCLONE_CONFIG: rclone config file (File type, includes Google Drive auth)
+#
+# Behavior:
+#   - git clone --mirror for full repository backup (all branches, tags included)
+#   - tar.gz compression then upload to Google Drive
+#   - Keep only recent N backups, auto-delete old ones (sorted by date)
+#
+# Overridable variables:
+#   BACKUP_REMOTE: rclone remote storage name (default: "Gitlab Backup")
+#   BACKUP_KEEP_COUNT: number of backups to keep (default: 10)
+
+.backup_gdrive:
+  extends: .common_job_config
+  stage: source_backup
+  image: registry.example.com/library/rclone/rclone:latest
+  variables:
+    GIT_STRATEGY: none
+    BACKUP_REMOTE: "Gitlab Backup"
+    BACKUP_KEEP_COUNT: "10"
+  before_script:
+    - apk add --no-cache git
+  script:
+    - git clone --mirror http://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git repo.git
+    - BACKUP_FILE="${CI_PROJECT_NAME}_${CI_COMMIT_SHORT_SHA}_$(date +%Y%m%d_%H%M%S).tar.gz"
+    - tar czf /tmp/${BACKUP_FILE} repo.git
+    - rclone copy /tmp/${BACKUP_FILE} "${BACKUP_REMOTE}:${CI_PROJECT_NAME}/" --progress --config $CONFIG
+    # Clean up old backups (sorted by date, keep only recent N)
+    # Filename format: project_sha_YYYYMMDD_HHMMSS.tar.gz -> 2nd/1st fields from end are date/time
+    # Wait for Google Drive API (eventual consistency for new folder creation)
+    - sleep 5
+    - |
+      rclone lsf "${BACKUP_REMOTE}:${CI_PROJECT_NAME}/" --config $CONFIG \
+        | awk -F'_' '{print $(NF-1)"_"$NF, $0}' | sort -k1,1 | awk '{print $2}' \
+        | head -n -${BACKUP_KEEP_COUNT} | while read f; do
+          echo "[INFO] Deleting old backup: $f"
+          rclone deletefile "${BACKUP_REMOTE}:${CI_PROJECT_NAME}/$f" --config $CONFIG
+        done

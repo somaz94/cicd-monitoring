@@ -1,0 +1,82 @@
+# GitLab CI Template includes
+include:
+  - project: group/gitlab-ci-templates
+    ref: main
+    file:
+      - /variables/common.yml
+
+stages:
+  - update_cs
+
+variables:
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  UPDATE_TYPE: $type
+  GIT_STRATEGY: none
+
+update_cs:
+  extends: .common_job_config
+  stage: update_cs
+  image: registry.example.com/library/alpine:latest
+  before_script:
+    - echo [INFO] STATIC_DATA_PROJECT_ID is $STATIC_DATA_PROJECT_ID
+    - echo [INFO] GENERATE_JOB_ID is $GENERATE_JOB_ID
+    - echo [INFO] UPDATE_TYPE is $UPDATE_TYPE
+    - apk update && apk add --no-cache unzip git curl
+  script:
+    # 1. 아티팩트 다운로드
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${CICD_ACCESS_TOKEN}" "http://${GITLAB_HOST}/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - unzip -o artifacts.zip
+
+    # 2. Git 설정
+    - !reference [.git_config]
+
+    # 3. 저장소 clone
+    - git clone --filter=blob:limit=1k --sparse http://cicd:${CICD_ACCESS_TOKEN}@${GITLAB_HOST}/client/example-project.git repo
+    - cd repo
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git sparse-checkout init --cone
+
+    # 4. UPDATE_TYPE에 따라 처리
+    - |
+      if [ "$UPDATE_TYPE" = "proto" ]; then
+        echo "=== Processing Proto Files ==="
+        git sparse-checkout set Assets/Scripts/1.Network/Generated/Proto
+        
+        echo "Copying proto CS files to Assets/Scripts/1.Network/Generated/Proto/"
+        rm -rf Assets/Scripts/1.Network/Generated/Proto/*.cs
+        cp -r ../Generated/Proto/*.cs Assets/Scripts/1.Network/Generated/Proto/
+        
+        if [ -n "$(git status --porcelain)" ]; then
+          git add Assets/Scripts/1.Network/Generated/Proto/
+          git commit -m "feat(proto): update proto files [skip ci]"
+          git push origin ${CI_COMMIT_REF_NAME}
+        else
+          echo "No proto changes detected"
+        fi
+      else
+        echo "=== Processing Data Files ==="
+        git sparse-checkout set Assets/Scripts/DataMediator/Data Assets/StreamingAssets/builtin
+        
+        echo "Copying data CS files to Assets/Scripts/DataMediator/Data"
+        rm -rf Assets/Scripts/DataMediator/Data/*.cs
+        cp ../cs/*.cs Assets/Scripts/DataMediator/Data/
+        cp ../enum/*.cs Assets/Scripts/DataMediator/Data/
+
+        echo "Copying data CS files to Assets/StreamingAssets/builtin/csv"
+        rm -rf Assets/StreamingAssets/builtin/csv/*.csv
+        cp ../builtin/csv/*.csv Assets/StreamingAssets/builtin/csv/
+
+        if [ -n "$(git status --porcelain)" ]; then
+          git add Assets/Scripts/DataMediator/Data
+          git add Assets/StreamingAssets/builtin
+          git commit -m "feat(data): update data mediator [skip ci]"
+          git push origin ${CI_COMMIT_REF_NAME}
+        else
+          echo "No data changes detected"
+        fi
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+  tags:
+    - build-image

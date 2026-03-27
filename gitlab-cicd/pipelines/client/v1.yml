@@ -1,0 +1,63 @@
+stages:
+  - update_cs
+
+variables:
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  CHANGED_CS: $changed_cs
+  GIT_STRATEGY: none
+
+update_cs:
+  stage: update_cs
+  image: registry.example.com/library/alpine:latest
+  interruptible: false
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137
+  tags:
+    - build-image
+  before_script:
+    - echo [INFO] STATIC_DATA_PROJECT_ID is $STATIC_DATA_PROJECT_ID
+    - echo [INFO] GENERATE_JOB_ID is $GENERATE_JOB_ID
+    - echo [INFO] CHANGED_CS is $CHANGED_CS
+    - apk update && apk add --no-cache unzip git curl
+  script:
+    # 1. 아티팩트 다운로드
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${CICD_ACCESS_TOKEN}" "http://gitlab.example.com/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - unzip -o artifacts.zip
+    
+    # 2. Git 설정
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    
+    # 3. 저장소 clone
+    - git clone --filter=blob:limit=1k --sparse http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/client/example-project.git repo
+    - cd repo
+    - git sparse-checkout init --cone
+    - git sparse-checkout set Assets/Scripts/DataMediator/Data
+    
+    # 4. CS 파일 복사 및 커밋
+    - |
+      echo "$CHANGED_CS" | while read -r file; do
+        if [ ! -z "$file" ]; then
+          echo "Copying cs/${file}.cs to Assets/Scripts/DataMediator/Data/"
+          cp ../cs/${file}.cs Assets/Scripts/DataMediator/Data/
+        fi
+      done
+    
+    # 5. 변경사항 확인 및 푸시
+    - |
+      if [ -n "$(git status --porcelain)" ]; then
+        git add Assets/Scripts/DataMediator/Data/
+        git commit -m "feat(data): update ${CHANGED_CS} data mediator [skip ci]"
+        git push origin master
+      else
+        echo "No changes detected"
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'

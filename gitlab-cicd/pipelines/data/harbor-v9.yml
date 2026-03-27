@@ -1,0 +1,541 @@
+stages:
+  - validate_and_update_server      # 데이터 검증 및 버전 업데이트
+  - process_data_and_trigger # 서버 데이터 업데이트 및 파이프라인 트리거
+  - update_client # 클라이언트 데이터 업데이트
+
+variables:
+  STAGES:
+    value: "process_data_and_trigger"
+    description: "Select the stages: process_data_and_trigger or update_client(use web)"
+    options:
+      - "process_data_and_trigger"
+      - "update_client"
+
+.change_files: &change_files
+  changes:
+    - json/**/*
+    - csv/**/*
+    - enum/*/*
+    - "!.gitlab-ci.yml"
+
+.templates:
+  .common_job_config: &common_job_config
+    interruptible: true
+    retry:
+      max: 2
+      when:
+        - runner_system_failure
+        - unknown_failure
+        - data_integrity_failure
+      exit_codes:
+        - 137  # OOM kill retry
+        - 1    # 일반적인 명령 실패(pre-receive hook 오류 포함)
+  .common_before_script: &common_before_script
+    - apk update && apk add jq openssh-client rsync git curl git-lfs nodejs npm
+    - git lfs install
+    - eval $(ssh-agent -s)
+    - SSH_KEY="${NFS_SSH_PRIVATE_KEY}"
+    - echo "${SSH_KEY}" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+
+validate_and_update_server:
+  <<: *common_job_config
+  stage: validate_and_update_server
+  resource_group: validate_and_update_server
+  # image: alpine:latest
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    # Git 설정 및 저장소 준비
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/gamedesign/example-project.git
+    - git sparse-checkout init --cone
+    - git sparse-checkout set version/ json/ enum/ csv/
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - |
+      # DataVersion.json 파일이 없거나 비어있으면 초기화
+      if [ ! -f version/DataVersion.json ] || [ ! -s version/DataVersion.json ]; then
+        echo '{"version":"","dataFiles":[]}' | jq -c '.' > version/DataVersion.json
+      fi
+    
+      # DataVersion.json 업데이트 (tools 관련 항목 제거 및 버전 업데이트)
+      jq -c --arg version "$CI_COMMIT_SHORT_SHA" '
+        .version = $version | 
+        .dataFiles = [.dataFiles[] | select(.fileName != ".gitlab-ci.yml" and (.fileName | startswith("tools/") | not))]
+      ' version/DataVersion.json > version/temp.json && mv version/temp.json version/DataVersion.json
+    
+      # 마지막 DataVersion.json 업데이트 커밋 찾기 (없으면 최초 커밋 사용)
+      LAST_VERSION_COMMIT=$(git log --grep="Update DataVersion.json version:" -1 --format="%H" || git rev-list --max-parents=0 HEAD)
+      
+      # 마지막 업데이트 이후의 모든 변경사항 가져오기 (rename 감지 포함, tools 디렉토리 제외)
+      ALL_CHANGES=$(git diff --name-status -M $LAST_VERSION_COMMIT HEAD | grep -v "^[MADR].*tools/" || true)
+      
+      echo "----------------------------------------"
+      echo "📋 File Change Detection Summary"
+      echo "----------------------------------------"
+      
+      echo "✨ Changed Files:"
+      # Changed Files (수정된 파일 + 이름 변경된 파일의 새 이름)
+      # M: Modified (수정됨)
+      # R: Renamed (이름 변경됨)
+      CHANGED_FILES=$(echo "$ALL_CHANGES" | grep -E "^M|^R" | \
+        awk '
+          # Rename된 경우 새 이름($3)을 사용
+          $1 ~ /^R/ { 
+            if ($2 ~ /^json\//) {
+              target = $3
+              sub("^json/", "", target)
+              sub(".json$", "", target)
+              print target
+            } else if ($2 ~ /^csv\//) {
+              target = $3
+              sub("^csv/", "", target)
+              sub(".csv$", "", target)
+              print target
+            }
+          }
+          # 수정된 경우 현재 이름($2)을 사용
+          $1 == "M" { 
+            if ($2 ~ /^json\//) {
+              target = $2
+              sub("^json/", "", target)
+              sub(".json$", "", target)
+              print target
+            } else if ($2 ~ /^csv\//) {
+              target = $2
+              sub("^csv/", "", target)
+              sub(".csv$", "", target)
+              print target
+            }
+          }
+        ' || true)
+      
+      if [ -z "$CHANGED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$CHANGED_FILES" | sed 's/^/   - /'
+      fi
+      echo
+      
+      # Renamed 파일의 이전 이름을 삭제 목록에 추가
+      RENAMED_OLD_FILES=$(echo "$ALL_CHANGES" | grep "^R" | awk '{
+        if ($2 ~ /^json\//) {
+          target = $2
+          sub("^json/", "", target)
+          sub(".json$", "", target)
+          print target
+        } else if ($2 ~ /^csv\//) {
+          target = $2
+          sub("^csv/", "", target)
+          sub(".csv$", "", target)
+          print target
+        }
+      }' || true)
+      
+      echo "➕ Added Files:"
+      # 새로 추가된 파일 목록 (A: Added)
+      ADDED_FILES=$(echo "$ALL_CHANGES" | grep "^A" | awk '{
+        if ($2 ~ /^json\//) {
+          target = $2
+          sub("^json/", "", target)
+          sub(".json$", "", target)
+          print target
+        } else if ($2 ~ /^csv\//) {
+          target = $2
+          sub("^csv/", "", target)
+          sub(".csv$", "", target)
+          print target
+        }
+      }' || true)
+      if [ -z "$ADDED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$ADDED_FILES" | sed 's/^/   - /'
+      fi
+      echo
+      
+      echo "❌ Deleted Files:"
+      # 삭제된 파일과 rename된 파일의 이전 이름을 합침
+      # D: Deleted (삭제됨)
+      DELETED_FILES=$(echo "$ALL_CHANGES" | grep "^D" | awk '{
+        if ($2 ~ /^json\//) {
+          target = $2
+          sub("^json/", "", target)
+          sub(".json$", "", target)
+          print target
+        } else if ($2 ~ /^csv\//) {
+          target = $2
+          sub("^csv/", "", target)
+          sub(".csv$", "", target)
+          print target
+        }
+      }' || true)
+      if [ ! -z "$RENAMED_OLD_FILES" ]; then
+        if [ ! -z "$DELETED_FILES" ]; then
+          DELETED_FILES="$DELETED_FILES"$'\n'"$RENAMED_OLD_FILES"
+        else
+          DELETED_FILES="$RENAMED_OLD_FILES"
+        fi
+      fi
+      if [ -z "$DELETED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$DELETED_FILES" | grep -v '^$' | sed 's/^/   - /'
+      fi
+      echo "----------------------------------------"
+      
+      # DataVersion.json 파일 처리
+      echo "🔄 Processing Files..."
+      echo "----------------------------------------"
+      
+      # 1. 새로 추가된 파일 처리
+      for file in $ADDED_FILES; do
+        echo "➕ Adding: $file"
+        jq -c --arg fname "$file" '
+          # 기존 파일들의 버전을 유지하면서
+          # 새 파일을 version 1로 추가
+          .dataFiles = [
+            (.dataFiles[] | 
+            if .fileName == $fname then 
+              .version += 1 
+            else 
+              .
+            end)
+          ] + 
+          (if .dataFiles | map(select(.fileName == $fname)) | length == 0 
+           then [{"fileName": $fname, "version": 1}] 
+           else [] 
+           end)
+        ' version/DataVersion.json > version/temp.json && mv version/temp.json version/DataVersion.json || true
+      done
+      
+      # 2. 변경된 파일 처리 (수정되거나 이름이 변경된 파일)
+      for file in $CHANGED_FILES; do
+        echo "📝 Updating: $file"
+        jq -c --arg fname "$file" '
+          # 파일이 이미 존재하면 버전을 증가
+          # 없으면 version 1로 추가
+          .dataFiles = [
+            (.dataFiles[] | 
+            if .fileName == $fname then 
+              .version += 1 
+            else 
+              .
+            end)
+          ] + 
+          (if .dataFiles | map(select(.fileName == $fname)) | length == 0 
+           then [{"fileName": $fname, "version": 1}] 
+           else [] 
+           end)
+        ' version/DataVersion.json > version/temp.json && mv version/temp.json version/DataVersion.json || true
+      done
+      
+      # 3. 삭제된 파일 처리 (삭제되거나 이름이 변경된 이전 파일)
+      for file in $DELETED_FILES; do
+        echo "❌ Removing: $file"
+        jq -c --arg fname "$file" '
+          # 해당 파일을 DataVersion.json에서 제거
+          .dataFiles = [
+            .dataFiles[] | 
+            select(.fileName != $fname)
+          ]
+        ' version/DataVersion.json > version/temp.json && mv version/temp.json version/DataVersion.json || true
+      done
+      echo "----------------------------------------"
+    
+    # 변경사항이 있는지 확인 (DataVersion.json만)
+    - CHANGES=$(git status --porcelain version/DataVersion.json | wc -l)
+    - |
+      # DataVersion.json에 변경사항이 있으면 커밋하고 동기화
+      if [ "$CHANGES" -gt "0" ]; then 
+        # 현재 변경사항 모두 스테이징 취소
+        git reset HEAD .
+        # DataVersion.json만 스테이징
+        git add version/DataVersion.json
+        git commit -m "Update DataVersion.json version: $CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${CI_COMMIT_REF_NAME}
+
+        # 폴더 생성
+        ssh deploy@dev-cluster.example.com "mkdir -p /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/$CI_COMMIT_SHORT_SHA/"
+
+        # DataVersion.json을 클라이언트와 서버에 동기화
+        CLIENT_DESTINATION_VERSION="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/"
+        CLIENT_DESTINATION_VERSION_COMMIT_SHA="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/$CI_COMMIT_SHORT_SHA/"
+        SERVER_DESTINATION_VERSION="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/server/version/"
+        rsync -avzr --delete --progress version/DataVersion.json "$CLIENT_DESTINATION_VERSION"
+        rsync -avzr --delete --progress version/DataVersion.json "$CLIENT_DESTINATION_VERSION_COMMIT_SHA"
+        rsync -avzr --delete --progress version/DataVersion.json "$SERVER_DESTINATION_VERSION"
+      fi
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files
+
+process_data_and_trigger:
+  <<: *common_job_config
+  stage: process_data_and_trigger
+  resource_group: server_data_upload
+  # image: alpine:latest
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - DESTINATION="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/server/data/"
+    - rsync -avzr --delete --progress json/ "$DESTINATION"
+  after_script:
+    - |
+      # 마지막 DataVersion.json 업데이트 커밋의 부모 커밋 찾기
+      LAST_VERSION_COMMIT=$(git log --grep="Update DataVersion.json version:" -2 --format="%H" | tail -n 1 || git rev-list --max-parents=0 HEAD)
+      
+      echo "----------------------------------------"
+      echo "📋 File Change Detection Summary"
+      echo "----------------------------------------"
+      
+      # 변경된 파일 (수정)
+      echo "✨ Changed Files:"
+      MODIFIED_FILES=$(git diff --name-status -M ${LAST_VERSION_COMMIT}..${CI_COMMIT_SHA} | grep "^M" | \
+        awk '{
+          if ($2 ~ /^json\//) {
+            target = $2
+            sub("^json/", "", target)
+            sub(".json$", "", target)
+            print target
+          } else if ($2 ~ /^csv\//) {
+            target = $2
+            sub("^csv/", "", target)
+            sub(".csv$", "", target)
+            print target
+          }
+        }' || true)
+      if [ -z "$MODIFIED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$MODIFIED_FILES" | sed 's/^/   - /'
+      fi
+      
+      # 추가된 파일
+      echo
+      echo "➕ Added Files:"
+      ADDED_FILES=$(git diff --name-status -M ${LAST_VERSION_COMMIT}..${CI_COMMIT_SHA} | grep "^A" | \
+        awk '{
+          if ($2 ~ /^json\//) {
+            target = $2
+            sub("^json/", "", target)
+            sub(".json$", "", target)
+            print target
+          } else if ($2 ~ /^csv\//) {
+            target = $2
+            sub("^csv/", "", target)
+            sub(".csv$", "", target)
+            print target
+          }
+        }' || true)
+      if [ -z "$ADDED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$ADDED_FILES" | sed 's/^/   - /'
+      fi
+      
+      # 삭제된 파일과 이름 변경된 파일의 이전 이름
+      echo
+      echo "❌ Deleted Files:"
+      DELETED_FILES=$(git diff --name-status -M ${LAST_VERSION_COMMIT}..${CI_COMMIT_SHA} | grep -E "^D|^R" | \
+        awk '{
+          if ($1 == "D" && $2 ~ /^json\//) {
+            target = $2
+            sub("^json/", "", target)
+            sub(".json$", "", target)
+            print target
+          } else if ($1 == "D" && $2 ~ /^csv\//) {
+            target = $2
+            sub("^csv/", "", target)
+            sub(".csv$", "", target)
+            print target
+          } else if ($1 ~ /^R/ && $2 ~ /^json\//) {
+            target = $2
+            sub("^json/", "", target)
+            sub(".json$", "", target)
+            print target
+          } else if ($1 ~ /^R/ && $2 ~ /^csv\//) {
+            target = $2
+            sub("^csv/", "", target)
+            sub(".csv$", "", target)
+            print target
+          }
+        }' || true)
+      if [ -z "$DELETED_FILES" ]; then
+        echo "   None"
+      else
+        echo "$DELETED_FILES" | sed 's/^/   - /'
+      fi
+      echo "----------------------------------------"
+      
+      # 모든 변경사항을 CHANGED_JSON에 통합
+      CHANGED_JSON=$(
+        {
+          echo "$MODIFIED_FILES"
+          echo "$ADDED_FILES"
+          echo "$DELETED_FILES"
+          # Rename된 파일의 새 이름 추가
+          git diff --name-status -M ${LAST_VERSION_COMMIT}..${CI_COMMIT_SHA} | grep "^R" | \
+            awk '{
+              if ($3 ~ /^json\//) {
+                target = $3
+                sub("^json/", "", target)
+                sub(".json$", "", target)
+                print target
+              } else if ($3 ~ /^csv\//) {
+                target = $3
+                sub("^csv/", "", target)
+                sub(".csv$", "", target)
+                print target
+              }
+            }'
+        } | grep -v '^$' || true
+      )
+      
+      echo "🔄 Processing Files..."
+      echo "----------------------------------------"
+      
+      # script 폴더로 이동하여 의존성 설치 및 Excel 파일 처리
+      if [ ! -z "$CHANGED_JSON" ]; then
+        cd script
+        npm install
+        npm run parse:all
+        
+        echo "----------------------------------------"
+        
+        cd ..
+        # cs 폴더를 루트로 이동
+        mv script/cs .
+
+        # GitLab API를 통해 서버 파이프라인 트리거
+        # - token: 파이프라인 트리거 토큰
+        # - ref: 브랜치 이름
+        # - variables: 파이프라인에 전달할 변수들
+        #   - project_id: 현재 프로젝트 ID
+        #   - changed_cs: 변경된 cs 파일 목록
+        #   - job_id: 현재 작업 ID
+        #   - NAMESPACE: 현재 브랜치 이름
+        curl -X POST \
+          -F token=${PROJECT_CLIENT_TRIGGER_TOKEN} \
+          -F ref=master \
+          -F variables[project_id]=${CI_PROJECT_ID} \
+          -F variables[changed_cs]="${CHANGED_JSON}" \
+          -F variables[job_id]=${CI_JOB_ID} \
+          -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+          "http://gitlab.example.com/api/v4/projects/20/trigger/pipeline"
+      else
+        echo "No CS files changed, skipping pipeline trigger"
+      fi
+      
+      # 변경된 파일이 있으면 서버 파이프라인 트리거
+      if [ ! -z "$CHANGED_JSON" ]; then
+        # GitLab API를 통해 서버 파이프라인 트리거
+        # - token: 파이프라인 트리거 토큰
+        # - ref: 브랜치 이름
+        # - variables: 파이프라인에 전달할 변수들
+        #   - project_id: 현재 프로젝트 ID
+        #   - changed_json: 변경된 JSON 파일 목록
+        #   - job_id: 현재 작업 ID
+        #   - NAMESPACE: 현재 브랜치 이름
+        curl -X POST \
+          -F token=${PROJECT_SERVER_TRIGGER_TOKEN} \
+          -F ref=${CI_COMMIT_REF_NAME} \
+          -F variables[project_id]=${CI_PROJECT_ID} \
+          -F variables[changed_json]="${CHANGED_JSON}" \
+          -F variables[job_id]=${CI_JOB_ID} \
+          -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+          "http://gitlab.example.com/api/v4/projects/12/trigger/pipeline"
+      else
+        echo "No JSON files changed, skipping pipeline trigger"
+      fi
+
+  # 작업 결과물 저장 설정
+  artifacts:
+    paths:
+      - json/**/*          # json 아티팩트 유지
+      - version/DataVersion.json
+      - enum/**/*          # enum 폴더 추가
+      - cs/**/*            # cs 폴더 (루트 디렉토리)
+    expire_in: 1 days
+  
+  tags:
+    - build-image         # 특정 GitLab Runner 태그 지정
+  
+  # 작업 실행 규칙
+  rules:
+    # push 이벤트인 경우
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: on_success    # 이전 작업이 성공한 경우에만 실행
+      needs:
+        - job: validate_and_update_server    # validate_and_update_server 작업이 필요
+          artifacts: true # validate_and_update_server 작업의 결과물이 필요
+      <<: *change_files  # 파일 변경 관련 규칙 적용
+    
+    # 웹 인터페이스에서 수동으로 트리거하고 STAGES가 process_data_and_trigger인 경우
+    - if: '$CI_PIPELINE_SOURCE == "web" && $STAGES == "process_data_and_trigger"'
+      when: always       # 항상 실행
+
+update_client:
+  <<: *common_job_config
+  stage: update_client
+  resource_group: client_data_upload
+  # image: alpine:latest
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    - git sparse-checkout init --cone
+    - git sparse-checkout set json/ csv/ version/
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - DESTINATION_SHA="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+    - |
+      # 마지막 DataVersion.json 업데이트 커밋 찾기
+      LAST_VERSION_COMMIT=$(git log --grep="Update DataVersion.json version:" -2 --format="%H" | tail -n 1 || git rev-list --max-parents=0 HEAD)
+      PREVIOUS_SHA=$(echo $LAST_VERSION_COMMIT | cut -c1-8)
+      echo "Previous version commit SHA: $PREVIOUS_SHA"
+      echo "Current commit SHA: $CI_COMMIT_SHORT_SHA"
+    
+    # 최신 10개를 제외한 모든 이전 버전 삭제
+    - echo "Removing all versions except the latest 10..."
+    - |
+      ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/ && \
+        ls -t | tail -n +11 | xargs -r rm -rf"
+      ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/zip/ && \
+        ls -t | tail -n +11 | xargs -r rm -f"
+      ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/ && \
+        ls -t | tail -n +11 | xargs -r rm -rf"
+    
+    # 현재 커밋 디렉토리 생성
+    - ssh deploy@dev-cluster.example.com "mkdir -p /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+    
+    # 현재 커밋, latest 디렉토리 sync (디렉토리 전체 동기화)
+    # 각 디렉토리의 내용을 대상 디렉토리로 바로 복사
+    - rsync -avzr --delete --progress csv/ "$DESTINATION_SHA"
+    - rsync -avzr --progress json/ "$DESTINATION_SHA"
+    # - rsync -avzr --delete --progress csv/ "$DESTINATION_LATEST"  # latest도 사용하는 경우
+    
+    # 임시 zip 생성 후 이동
+    - ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA && zip -r temp.zip . && mv temp.zip ../../zip/$CI_COMMIT_SHORT_SHA.zip"
+    # - ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/latest && zip -r temp.zip . && mv temp.zip ../../zip/latest.zip"
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      when: on_success
+      needs:
+        - job: validate_and_update_server
+      <<: *change_files
+    - if: '$CI_PIPELINE_SOURCE == "web" && $STAGES == "update_client"'
+      when: always

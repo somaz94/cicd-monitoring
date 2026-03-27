@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "parse": "ts-node parser.ts",
+    "parse:all": "ts-node parser.ts .. all",
+    "versions": "ts-node versions.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.31",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "xlsx": "^0.18.5"
+  }
+}

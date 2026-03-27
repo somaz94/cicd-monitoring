@@ -1,0 +1,337 @@
+# GitLab CI Template includes
+include:
+  - project: group/gitlab-ci-templates
+    ref: main
+    file:
+      - /variables/common.yml
+      - /templates/auth/aws-example-aws.yml
+
+stages:
+  - validate_and_update_server # 데이터 검증 
+  - validate_and_update_server_aws # 데이터 검증 
+  - upload_client_data_and_sync_version # 클라이언트 데이터 업로드 및 버전 동기화
+  - upload_client_data_and_sync_version_aws # AWS 클라이언트 데이터 업로드 및 버전 동기화 (alpha, review branch 전용)
+  - process_data_and_trigger # 서버 데이터 업데이트 및 파이프라인 트리거
+  - process_data_and_trigger_aws # AWS 서버 데이터 업데이트 및 파이프라인 트리거 (alpha, review branch 전용)
+
+.change_files: &change_files
+  changes:
+    - json/*.json
+    - csv/*.csv
+    - "!.gitlab-ci.yml"
+
+.templates:
+  .common_before_script: &common_before_script
+    - !reference [.package_install_alpine]
+    - !reference [.git_lfs_setup]
+    - !reference [.ssh_setup_nfs]
+
+  .aws_before_script: &aws_before_script
+    - !reference [.package_install_aws]
+    - !reference [.git_lfs_setup]
+    - !reference [.auth_setup_aws]
+    - !reference [.ssh_setup_aws]
+
+  .validate_git_setup:
+    - !reference [.git_config]
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/gamedesign/example-project.git
+    - git sparse-checkout init --cone
+    - git sparse-checkout set version/ json/ enum/ csv/ script/
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+
+  .validate_npm_process:
+    - cd script
+    - npm install
+    - npm run versions -- version "$CI_COMMIT_SHORT_SHA"
+    - cd ..
+
+  .validate_commit_changes:
+    - CHANGES=$(git status --porcelain version/DataVersion.json | wc -l)
+    - |
+      if [ "$CHANGES" -gt "0" ]; then 
+        # 현재 변경사항 모두 스테이징 취소
+        git reset HEAD .
+        # DataVersion.json만 스테이징
+        git add version/DataVersion.json
+        git commit -m "Update DataVersion.json version: $CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${CI_COMMIT_REF_NAME}
+      fi
+
+  .upload_git_setup:
+    - !reference [.git_config]
+    - git sparse-checkout init --cone
+    - git sparse-checkout set json/ csv/ version/
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+
+  .upload_version_info:
+    - |
+      # 마지막 DataVersion.json 업데이트 커밋 찾기
+      LAST_VERSION_COMMIT=$(git log --grep="Update DataVersion.json version:" -2 --format="%H" | tail -n 1 || git rev-list --max-parents=0 HEAD)
+      PREVIOUS_SHA=$(echo $LAST_VERSION_COMMIT | cut -c1-8)
+      echo "Previous version commit SHA: $PREVIOUS_SHA"
+      echo "Current commit SHA: $CI_COMMIT_SHORT_SHA"
+
+  .process_after_script:
+    - |
+      echo "Processing Files..."
+      echo "----------------------------------------"
+
+      # script 폴더로 이동하여 의존성 설치 및 Excel 파일 처리
+      cd script
+      npm install
+      npm run parse:all
+
+      # echo "----------------------------------------"
+
+      # cs 폴더를 루트로 이동
+      cd ..
+      mv script/cs .
+
+      # GitLab API를 통해 클라이언트 파이프라인 트리거
+      # - token: 파이프라인 트리거 토큰
+      # - ref: 브랜치 이름
+      # - variables: 파이프라인에 전달할 변수들
+      #   - project_id: 현재 프로젝트 ID
+      #   - job_id: 현재 작업 ID
+      #   - NAMESPACE: 현재 브랜치 이름
+      curl -X POST \
+        -F token=${PROJECT_CLIENT_TRIGGER_TOKEN} \
+        -F ref=${CI_COMMIT_REF_NAME} \
+        -F variables[project_id]=${CI_PROJECT_ID} \
+        -F variables[job_id]=${CI_JOB_ID} \
+        -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+        "http://gitlab.example.com/api/v4/projects/20/trigger/pipeline"
+
+      # GitLab API를 통해 서버 파이프라인 트리거
+      # - token: 파이프라인 트리거 토큰
+      # - ref: 브랜치 이름
+      # - variables: 파이프라인에 전달할 변수들
+      #   - project_id: 현재 프로젝트 ID
+      #   - job_id: 현재 작업 ID
+      #   - NAMESPACE: 현재 브랜치 이름
+      curl -X POST \
+        -F token=${PROJECT_SERVER_TRIGGER_TOKEN} \
+        -F ref=${CI_COMMIT_REF_NAME} \
+        -F variables[project_id]=${CI_PROJECT_ID} \
+        -F variables[job_id]=${CI_JOB_ID} \
+        -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+        "http://gitlab.example.com/api/v4/projects/12/trigger/pipeline"
+
+###########################################################################################
+
+validate_and_update_server:
+  extends: .common_job_config
+  stage: validate_and_update_server
+  resource_group: validate_and_update_server
+  # image: alpine:latest
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    - !reference [.templates, .validate_git_setup]
+    - !reference [.templates, .validate_npm_process]
+    - !reference [.templates, .validate_commit_changes]
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      <<: *change_files
+
+validate_and_update_server_aws:
+  extends: .common_job_config
+  stage: validate_and_update_server_aws
+  resource_group: validate_and_update_server_aws
+  image: registry.example.com/library/amazon/aws-cli:2.28.18
+  before_script: *aws_before_script
+  script:
+    - !reference [.templates, .validate_git_setup]
+    - !reference [.templates, .validate_npm_process]
+    - !reference [.templates, .validate_commit_changes]
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      when: manual
+      <<: *change_files
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "review"'
+      <<: *change_files
+
+upload_client_data_and_sync_version:
+  extends: .common_job_config
+  stage: upload_client_data_and_sync_version
+  resource_group: upload_client_data_and_sync_version
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    - !reference [.templates, .upload_git_setup]
+    - DESTINATION_SHA="deploy@nfs-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+    - !reference [.templates, .upload_version_info]
+
+    # 최신 3개를 제외한 모든 이전 버전 삭제
+    - echo "Removing all versions except the latest 3..."
+    - |
+      ssh deploy@nfs-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/ && \
+        ls -t | tail -n +4 | xargs -r rm -rf"
+      ssh deploy@nfs-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/zip/ && \
+        ls -t | tail -n +4 | xargs -r rm -f"
+      ssh deploy@nfs-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/ && \
+        ls -t | tail -n +4 | xargs -r rm -rf"
+
+    # 현재 커밋 디렉토리 생성
+    - ssh deploy@nfs-cluster.example.com "mkdir -p /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+
+    # 각 디렉토리의 내용을 대상 디렉토리로 바로 복사 (.csv, .json 파일만)
+    - rsync -avzr --delete --progress --include="*.csv" --exclude="*" csv/ "$DESTINATION_SHA"
+    - rsync -avzr --progress --include="*.json" --exclude="*" json/ "$DESTINATION_SHA"
+
+    # 임시 zip 생성 후 이동 (JSON 파일만 포함)
+    - ssh deploy@nfs-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA && zip -r temp.zip *.json && mv temp.zip ../../zip/$CI_COMMIT_SHORT_SHA.zip"
+    - |
+      # 폴더 생성
+      ssh deploy@nfs-cluster.example.com "mkdir -p /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/$CI_COMMIT_SHORT_SHA/"
+
+      # DataVersion.json을 클라이언트와 서버에 동기화
+      CLIENT_DESTINATION_VERSION_COMMIT_SHA="deploy@nfs-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/version/$CI_COMMIT_SHORT_SHA/"
+      SERVER_DESTINATION_VERSION="deploy@nfs-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/server/version/"
+      rsync -avzr --delete --progress version/DataVersion.json "$CLIENT_DESTINATION_VERSION_COMMIT_SHA"
+      rsync -avzr --delete --progress version/DataVersion.json "$SERVER_DESTINATION_VERSION"
+
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      when: on_success
+      needs:
+        - job: validate_and_update_server
+          artifacts: true
+      <<: *change_files
+
+upload_client_data_and_sync_version_aws:
+  extends: .common_job_config
+  stage: upload_client_data_and_sync_version_aws
+  resource_group: upload_client_data_and_sync_version_aws
+  image: registry.example.com/library/amazon/aws-cli:2.28.18
+  before_script: *aws_before_script
+  script:
+    - !reference [.templates, .upload_git_setup]
+    - !reference [.templates, .upload_version_info]
+
+    # 현재 커밋 데이터 업로드
+    - aws s3 sync csv/ "s3://file-server.aws.example.com/client/master-data/raw/$CI_COMMIT_SHORT_SHA/" --exclude "*" --include "*.csv" --delete
+    - aws s3 sync json/ "s3://file-server.aws.example.com/client/master-data/raw/$CI_COMMIT_SHORT_SHA/" --exclude "*" --include "*.json"
+
+    # JSON 파일들을 압축해서 zip 폴더에 업로드
+    - mkdir -p /tmp/json_files
+    - cd /tmp/json_files
+    - aws s3 sync "s3://file-server.aws.example.com/client/master-data/raw/$CI_COMMIT_SHORT_SHA/" . --exclude "*" --include "*.json"
+    - zip -r "$CI_COMMIT_SHORT_SHA.zip" *.json
+    - aws s3 cp "$CI_COMMIT_SHORT_SHA.zip" "s3://file-server.aws.example.com/client/master-data/zip/"
+    - cd $CI_PROJECT_DIR
+    - |
+      CLIENT_DESTINATION_VERSION_COMMIT_SHA="s3://file-server.aws.example.com/client/master-data/version/$CI_COMMIT_SHORT_SHA/"
+      SERVER_DESTINATION_VERSION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/version/"
+
+      # S3 업로드 (Cache-Control 헤더로 캐시 제어)
+      aws s3 cp version/DataVersion.json "$CLIENT_DESTINATION_VERSION_COMMIT_SHA" --cache-control "no-cache, no-store, must-revalidate"
+
+      # CloudFront 캐시 무효화 (Distribution ID가 설정된 경우에만)
+      if [ -n "${CLOUDFRONT_DISTRIBUTION_ID}" ]; then
+        echo "Creating CloudFront invalidation for distribution: ${CLOUDFRONT_DISTRIBUTION_ID}"
+        aws cloudfront create-invalidation --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths "/client/master-data/version/*"
+      else
+        echo "CLOUDFRONT_DISTRIBUTION_ID not set, skipping CloudFront invalidation"
+      fi
+
+      # EC2에 업로드
+      scp version/DataVersion.json "$SERVER_DESTINATION_VERSION"
+
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      when: on_success
+      needs:
+        - job: validate_and_update_server_aws
+          artifacts: true
+      <<: *change_files
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "alpha"'
+      when: on_success
+      needs:
+        - job: validate_and_update_server_aws
+          artifacts: true
+
+process_data_and_trigger:
+  extends: .common_job_config
+  stage: process_data_and_trigger
+  resource_group: server_data_upload
+  # image: alpine:latest
+  image: registry.example.com/library/alpine:latest
+  before_script: *common_before_script
+  script:
+    - !reference [.git_config]
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - DESTINATION="deploy@nfs-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/server/data/"
+    - rsync -avzr --delete --progress json/ "$DESTINATION"
+  after_script:
+    - !reference [.templates, .process_after_script]
+  # 작업 결과물 저장 설정
+  artifacts:
+    paths:
+      - json/**/* # json 아티팩트 유지
+      - version/DataVersion.json
+      - enum/**/* # enum 폴더 추가
+      - cs/**/* # cs 폴더 (루트 디렉토리)
+    expire_in: 1 days
+
+  tags:
+    - build-image # 특정 GitLab Runner 태그 지정
+
+  # 작업 실행 규칙
+  rules:
+    # push 이벤트인 경우
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      when: on_success # 이전 작업이 성공한 경우에만 실행
+      needs:
+        - job: upload_client_data_and_sync_version # upload_client_data_and_sync_version 작업이 필요
+          artifacts: true # upload_client_data_and_sync_version 작업의 결과물이 필요
+      <<: *change_files # 파일 변경 관련 규칙 적용
+
+process_data_and_trigger_aws:
+  extends: .common_job_config
+  stage: process_data_and_trigger_aws
+  resource_group: server_data_upload_aws
+  image: registry.example.com/library/amazon/aws-cli:2.28.18
+  before_script: *aws_before_script
+  script:
+    - !reference [.git_config]
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+
+    # EC2 업로드
+    - DESTINATION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/data/"
+    - rsync -avzr --delete --progress json/ $DESTINATION
+  after_script:
+    - !reference [.templates, .process_after_script]
+  artifacts:
+    paths:
+      - json/**/*
+      - version/DataVersion.json
+      - enum/**/*
+      - cs/**/*
+    expire_in: 1 days
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      when: on_success
+      needs:
+        - job: upload_client_data_and_sync_version_aws
+          artifacts: true
+      <<: *change_files
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "alpha"'
+      when: on_success
+      needs:
+        - job: upload_client_data_and_sync_version_aws
+          artifacts: true

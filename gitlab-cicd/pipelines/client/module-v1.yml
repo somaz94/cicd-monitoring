@@ -1,0 +1,57 @@
+# GitLab CI Template includes
+include:
+  - project: group/gitlab-ci-templates
+    ref: main
+    file:
+      - /variables/common.yml
+
+stages:
+  - update_cs
+
+variables:
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  GIT_STRATEGY: none
+
+update_cs:
+  extends: .common_job_config
+  stage: update_cs
+  image: registry.example.com/library/alpine:latest
+  before_script:
+    - echo [INFO] STATIC_DATA_PROJECT_ID is $STATIC_DATA_PROJECT_ID
+    - echo [INFO] GENERATE_JOB_ID is $GENERATE_JOB_ID
+    - apk update && apk add --no-cache unzip git curl
+  script:
+    # 1. 아티팩트 다운로드
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${CICD_ACCESS_TOKEN}" "http://gitlab.example.com/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - unzip -o artifacts.zip
+
+    # 2. Git 설정
+    - !reference [.git_config]
+
+    # 3. 저장소 clone
+    - git clone --filter=blob:limit=1k --sparse http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/client/example-project.git repo
+    - cd repo
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git sparse-checkout init --cone
+    - git sparse-checkout set Assets/Scripts/DataMediator/Data
+
+    # 4. CS 파일 복사 및 커밋
+    - echo "Copying all CS files to Assets/Scripts/DataMediator/Data/"
+    - rm -rf Assets/Scripts/DataMediator/Data/*.cs
+    - cp ../cs/*.cs Assets/Scripts/DataMediator/Data/
+    - cp ../enum/*.cs Assets/Scripts/DataMediator/Data/
+
+    # 5. 변경사항 확인 및 푸시
+    - |
+      if [ -n "$(git status --porcelain)" ]; then
+        git add Assets/Scripts/DataMediator/Data/
+        git commit -m "feat(data): update data mediator [skip ci]"
+        git push origin ${CI_COMMIT_REF_NAME}
+      else
+        echo "No changes detected"
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+  tags:
+    - build-image

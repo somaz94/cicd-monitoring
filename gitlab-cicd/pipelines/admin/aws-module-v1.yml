@@ -1,0 +1,151 @@
+# GitLab CI Template includes
+include:
+  - project: group/gitlab-ci-templates
+    ref: main
+    file:
+      - /variables/common.yml
+      - /variables/services.yml
+      - /templates/auth/aws-example.yml
+      - /templates/build/kaniko-harbor.yml
+      - /templates/build/kaniko-ecr-example.yml
+      - /templates/deploy/argocd-example.yml
+
+stages:
+  - auth
+  - build
+  - deploy
+
+variables:
+  NAMESPACE:
+    value: "dev"
+    description: "Select the namespace: dev or alpha (use deploy)"
+    options:
+      - "dev"
+      - "alpha"
+  SERVICE:
+    value: "app-admin"
+    description: "Select app-admin"
+    options:
+      - "app-admin"
+
+# Admin 서비스 파일 변경 감지 룰
+.change_files_admin: &change_files_admin
+  changes:
+    - Dockerfile
+    - aws.Dockerfile
+    - src/**/*
+    - public/**/*
+    - index.html
+    - package.json
+    - pnpm-lock.yaml
+    - tsconfig.json
+    - tsconfig.node.json
+    - vite.config.ts
+    - "!.gitlab-ci.yml"
+
+# AWS 인증 Jobs
+auth_aws_manual:
+  extends: .auth_aws
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "alpha")'
+  tags:
+    - build-image
+
+auth_aws_auto:
+  extends: .auth_aws
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_admin
+  tags:
+    - build-image
+
+# Harbor 빌드 Jobs
+build_manual:
+  extends: .build_kaniko
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web") && $CI_COMMIT_REF_NAME != "alpha"'
+  tags:
+    - build-image
+
+build_auto_admin:
+  extends: .build_kaniko
+  variables:
+    SERVICE: $APP_ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_admin
+  tags:
+    - build-image
+
+# AWS ECR 빌드 Jobs
+build_aws_manual:
+  extends: .build_kaniko_aws
+  needs:
+    - job: auth_aws_manual
+      artifacts: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "alpha")'
+  tags:
+    - build-image-aws
+
+build_aws_auto_admin:
+  extends: .build_kaniko_aws
+  needs:
+    - job: auth_aws_auto
+      artifacts: true
+  variables:
+    SERVICE: $APP_ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_admin
+  tags:
+    - build-image-aws
+
+# Harbor 배포 Jobs
+deploy_manual:
+  extends: .deploy_argocd
+  needs:
+    - job: build_manual
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $NAMESPACE != "alpha")'
+  tags:
+    - deploy-image
+
+deploy_auto_admin:
+  extends: .deploy_argocd
+  needs:
+    - job: build_auto_admin
+  variables:
+    SERVICE: $APP_ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_admin
+  tags:
+    - deploy-image
+
+# AWS 배포 Jobs
+deploy_aws_manual:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: build_aws_manual
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "alpha")'
+  tags:
+    - deploy-image
+
+deploy_aws_auto_admin:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: build_aws_auto_admin
+  variables:
+    SERVICE: $APP_ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_admin
+  tags:
+    - deploy-image
+

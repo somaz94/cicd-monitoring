@@ -1,0 +1,166 @@
+variables:
+  # Basic settings
+  IMAGE_PROJECT: example-project
+  GIT_STRATEGY: fetch
+  GIT_DEPTH: 10
+
+  # Registry settings
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$IMAGE_PROJECT/$SERVICE
+  BUILD_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_URL: "${CI_REGISTRY_IMAGE}:${BUILD_TAG}"
+  BUILD_TAG_LATEST: latest
+  IMAGE_URL_LATEST: "${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}"
+
+  # AWS settings
+  AWS_REGION: us-east-1
+  AWS_ECR_REGISTRY: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+  AWS_ECR_IMAGE_URL: "${AWS_ECR_REGISTRY}/example-aws/${SERVICE}:${BUILD_TAG}"
+  AWS_ECR_IMAGE_URL_LATEST: "${AWS_ECR_REGISTRY}/example-aws/${SERVICE}:${BUILD_TAG_LATEST}"
+  AWS_ECR_CACHE_REPO: "${AWS_ECR_REGISTRY}/example-aws/${SERVICE}-cache"
+
+  # GitLab host
+  GITLAB_HOST: "gitlab.example.com"
+
+  # AWS EC2 settings
+  AWS_EC2_IP: "10.0.0.1"
+  AWS_EC2_USER: "ec2-user"
+  AWS_DATA_MOUNT_BASE: "/mnt/example-app"
+
+  # File server settings
+  FILE_SERVER_URL: "http://file-server.example.com"
+  FILE_SERVER_AWS_URL: "https://file-server.aws.example.com"
+
+  # ArgoCD settings
+  ARGOCD_REPO_PATH: "group/argocd-applicationset"
+  ARGOCD_REPO_BRANCH: "master"
+
+# Common job config (used as template)
+.common_job_config:
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137  # OOM kill retry
+      - 1    # General command failure
+
+# Common script fragments
+.git_config:
+  - git config --global user.email "cicd@example.com"
+  - git config --global user.name "cicd"
+  - git config --global push.default current
+
+.package_install_alpine:
+  - apk update && apk add --no-cache jq openssh-client rsync git curl git-lfs nodejs npm sed
+
+.package_install_aws:
+  - yum update -y && yum install -y jq git git-lfs nodejs npm python3 python3-pip openssh-clients rsync zip
+
+# SSH setup - Standard (GitLab only)
+.ssh_setup_standard:
+  - eval $(ssh-agent -s)
+  - echo "$GITLAB_SSH_PRIVATE_KEY" | ssh-add -
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+  - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan $GITLAB_HOST)
+  - echo "$GITLAB_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+# SSH setup - Master Data (NFS SSH)
+.ssh_setup_nfs:
+  - eval $(ssh-agent -s)
+  - SSH_KEY="${NFS_SSH_PRIVATE_KEY}"
+  - echo "${SSH_KEY}" | ssh-add -
+  - mkdir -p ~/.ssh
+  - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+
+# SSH setup - AWS combined (GitLab + AWS)
+.ssh_setup_aws:
+  - eval $(ssh-agent -s)
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  # GitLab SSH key
+  - echo "$GITLAB_SSH_PRIVATE_KEY" > ~/.ssh/gitlab_key
+  - chmod 600 ~/.ssh/gitlab_key
+  - echo "$GITLAB_SSH_PRIVATE_KEY" | ssh-add -
+  # AWS SSH key
+  - echo "${AWS_SSH_PRIVATE_KEY}" > ~/.ssh/aws_key
+  - chmod 600 ~/.ssh/aws_key
+  - echo "${AWS_SSH_PRIVATE_KEY}" | ssh-add -
+  # SSH config
+  - |
+    cat > ~/.ssh/config << EOF
+    Host ${GITLAB_HOST}
+        HostName ${GITLAB_HOST}
+        User git
+        IdentityFile ~/.ssh/gitlab_key
+        StrictHostKeyChecking no
+        UserKnownHostsFile=/dev/null
+
+    Host ${AWS_EC2_IP}
+        HostName ${AWS_EC2_IP}
+        User ${AWS_EC2_USER}
+        IdentityFile ~/.ssh/aws_key
+        StrictHostKeyChecking no
+        UserKnownHostsFile=/dev/null
+
+    Host *
+        StrictHostKeyChecking no
+        UserKnownHostsFile=/dev/null
+    EOF
+  - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan $GITLAB_HOST)
+  - echo "$GITLAB_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+# Git LFS setup
+.git_lfs_setup:
+  - git lfs install
+
+# Dockerfile path resolution common script
+# Export the following variables before use:
+#   DOCKERFILE_VAR_NAME: Explicit Dockerfile variable value (e.g., $DOCKERFILE_NAME or $AWS_DOCKERFILE_NAME)
+#   DOCKERFILE_SUFFIX: Service-specific Dockerfile suffix (e.g., ".Dockerfile" or "-aws.Dockerfile")
+#   DOCKERFILE_FALLBACK: Common Dockerfile name (e.g., "" or "aws.Dockerfile")
+.resolve_dockerfile:
+  - |
+    if [ -n "${DOCKERFILE_VAR_NAME}" ]; then
+      DOCKERFILE_PATH="${CI_PROJECT_DIR}/${DOCKERFILE_VAR_NAME}"
+      echo "[INFO] Using explicitly set dockerfile: ${DOCKERFILE_VAR_NAME}"
+    elif [ -n "${SERVICE}" ] && [ -f "${CI_PROJECT_DIR}/${SERVICE}${DOCKERFILE_SUFFIX}" ]; then
+      DOCKERFILE_PATH="${CI_PROJECT_DIR}/${SERVICE}${DOCKERFILE_SUFFIX}"
+      echo "[INFO] Using service-specific dockerfile: ${SERVICE}${DOCKERFILE_SUFFIX}"
+    elif [ -n "${DOCKERFILE_FALLBACK}" ] && [ -f "${CI_PROJECT_DIR}/${DOCKERFILE_FALLBACK}" ]; then
+      DOCKERFILE_PATH="${CI_PROJECT_DIR}/${DOCKERFILE_FALLBACK}"
+      echo "[INFO] Using fallback dockerfile: ${DOCKERFILE_FALLBACK}"
+    elif [ -f "${CI_PROJECT_DIR}/Dockerfile" ]; then
+      DOCKERFILE_PATH="${CI_PROJECT_DIR}/Dockerfile"
+      echo "[INFO] Using default Dockerfile"
+    else
+      echo "[ERROR] No suitable Dockerfile found"
+      exit 1
+    fi
+
+    echo "[INFO] Final dockerfile path: $DOCKERFILE_PATH"
+
+    if [ ! -f "$DOCKERFILE_PATH" ]; then
+      echo "[ERROR] Dockerfile not found at: $DOCKERFILE_PATH"
+      exit 1
+    fi
+
+# ArgoCD deploy common base (not used directly)
+.deploy_argocd_base:
+  extends: .common_job_config
+  stage: deploy
+  image: registry.example.com/library/alpine:latest
+
+# Kaniko build common base (not used directly)
+.build_kaniko_base:
+  extends: .common_job_config
+  stage: build
+  before_script:
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - mkdir -p /kaniko/.docker

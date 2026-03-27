@@ -1,0 +1,123 @@
+stages:
+  - upload_data_server
+  - upload_data_client
+
+variables:
+  STAGES:
+    value: "upload_data_server"
+    description: "Select the stages: upload_data_server or upload_data_client(use web)"
+    options:
+      - "upload_data_server"
+      - "upload_data_client"
+
+.change_files_server: &change_files_server
+  changes:
+    - json/**/*
+
+upload_data_server:
+  stage: upload_data_server
+  resource_group: server_data_upload
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
+  image: alpine:latest
+  before_script:
+    - apk update && apk add openssh-client rsync git
+    - eval $(ssh-agent -s)
+    - SSH_KEY="${NFS_SSH_PRIVATE_KEY}"
+    - echo "${SSH_KEY}" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+  script:
+    - DESTINATION="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/server/data/"
+    - rsync -avzr --delete --progress json/* "$DESTINATION"
+  after_script:
+    - apk update && apk add openssh-client rsync git curl
+    - CHANGED_JSON=$(git diff --name-only HEAD~1 HEAD | grep json | grep -E '\.json$' | awk -F/ '{print $NF}' | awk -F. '{print $1}') || true
+    - |
+      if [ ! -z "$CHANGED_JSON" ]; then
+        curl -X POST \
+          -F token=${PROJECT_SERVER_TRIGGER_TOKEN} \
+          -F ref=${CI_COMMIT_REF_NAME} \
+          -F variables[project_id]=${CI_PROJECT_ID} \
+          -F variables[changed_json]="${CHANGED_JSON}" \
+          -F variables[job_id]=${CI_JOB_ID} \
+          -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+          "http://gitlab.example.com/api/v4/projects/6/trigger/pipeline"
+      else
+        echo "No JSON files changed, skipping pipeline trigger"
+      fi
+    # - >
+    #   curl -X POST \
+    #     -F token=${PROJECT_SERVER_TRIGGER_TOKEN} \
+    #     -F ref=${CI_COMMIT_REF_NAME} \
+    #     -F variables[project_id]=${CI_PROJECT_ID} \
+    #     -F variables[changed_json]="${CHANGED_JSON}" \
+    #     -F variables[job_id]=${CI_JOB_ID} \
+    #     -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+    #     "http://gitlab.example.com/api/v4/projects/6/trigger/pipeline"
+  artifacts:
+    paths:
+      - json/**/*
+    expire_in: 1 days
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_server
+    - if: '$CI_PIPELINE_SOURCE == "web" && $STAGES == "upload_data_server"'
+  
+.change_files_client: &change_files_client
+  changes:
+    - json/**/*
+
+upload_data_client:
+  stage: upload_data_client
+  resource_group: client_data_upload
+  interruptible: true
+  retry:
+    max: 2  # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
+  image: alpine:latest
+  before_script:
+    - apk update && apk add openssh-client rsync git
+    - eval $(ssh-agent -s)
+    - SSH_KEY="${NFS_SSH_PRIVATE_KEY}"
+    - echo "${SSH_KEY}" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+  script:
+    - DESTINATION_SHA="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+    - DESTINATION_LATEST="deploy@dev-cluster.example.com:/mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/latest/"
+    # 이전 ��밋 SHA 가져오기
+    - PREVIOUS_SHA=$(git rev-parse HEAD~1 | cut -c1-8)
+    - echo Previous commit SHA $PREVIOUS_SHA
+    - echo Current commit SHA $CI_COMMIT_SHORT_SHA
+    # 이전 커밋 디렉토리 삭제 후 현재 커밋 디렉토리 생성
+    - echo "Removing previous commit directory..."
+    - ssh deploy@dev-cluster.example.com "rm -rf /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$PREVIOUS_SHA"
+    - ssh deploy@dev-cluster.example.com "rm -f /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/zip/$PREVIOUS_SHA.zip"
+    - ssh deploy@dev-cluster.example.com "mkdir -p /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA/"
+    # 현재 커밋, latest 디렉토리 sync
+    - rsync -avzr --delete --progress json/* "$DESTINATION_SHA"
+    - rsync -avzr --delete --progress json/* "$DESTINATION_LATEST"
+    # 임시 zip 생성 후 이동
+    - ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/$CI_COMMIT_SHORT_SHA && zip -r temp.zip . && mv temp.zip ../../zip/$CI_COMMIT_SHORT_SHA.zip"
+    - ssh deploy@dev-cluster.example.com "cd /mnt/nfs/example-project/$CI_COMMIT_REF_NAME/client/master-data/raw/latest && zip -r temp.zip . && mv temp.zip ../../zip/latest.zip"
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_client
+    - if: '$CI_PIPELINE_SOURCE == "web" && $STAGES == "upload_data_client"'

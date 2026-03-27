@@ -1,0 +1,74 @@
+stages:
+  - gdrive-upload
+
+variables:
+  CONFIG: $RCLONE_CONFIG
+  SYNC_TARGET:
+    value: "all"
+    description: "Select sync target: all, exampleaws(ExampleAWS only), exampleproject(ExampleProject only)"
+    options:
+      - "all"
+      - "exampleaws"
+      - "exampleproject"
+
+
+.change_files_exampleaws: &change_files_exampleaws
+  changes:
+    - ExampleAWS/**/*
+    - "!.gitlab-ci.yml"
+    - "!.gitignore"
+
+.change_files_exampleproject: &change_files_exampleproject
+  changes:
+    - ExampleProject/**/*
+    - "!.gitlab-ci.yml"
+    - "!.gitignore"
+
+.gdrive-base: &gdrive-base
+  stage: gdrive-upload
+  # image: rclone/rclone:latest
+  image: registry.example.com/library/rclone/rclone:latest
+  interruptible: true
+  variables:
+    # Set git clone history depth
+    # rclone sync only needs current file state, so 1 latest commit is sufficient
+    # Much faster clone than default(20) (especially effective with many binary files like pptx/xlsx)
+    GIT_DEPTH: 1
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137
+  tags:
+    - build-image
+
+gdrive-upload-exampleaws:
+  <<: *gdrive-base
+  variables:
+    # Sparse checkout only ExampleAWS directory (prevent full clone)
+    GIT_SPARSE_CHECKOUT_DIRS: "ExampleAWS"
+  script:
+    # --fast-list        : Query entire file list at once (removes per-directory API calls, biggest speed improvement)
+    # --transfers=8      : Concurrent file transfers (default 4)
+    # --checkers=16      : Concurrent file comparisons (default 8)
+    # --drive-chunk-size : Upload chunk size (default 8M -> 256M, effective for large files)
+    - rclone sync ./ExampleAWS "Design Docs:ExampleAWS" --progress --fast-list --transfers=8 --checkers=16 --drive-chunk-size=256M --config $CONFIG
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && ($SYNC_TARGET == "all" || $SYNC_TARGET == "exampleaws")'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_exampleaws
+
+gdrive-upload-exampleproject:
+  <<: *gdrive-base
+  variables:
+    # Sparse checkout only ExampleProject directory (prevent full clone)
+    GIT_SPARSE_CHECKOUT_DIRS: "ExampleProject"
+  script:
+    - rclone sync ./ExampleProject "Design Docs:ExampleProject" --progress --fast-list --transfers=8 --checkers=16 --drive-chunk-size=256M --config $CONFIG
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && ($SYNC_TARGET == "all" || $SYNC_TARGET == "exampleproject")'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_exampleproject

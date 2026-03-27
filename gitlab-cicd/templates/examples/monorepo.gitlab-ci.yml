@@ -1,0 +1,486 @@
+# GitLab CI Template includes
+include:
+  - project: group/gitlab-ci-templates
+    ref: main
+    file:
+      - /variables/common.yml
+      - /variables/services.yml
+      - /templates/auth/aws.yml
+      - /templates/build/kaniko-harbor.yml
+      - /templates/build/kaniko-ecr.yml
+      - /templates/deploy/argocd.yml
+      - /templates/backup/gdrive.yml
+
+workflow:
+  rules:
+    # Branches with slash (/) do not run pipeline (e.g., feature/xxx, refactor/xxx)
+    - if: "$CI_COMMIT_REF_NAME =~ /\\//"
+      when: never
+    # All others run
+    - when: always
+
+stages:
+  - generator
+  - prepare_admin
+  - auth
+  - proto
+  - build
+  - deploy
+  - source_backup
+
+variables:
+  HUSKY: "0"  # Disable Husky hooks in CI environment
+  NAMESPACE:
+    value: 'dev'
+    description: 'Select the namespace: dev or qa or staging or alpha or review (use deploy)'
+    options:
+      - 'dev'
+      - 'qa'
+      - 'staging'
+      - 'alpha'
+      - 'review'
+  SERVICE:
+    value: 'game'
+    description: 'Select game or admin or backup'
+    options:
+      - 'game'
+      - 'admin'
+      - 'backup'
+
+# Change detection rules for monorepo
+.change_files_game: &change_files_game
+  changes:
+    - apps/game/**/*
+    - game.Dockerfile
+    - game-aws.Dockerfile
+    - libs/**/*
+    - '!.gitlab-ci.yml'
+
+.change_files_admin: &change_files_admin
+  changes:
+    - apps/admin/**/*
+    - admin.Dockerfile
+    - admin-aws.Dockerfile
+    - libs/**/*
+    - '!.gitlab-ci.yml'
+
+.change_files_all: &change_files_all
+  changes:
+    - apps/game/**/*
+    - game.Dockerfile
+    - game-aws.Dockerfile
+    - apps/admin/**/*
+    - admin.Dockerfile
+    - admin-aws.Dockerfile
+    - libs/**/*
+    - '!.gitlab-ci.yml'
+
+.change_files_proto: &change_files_proto
+  changes:
+    - '**/*.proto'
+    - '!.gitlab-ci.yml'
+
+generator:
+  stage: generator
+  image: registry.example.com/library/node:latest
+  interruptible: false
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137
+  tags:
+    - build-image
+  before_script:
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - apt update && apt install -y unzip
+    - corepack enable
+    - pnpm install
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${CICD_ACCESS_TOKEN}" "http://${GITLAB_HOST}/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - zipinfo artifacts.zip
+    - mkdir -p data/
+    - unzip -o artifacts.zip
+    - mv json/* data/
+    - rm -rf json/
+    - rm -rf cs/
+  script:
+    - !reference [.git_config]
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@${GITLAB_HOST}/group/example-project.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - pnpm run gen-master
+    - rm -rf artifacts.zip
+    - CHANGES=$(git status --porcelain | wc -l)
+    - PUSHED=false
+    - |
+      if [ "$CHANGES" -gt "0" ]; then
+        git add .
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        if git push gitlab_origin ${CI_COMMIT_REF_NAME}; then
+          PUSHED=true
+        fi
+
+        # Temporary code: publish master-data even if build fails
+        if [ "${CI_COMMIT_REF_NAME}" = "alpha" ] || [ "${CI_COMMIT_REF_NAME}" = "review" ]; then
+          ADMIN_URL="https://${CI_COMMIT_REF_NAME}-admin.aws.example.com/versions/master-data/publish"
+        else
+          ADMIN_URL="http://${CI_COMMIT_REF_NAME}-admin.app.example.com/versions/master-data/publish"
+        fi
+        RESPONSE=$(curl -X 'POST' "${ADMIN_URL}" -H 'accept: application/json' -H 'X-API-KEY: example-project-super-user' -H 'Content-Type: application/json')
+        echo $RESPONSE
+      fi
+    - |
+      if [ "$PUSHED" = "false" ]; then
+        if [ "${CI_COMMIT_REF_NAME}" = "alpha" ] || [ "${CI_COMMIT_REF_NAME}" = "review" ]; then
+          ADMIN_URL="https://${CI_COMMIT_REF_NAME}-admin.aws.example.com/versions/master-data/publish"
+        else
+          ADMIN_URL="http://${CI_COMMIT_REF_NAME}-admin.app.example.com/versions/master-data/publish"
+        fi
+        RESPONSE=$(curl -X 'POST' "${ADMIN_URL}" -H 'accept: application/json' -H 'X-API-KEY: example-project-super-user' -H 'Content-Type: application/json')
+        echo $RESPONSE
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+prepare_admin:
+  extends: .common_job_config
+  stage: prepare_admin
+  image: registry.example.com/library/node:latest
+  variables:
+    NODE_ENV: $NAMESPACE
+  before_script:
+    - apt update && apt install -y git
+    - corepack enable
+    - pnpm install
+  script:
+    - !reference [.git_config]
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@${GITLAB_HOST}/group/example-project.git
+    - |
+      if [ "$CI_PIPELINE_SOURCE" == "web" ]; then
+        BRANCH_NAME=$NAMESPACE
+      else
+        BRANCH_NAME=$CI_COMMIT_REF_NAME
+      fi
+    - git checkout ${BRANCH_NAME}
+    - git pull gitlab_origin ${BRANCH_NAME}
+    - pnpm run gen-admin
+    - git add .
+    - |-
+      CHANGES=$(git status --porcelain | wc -l)
+      if [ "$CHANGES" -gt "0" ]; then
+        git commit -m "Preparation step before admin build-$CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${BRANCH_NAME} -o ci.skip
+        echo "NEW_COMMIT_SHA=$(git rev-parse --short HEAD)" >> build.env
+      else
+        echo "NEW_COMMIT_SHA=$CI_COMMIT_SHORT_SHA" >> build.env
+      fi
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
+  artifacts:
+    reports:
+      dotenv: build.env
+    paths:
+      - apps/admin/**/*
+      - libs/**/*
+    expire_in: 1 day
+
+# Auth jobs
+auth_aws_manual:
+  extends: .auth_aws
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && ($NAMESPACE == "alpha" || $NAMESPACE == "review"))'
+  tags:
+    - build-image
+
+auth_aws_auto:
+  extends: .auth_aws
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      <<: *change_files_all
+  tags:
+    - build-image
+
+# Proto generation jobs
+gen_proto_cs:
+  stage: proto
+  image: registry.example.com/library/node:latest
+  before_script:
+    - apt update && apt install -y git unzip curl
+    - corepack enable
+    - pnpm install
+    # Install protoc
+    - |
+      PROTOC_VERSION=33.1
+      curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip
+      unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d /usr/local
+      rm protoc-${PROTOC_VERSION}-linux-x86_64.zip
+      protoc --version
+  script:
+    - !reference [.git_config]
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@${GITLAB_HOST}/group/example-project.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    # Generate C# code from .proto files
+    - pnpm run gen-proto:cs
+    # Trigger client pipeline via GitLab API
+    - |
+      curl -X POST \
+        -F token=${CLIENT_TRIGGER_TOKEN} \
+        -F ref=${CI_COMMIT_REF_NAME} \
+        -F variables[project_id]=${CI_PROJECT_ID} \
+        -F variables[job_id]=${CI_JOB_ID} \
+        -F variables[type]=proto \
+        -F variables[NAMESPACE]=${CI_COMMIT_REF_NAME} \
+        "http://${GITLAB_HOST}/api/v4/projects/20/trigger/pipeline"
+  artifacts:
+    paths:
+      - Generated/Proto/**/*
+    expire_in: 1 day
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_proto
+
+# Build jobs - Manual (Harbor)
+build_manual:
+  extends: .build_kaniko
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $SERVICE != "backup" && $NAMESPACE != "alpha" && $NAMESPACE != "review")'
+  tags:
+    - build-image
+
+build_manual_admin:
+  extends: .build_kaniko
+  needs:
+    - job: prepare_admin
+      artifacts: true
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE != "alpha" && $NAMESPACE != "review")'
+  tags:
+    - build-image
+
+build_auto_game:
+  extends: .build_kaniko
+  needs:
+    - job: gen_proto_cs
+      optional: true
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      <<: *change_files_game
+  tags:
+    - build-image
+
+build_auto_admin:
+  extends: .build_kaniko
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+    BUILD_TAG: $NEW_COMMIT_SHA
+  needs:
+    - job: prepare_admin
+      artifacts: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      <<: *change_files_admin
+  tags:
+    - build-image
+
+# Build jobs - AWS ECR (alpha, review)
+build_aws_manual:
+  extends: .build_kaniko_aws
+  needs:
+    - job: auth_aws_manual
+      artifacts: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $SERVICE != "backup" && ($NAMESPACE == "alpha" || $NAMESPACE == "review"))'
+  tags:
+    - build-image-aws
+
+build_aws_manual_admin:
+  extends: .build_kaniko_aws
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: auth_aws_manual
+      artifacts: true
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && ($NAMESPACE == "alpha" || $NAMESPACE == "review"))'
+  tags:
+    - build-image-aws
+
+build_aws_auto_game:
+  extends: .build_kaniko_aws
+  needs:
+    - job: auth_aws_auto
+      artifacts: true
+    - job: gen_proto_cs
+      optional: true
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      <<: *change_files_game
+  tags:
+    - build-image-aws
+
+build_aws_auto_admin:
+  extends: .build_kaniko_aws
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: auth_aws_auto
+      artifacts: true
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      <<: *change_files_admin
+  tags:
+    - build-image-aws
+
+# Deploy jobs - Harbor
+deploy_manual:
+  extends: .deploy_argocd
+  needs:
+    - job: build_manual
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $SERVICE != "backup" && $NAMESPACE != "alpha" && $NAMESPACE != "review")'
+  tags:
+    - deploy-image
+
+deploy_manual_admin:
+  extends: .deploy_argocd
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_manual_admin
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    NAMESPACE: $NAMESPACE
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE != "alpha" && $NAMESPACE != "review")'
+  tags:
+    - deploy-image
+
+deploy_auto_game:
+  extends: .deploy_argocd
+  needs:
+    - job: build_auto_game
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      <<: *change_files_game
+  tags:
+    - deploy-image
+
+deploy_auto_admin:
+  extends: .deploy_argocd
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_auto_admin
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha" && $CI_COMMIT_REF_NAME != "review"'
+      <<: *change_files_admin
+      when: delayed
+      start_in: 30 seconds
+  tags:
+    - deploy-image
+
+# Deploy jobs - AWS (alpha, review)
+deploy_aws_manual:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: build_aws_manual
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $SERVICE != "backup" && ($NAMESPACE == "alpha" || $NAMESPACE == "review"))'
+  tags:
+    - deploy-image
+
+deploy_aws_manual_admin:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_aws_manual_admin
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && ($NAMESPACE == "alpha" || $NAMESPACE == "review"))'
+  tags:
+    - deploy-image
+
+deploy_aws_auto_game:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: build_aws_auto_game
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      <<: *change_files_game
+  tags:
+    - deploy-image
+
+deploy_aws_auto_admin:
+  extends: .deploy_argocd_aws
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_aws_auto_admin
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && ($CI_COMMIT_REF_NAME == "alpha" || $CI_COMMIT_REF_NAME == "review")'
+      <<: *change_files_admin
+      when: delayed
+      start_in: 30 seconds
+  tags:
+    - deploy-image
+
+# Google Drive source backup (runs independently from build/deploy)
+source_backup:
+  extends: .backup_gdrive
+  # Start immediately without waiting for other stages (does not block build/deploy)
+  needs: []
+  variables:
+    CONFIG: $GITLAB_BACKUP_RCLONE_CONFIG
+  tags:
+    - build-image
+  rules:
+    # Auto run when SERVICE=backup selected from web
+    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "backup"'
+    # Manual button for other SERVICE selections from web (allow_failure so pipeline passes)
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+    # Auto backup on push (trigger pipelines have source "trigger" so they won't match)
+    - if: '$CI_PIPELINE_SOURCE == "push"'

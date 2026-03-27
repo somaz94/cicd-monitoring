@@ -41,8 +41,8 @@ variables:
       echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
 
   .common_build_script: &common_build_script
-    - >      
-      /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify 
+    - >
+      /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
 
   # common update before script
   .common_update_before_script: &common_update_before_script
@@ -52,21 +52,21 @@ variables:
     - apk add --no-cache sed git openssh
     - eval $(ssh-agent -s)
     - echo "$GITLAB_SSH_PRIVATE_KEY" | ssh-add -
-    - mkdir -p ~/.ssh 
+    - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
-    - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan gitlab.concrit.us)
+    - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan gitlab.example.com)
     - echo "$GITLAB_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
   .common_update_script: &common_update_script
-    - git clone git@gitlab.concrit.us:server/argocd-applicationset.git
+    - git clone git@gitlab.example.com:group/argocd-applicationset.git
     - cd argocd-applicationset
     - git checkout master
     - cd values/$IMAGE_PROJECT/$SERVICE
     - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
     - git add .
     - if git diff --cached --quiet; then echo "No changes to commit"; else
-        git config --global user.email "cicd@concrit.us";
+        git config --global user.email "cicd@example.com";
         git config --global user.name "cicd";
         git commit -m "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG";
         git push origin master;
@@ -112,4 +112,3 @@ update_manual_image:
   <<: *update_template
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
-

@@ -1,0 +1,69 @@
+# ArgoCD deploy template
+# Usage: extends: .deploy_argocd or .deploy_argocd_aws
+
+.deploy_argocd_echo_info:
+  - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+  - echo "[INFO] SERVICE is $SERVICE"
+  - echo "[INFO] NAMESPACE is $NAMESPACE"
+
+.deploy_argocd_prepare:
+  - git clone git@${GITLAB_HOST}:${ARGOCD_REPO_PATH}.git
+  - cd argocd-applicationset
+  - git checkout $ARGOCD_REPO_BRANCH
+  - cd values/$IMAGE_PROJECT/$SERVICE
+
+.deploy_argocd_update_and_commit:
+  - echo "[INFO] Current data version is $DATA_VERSION"
+  - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+  # - 'sed -i "s/version: .*/version: $DATA_VERSION/" $NAMESPACE.values.yaml || true'
+  - git add .
+  - if git diff --cached --quiet; then echo "No changes to commit"; else
+      git commit -m "Update image $IMAGE_PROJECT-$NAMESPACE-$SERVICE tag to $BUILD_TAG and version to $DATA_VERSION";
+      git push origin $ARGOCD_REPO_BRANCH;
+    fi
+
+# DATA_VERSION retrieval common script
+# Export the following variables before use:
+#   ALPHA_VERSION_SOURCE: alpha environment version retrieval method
+#     "ssh"  - Retrieve via SSH from AWS EC2 (AWS environment)
+#     other  - Retrieve via curl from file-server (Harbor environment)
+# review environment always uses SSH
+.resolve_data_version:
+  - |
+    if [ "${NAMESPACE}" = "alpha" ] || [ "${NAMESPACE}" = "review" ]; then
+      if [ "${NAMESPACE}" = "review" ] || [ "${ALPHA_VERSION_SOURCE}" = "ssh" ]; then
+        DATA_VERSION=$(ssh ${AWS_EC2_USER}@${AWS_EC2_IP} "cat ${AWS_DATA_MOUNT_BASE}/$CI_COMMIT_REF_NAME/app/version/DataVersion.json" | jq -r '.version')
+      else
+        DATA_VERSION=$(curl -s ${FILE_SERVER_AWS_URL}/${NAMESPACE}/client/master-data/version/DataVersion.json | jq -r '.version')
+      fi
+    else
+      DATA_VERSION=$(curl -s ${FILE_SERVER_URL}/${IMAGE_PROJECT}/${NAMESPACE}/server/version/DataVersion.json | jq -r '.version')
+    fi
+
+# Harbor environment ArgoCD deploy (GitLab SSH only)
+.deploy_argocd:
+  extends: .deploy_argocd_base
+  before_script:
+    - !reference [.deploy_argocd_echo_info]
+    - !reference [.package_install_alpine]
+    - !reference [.ssh_setup_standard]
+    - !reference [.git_config]
+  script:
+    - !reference [.deploy_argocd_prepare]
+    - export ALPHA_VERSION_SOURCE="curl"
+    - !reference [.resolve_data_version]
+    - !reference [.deploy_argocd_update_and_commit]
+
+# AWS environment ArgoCD deploy (GitLab + AWS SSH required)
+.deploy_argocd_aws:
+  extends: .deploy_argocd_base
+  before_script:
+    - !reference [.deploy_argocd_echo_info]
+    - !reference [.package_install_alpine]
+    - !reference [.ssh_setup_aws]
+    - !reference [.git_config]
+  script:
+    - !reference [.deploy_argocd_prepare]
+    - export ALPHA_VERSION_SOURCE="ssh"
+    - !reference [.resolve_data_version]
+    - !reference [.deploy_argocd_update_and_commit]

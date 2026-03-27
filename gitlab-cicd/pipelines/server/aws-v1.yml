@@ -1,0 +1,538 @@
+stages:
+  - generator
+  - prepare_admin
+  - aws-auth
+  - build
+  - build_aws
+  - update
+
+variables:
+  NAMESPACE:
+    value: 'dev'
+    description: 'Select the namespace: dev or staging or alpha (use deploy)'
+    options:
+      - 'dev'
+      - 'staging'
+      - 'alpha'
+  SERVICE:
+    value: 'game'
+    description: 'Select game or admin'
+    options:
+      - 'game'
+      - 'admin'
+
+  IMAGE_PROJECT: example-project
+  CI_REGISTRY_IMAGE: $CI_REGISTRY/$IMAGE_PROJECT/$SERVICE
+  BUILD_TAG: $CI_COMMIT_SHORT_SHA
+  IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
+  BUILD_TAG_LATEST: latest
+  IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
+  GAME_SERVICE: 'game'
+  ADMIN_SERVICE: 'admin'
+  STATIC_DATA_PROJECT_ID: $project_id
+  GENERATE_JOB_ID: $job_id
+  # AWS ECR 관련 변수들
+  AWS_REGION: us-east-1
+  AWS_ECR_REGISTRY: '123456789012.dkr.ecr.us-east-1.amazonaws.com'
+  AWS_ECR_IMAGE_URL: '${AWS_ECR_REGISTRY}/example-aws/${SERVICE}:${BUILD_TAG}'
+  AWS_ECR_IMAGE_URL_LATEST: '${AWS_ECR_REGISTRY}/example-aws/${SERVICE}:${BUILD_TAG_LATEST}'
+  AWS_ECR_CACHE_REPO: '${AWS_ECR_REGISTRY}/example-aws/${SERVICE}-cache'
+
+.templates:
+  .aws_auth_template: &aws_auth_template
+    stage: aws-auth
+    image: registry.example.com/library/amazon/aws-cli:2.28.18
+    before_script:
+      - echo "[INFO] Start AWS ECR auth config"
+      - export AWS_ACCESS_KEY_ID="${AWS_AWS_ACCESS_KEY}"
+      - export AWS_SECRET_ACCESS_KEY="${AWS_AWS_SECRET_KEY}"
+      - export AWS_DEFAULT_REGION="$AWS_REGION"
+      # Role ARN이 있으면 assume role
+      - |
+        if [ -n "${AWS_AWS_ROLE_ARN}" ]; then
+          CREDENTIALS=$(aws sts assume-role --role-arn "${AWS_AWS_ROLE_ARN}" --role-session-name "gitlab-ci-$CI_JOB_ID")
+          export AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r '.Credentials.AccessKeyId')
+          export AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r '.Credentials.SecretAccessKey')  
+          export AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r '.Credentials.SessionToken')
+        fi
+      - mkdir -p aws
+    script:
+      # Docker 없이 ECR 인증 토큰으로 config.json 직접 생성
+      - ECR_TOKEN=$(aws ecr get-login-password --region $AWS_REGION)
+      - ECR_AUTH=$(echo "AWS:$ECR_TOKEN" | base64 -w 0)
+      - mkdir -p ~/.docker
+      # ECR_REGISTRY 대신 AWS_ECR_REGISTRY 사용
+      - echo "{\"auths\":{\"$AWS_ECR_REGISTRY\":{\"auth\":\"$ECR_AUTH\"}}}" > ~/.docker/config.json
+      - cp ~/.docker/config.json aws/config.json
+      - echo "[INFO] ECR auth config created successfully"
+    artifacts:
+      paths:
+        - aws/config.json
+      expire_in: 1 hour
+    tags:
+      - build-image
+
+  .common_build_before_script: &common_build_before_script
+    - echo "[INFO] Start build image."
+    - echo "[INFO] CI_REGISTRY is $CI_REGISTRY"
+    - echo "[INFO] CI_REGISTRY_IMAGE is $CI_REGISTRY_IMAGE"
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] IMAGE_URL is $IMAGE_URL"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - mkdir -p /kaniko/.docker
+    - >
+      echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+
+  .common_build_script: &common_build_script
+    - >
+      /kaniko/executor 
+      --cache=true 
+      --cache-ttl=24h 
+      --snapshot-mode=redo 
+      --context $CI_PROJECT_DIR 
+      --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile 
+      --destination $IMAGE_URL 
+      --destination $IMAGE_URL_LATEST 
+      --build-arg NODE_ENV=$NAMESPACE 
+      --skip-tls-verify
+      --insecure-pull
+
+  .aws_build_before_script: &aws_build_before_script
+    - echo "[INFO] Start AWS ECR build image."
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] AWS_ECR_REGISTRY is $AWS_ECR_REGISTRY"
+    - echo "[INFO] AWS_ECR_IMAGE_URL is $AWS_ECR_IMAGE_URL"
+    # Setup kaniko's config.json with AWS ECR credentials from artifacts
+    - mkdir -p /kaniko/.docker
+    - cp aws/config.json /kaniko/.docker/config.json
+
+  .aws_build_script: &aws_build_script
+    - >
+      /kaniko/executor 
+      --cache=true 
+      --cache-ttl=24h
+      --cache-repo $AWS_ECR_CACHE_REPO
+      --snapshot-mode=redo 
+      --context $CI_PROJECT_DIR 
+      --dockerfile $CI_PROJECT_DIR/$SERVICE-aws.Dockerfile 
+      --destination $AWS_ECR_IMAGE_URL 
+      --destination $AWS_ECR_IMAGE_URL_LATEST 
+      --build-arg NODE_ENV=$NAMESPACE
+      --custom-platform linux/arm64 
+      --skip-tls-verify
+
+  # common update before script
+  .common_update_before_script: &common_update_before_script
+    - echo "[INFO] BUILD_TAG is $BUILD_TAG"
+    - echo "[INFO] SERVICE is $SERVICE"
+    - echo "[INFO] NAMESPACE is $NAMESPACE"
+    - apk add --no-cache sed git openssh jq curl
+    - eval $(ssh-agent -s)
+    - echo "$GITLAB_SSH_PRIVATE_KEY" | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\nUserKnownHostsFile=/dev/null" > ~/.ssh/config
+    - export GITLAB_SSH_KNOWN_HOSTS=$(ssh-keyscan gitlab.example.com)
+    - echo "$GITLAB_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+  .common_update_script: &common_update_script
+    - git clone git@gitlab.example.com:group/argocd-applicationset.git
+    - cd argocd-applicationset
+    - git checkout master
+    - cd values/$IMAGE_PROJECT/$SERVICE
+    - |
+      if [ "${NAMESPACE}" = "alpha" ]; then
+        DATA_VERSION=$(curl -s https://file-server.aws.example.com/${NAMESPACE}/client/master-data/version/DataVersion.json | jq -r '.version')
+      else
+        DATA_VERSION=$(curl -s http://file-server.example.com/example-project/${NAMESPACE}/server/version/DataVersion.json | jq -r '.version')
+      fi
+    - echo "[INFO] Current data version is $DATA_VERSION"
+    - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
+    - 'sed -i "s/version: \".*\"/version: \"$DATA_VERSION\"/" $NAMESPACE.values.yaml || true'
+    # - 'sed -i "s/version: .*/version: $DATA_VERSION/" $NAMESPACE.values.yaml || true'
+    # - 'sed -i "s/version:[[:space:]]*\"[^\"]*\"/version: \"$DATA_VERSION\"/" $NAMESPACE.values.yaml || true'
+    - git add .
+    - if git diff --cached --quiet; then echo "No changes to commit"; else
+      git config --global user.email "cicd@example.com";
+      git config --global user.name "cicd";
+      git commit -m "Update image $IMAGE_PROJECT-$NAMESPACE-$SERVICE tag to $BUILD_TAG and version to $DATA_VERSION";
+      git push origin master;
+      fi
+
+  .common_job_config: &common_job_config
+    interruptible: true
+    retry:
+      max: 1
+      when:
+        - runner_system_failure
+        - unknown_failure
+        - data_integrity_failure
+      exit_codes:
+        - 137 # OOM kill retry
+        - 1 # Git push failure retry
+
+  .build_template: &build_template
+    <<: *common_job_config
+    stage: build
+    image:
+      # name: gcr.io/kaniko-project/executor:v1.24.0-debug
+      name: registry.example.com/library/kaniko-project/executor:v1.24.0-debug
+      entrypoint: ['']
+    before_script: *common_build_before_script
+    script: *common_build_script
+    tags:
+      - build-image
+
+  .aws_build_template: &aws_build_template
+    <<: *common_job_config
+    stage: build_aws
+    image:
+      name: 123456789012.dkr.ecr.us-east-1.amazonaws.com/kaniko-executor:v1.24.0-debug
+      entrypoint: ['']
+    before_script: *aws_build_before_script
+    script: *aws_build_script
+    tags:
+      - build-image-aws
+
+  .update_template: &update_template
+    <<: *common_job_config
+    stage: update
+    # image: alpine:latest
+    image: registry.example.com/library/alpine:latest
+    before_script: *common_update_before_script
+    script: *common_update_script
+    tags:
+      - deploy-image
+
+.change_files_game: &change_files_game
+  changes:
+    - apps/game/**/*
+    - game.Dockerfile
+    - libs/**/*
+    - "!.gitlab-ci.yml"
+
+.change_files_admin: &change_files_admin
+  changes:
+    - apps/admin/**/*
+    - admin.Dockerfile
+    - libs/**/*
+    - "!.gitlab-ci.yml"
+
+.change_files_all: &change_files_all
+  changes:
+    - apps/game/**/*
+    - game.Dockerfile
+    - apps/admin/**/*
+    - admin.Dockerfile
+    - libs/**/*
+    - "!.gitlab-ci.yml"
+
+generator:
+  stage: generator
+  # image: node:latest
+  image: registry.example.com/library/node:latest
+  interruptible: false
+  retry:
+    max: 1 # Maximum of 2 retries
+    when:
+      - runner_system_failure
+      - unknown_failure
+      - data_integrity_failure
+    exit_codes:
+      - 137 # Retry on OOM (Out Of Memory) kill
+  tags:
+    - build-image
+  before_script:
+    - echo [INFO] NAMESPACE is $NAMESPACE
+    - apt update && apt install -y unzip
+    - corepack enable
+    - pnpm install
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${CICD_ACCESS_TOKEN}" "http://gitlab.example.com/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - zipinfo artifacts.zip
+    - mkdir -p data/
+    - unzip -o artifacts.zip
+    - mv json/* data/
+    - rm -rf json/
+    - rm -rf cs/
+  script:
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/group/example-project.git
+    - git checkout ${CI_COMMIT_REF_NAME}
+    - git pull
+    - pnpm run gen-master
+    - rm -rf artifacts.zip
+    - CHANGES=$(git status --porcelain | wc -l)
+    - PUSHED=false
+    - |
+      if [ "$CHANGES" -gt "0" ]; then 
+        git add .
+        git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
+        if git push gitlab_origin ${CI_COMMIT_REF_NAME}; then
+          PUSHED=true
+        fi
+        
+        # ----임시 코드----
+        # 빌드 실패 시에도 데이터 버전이 갱신 되도록 master-data를 publish
+        if [ "${CI_COMMIT_REF_NAME}" = "alpha" ]; then
+          ADMIN_URL="https:/${CI_COMMIT_REF_NAME}-admin.pm.file-server.aws.example.com/master-data/publish/all"
+        else
+          ADMIN_URL="http:/${CI_COMMIT_REF_NAME}-admin.app.example.com/master-data/publish/all"
+        fi
+        RESPONSE=$(curl -X 'POST' "${ADMIN_URL}" -H 'accept: application/json' -H 'X-API-KEY: example-api-key' -H 'Content-Type: application/json')
+        echo $RESPONSE
+      fi
+    - |
+      if [ "$PUSHED" = "false" ]; then 
+        if [ "${CI_COMMIT_REF_NAME}" = "alpha" ]; then
+          ADMIN_URL="https:/${CI_COMMIT_REF_NAME}-admin.pm.file-server.aws.example.com/master-data/publish/all"
+        else
+          ADMIN_URL="http:/${CI_COMMIT_REF_NAME}-admin.app.example.com/master-data/publish/all"
+        fi
+        RESPONSE=$(curl -X 'POST' "${ADMIN_URL}" -H 'accept: application/json' -H 'X-API-KEY: example-api-key' -H 'Content-Type: application/json')
+        echo $RESPONSE
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+prepare_admin:
+  <<: *common_job_config
+  stage: prepare_admin
+  # image: node:latest
+  image: registry.example.com/library/node:latest
+  variables:
+    NODE_ENV: $NAMESPACE
+  before_script:
+    - apt update && apt install -y git
+    - corepack enable
+    - pnpm install
+  script:
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
+    - git config --global push.default current
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/group/example-project.git
+    - |
+      if [ "$CI_PIPELINE_SOURCE" == "web" ]; then
+        BRANCH_NAME=$NAMESPACE
+      else
+        BRANCH_NAME=$CI_COMMIT_REF_NAME
+      fi
+    - git checkout ${BRANCH_NAME}
+    - git pull gitlab_origin ${BRANCH_NAME}
+    - pnpm run gen-admin
+    - git add .
+    - |-
+      CHANGES=$(git status --porcelain | wc -l)
+      if [ "$CHANGES" -gt "0" ]; then 
+        git commit -m "Preparation step before admin build-$CI_COMMIT_SHORT_SHA"
+        git push gitlab_origin ${BRANCH_NAME} -o ci.skip
+        echo "NEW_COMMIT_SHA=$(git rev-parse --short HEAD)" >> build.env
+      else
+        echo "NEW_COMMIT_SHA=$CI_COMMIT_SHORT_SHA" >> build.env
+      fi
+  tags:
+    - build-image
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
+  artifacts:
+    reports:
+      dotenv: build.env
+    paths:
+      - apps/admin/**/*
+      - libs/**/*
+    expire_in: 1 day
+
+# AWS ECR 인증 jobs (alpha 환경용)
+aws_auth_manual:
+  <<: *aws_auth_template
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "alpha")'
+
+aws_auth_auto:
+  <<: *aws_auth_template
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_all
+
+build_manual_image:
+  <<: *build_template
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $NAMESPACE != "alpha")'
+
+build_manual_image_admin:
+  <<: *build_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE != "alpha")'
+
+build_auto_image_game:
+  <<: *build_template
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_game
+
+build_auto_image_admin:
+  <<: *build_template
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    BUILD_TAG: $NEW_COMMIT_SHA
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  needs:
+    - job: prepare_admin
+      artifacts: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_admin
+
+# AWS ECR 빌드 jobs (alpha 환경용)
+build_aws_manual_image:
+  <<: *aws_build_template
+  needs:
+    - job: aws_auth_manual
+      artifacts: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $NAMESPACE == "alpha")'
+
+build_aws_manual_image_admin:
+  <<: *aws_build_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: aws_auth_manual
+      artifacts: true
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE == "alpha")'
+
+build_aws_auto_image_game:
+  <<: *aws_build_template
+  needs:
+    - job: aws_auth_auto
+      artifacts: true
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_game
+
+build_aws_auto_image_admin:
+  <<: *aws_build_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: aws_auth_auto
+      artifacts: true
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    BUILD_TAG: $NEW_COMMIT_SHA
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_admin
+
+update_manual_image:
+  <<: *update_template
+  needs:
+    - job: build_manual_image
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $NAMESPACE != "alpha")'
+
+update_manual_image_admin:
+  <<: *update_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_manual_image_admin
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE != "alpha")'
+
+# AWS ECR 빌드 후 업데이트 jobs (alpha 환경용)
+update_aws_manual_image:
+  <<: *update_template
+  needs:
+    - job: build_aws_manual_image
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE != "admin" && $NAMESPACE == "alpha")'
+
+update_aws_manual_image_admin:
+  <<: *update_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_aws_manual_image_admin
+  variables:
+    BUILD_TAG: $NEW_COMMIT_SHA
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin" && $NAMESPACE == "alpha")'
+
+update_auto_image_game:
+  <<: *update_template
+  needs:
+    - job: build_auto_image_game
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_game
+
+update_auto_image_admin:
+  <<: *update_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_auto_image_admin
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    BUILD_TAG: $NEW_COMMIT_SHA
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME != "alpha"'
+      <<: *change_files_admin
+      when: delayed
+      start_in: 30 seconds
+
+update_aws_auto_image_game:
+  <<: *update_template
+  needs:
+    - job: build_aws_auto_image_game
+  variables:
+    SERVICE: $GAME_SERVICE
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_game
+
+update_aws_auto_image_admin:
+  <<: *update_template
+  needs:
+    - job: prepare_admin
+      artifacts: true
+    - job: build_aws_auto_image_admin
+  variables:
+    SERVICE: $ADMIN_SERVICE
+    BUILD_TAG: $NEW_COMMIT_SHA
+    NAMESPACE: $CI_COMMIT_REF_NAME
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == "alpha"'
+      <<: *change_files_admin
+      when: delayed
+      start_in: 30 seconds
+

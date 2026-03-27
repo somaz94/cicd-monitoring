@@ -1,0 +1,37 @@
+# AWS ECR Kaniko build template
+# Usage: extends: .build_kaniko_aws
+
+.build_kaniko_aws:
+  extends: .build_kaniko_base
+  image:
+    name: 123456789012.dkr.ecr.us-east-1.amazonaws.com/kaniko-executor:v1.24.0-debug
+    entrypoint: [""]
+  before_script:
+    - echo "[INFO] Start AWS ECR build image"
+    - !reference [.build_kaniko_base, before_script]
+    - echo "[INFO] AWS_ECR_REGISTRY is $AWS_ECR_REGISTRY"
+    - echo "[INFO] AWS_ECR_IMAGE_URL is $AWS_ECR_IMAGE_URL"
+    - cp aws/config.json /kaniko/.docker/config.json
+  script:
+    # Dockerfile resolution (AWS: AWS_DOCKERFILE_NAME -> SERVICE-aws.Dockerfile -> aws.Dockerfile -> Dockerfile)
+    - export DOCKERFILE_VAR_NAME="${AWS_DOCKERFILE_NAME}"
+    - export DOCKERFILE_SUFFIX="-aws.Dockerfile"
+    - export DOCKERFILE_FALLBACK="aws.Dockerfile"
+    - !reference [.resolve_dockerfile]
+    - >
+      /kaniko/executor
+      --cache=true
+      --cache-ttl=24h
+      --cache-repo $AWS_ECR_CACHE_REPO
+      --snapshot-mode=redo
+      --context $CI_PROJECT_DIR
+      --dockerfile $DOCKERFILE_PATH
+      --destination $AWS_ECR_IMAGE_URL
+      --destination $AWS_ECR_IMAGE_URL_LATEST
+      --build-arg NODE_ENV=$NAMESPACE
+      --build-arg BRANCH=$CI_COMMIT_REF_NAME
+      --custom-platform linux/arm64
+      --skip-tls-verify
+  needs:
+    - job: auth_aws
+      artifacts: true

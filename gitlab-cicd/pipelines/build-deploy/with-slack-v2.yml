@@ -6,6 +6,8 @@ stages:
   - update
   - notify
 
+# Variables used in scripts
+# CI_COMMIT_REF_NAME is the current branch name running the pipeline
 variables:
   NAMESPACE:
     value: "dev1"
@@ -15,7 +17,7 @@ variables:
       - "dev2"
       - "staging"
       - "qa1"
-      - "sena-dev"
+      - "special-dev"
   SERVICE:
     value: "game"
     description: "Select admin or game or batch or etc."
@@ -28,7 +30,7 @@ variables:
   IMAGE_URL: '${CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   BUILD_TAG_LATEST: latest
   IMAGE_URL_LATEST: '${CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-sgn/${SERVICE}-sgn'
+  GCP_CI_REGISTRY_IMAGE: '$GCP_CI_REGISTRY/${SERVICE}-app/${SERVICE}-app'
   GCP_IMAGE_URL: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST: '${GCP_CI_REGISTRY_IMAGE}:${BUILD_TAG_LATEST}'
   CI_REGISTRY_IMAGE_GAME: $CI_REGISTRY/$GAME_SERVICE
@@ -40,13 +42,13 @@ variables:
   CI_REGISTRY_IMAGE_ADMIN: $CI_REGISTRY/$ADMIN_SERVICE
   IMAGE_URL_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   IMAGE_URL_LATEST_ADMIN: '${CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-sgn/$GAME_SERVICE-sgn'
+  GCP_CI_REGISTRY_IMAGE_GAME: '$GCP_CI_REGISTRY/$GAME_SERVICE-app/$GAME_SERVICE-app'
   GCP_IMAGE_URL_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_GAME: '${GCP_CI_REGISTRY_IMAGE_GAME}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-sgn/$BATCH_SERVICE-sgn'
+  GCP_CI_REGISTRY_IMAGE_BATCH: '$GCP_CI_REGISTRY/$BATCH_SERVICE-app/$BATCH_SERVICE-app'
   GCP_IMAGE_URL_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_BATCH: '${GCP_CI_REGISTRY_IMAGE_BATCH}:${BUILD_TAG_LATEST}'
-  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-sgn/$ADMIN_SERVICE-sgn'
+  GCP_CI_REGISTRY_IMAGE_ADMIN: '$GCP_CI_REGISTRY/$ADMIN_SERVICE-app/$ADMIN_SERVICE-app'
   GCP_IMAGE_URL_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG}'
   GCP_IMAGE_URL_LATEST_ADMIN: '${GCP_CI_REGISTRY_IMAGE_ADMIN}:${BUILD_TAG_LATEST}'
   STATIC_DATA_PROJECT_ID: $project_id
@@ -72,7 +74,7 @@ variables:
     - echo "[INFO] NAMESPACE is $NAMESPACE"
     - mkdir -p /kaniko/.docker
     - >
-      if [[ "$NAMESPACE" =~ ^sena- ]]; then
+      if [[ "$NAMESPACE" =~ ^special- ]]; then
         echo "Configuring registry for special namespace $NAMESPACE"
         cp gcloud/config.json /kaniko/.docker/config.json
       else
@@ -81,18 +83,18 @@ variables:
 
   .common_build_script: &common_build_script
     - >
-      if [[ "$NAMESPACE" =~ ^sena- ]]; then
+      if [[ "$NAMESPACE" =~ ^special- ]]; then
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $GCP_IMAGE_URL --destination $GCP_IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
-      else        
+      else
         /kaniko/executor --cache=true --cache-ttl=24h --snapshot-mode=redo --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/$SERVICE.Dockerfile --destination $IMAGE_URL --destination $IMAGE_URL_LATEST --build-arg NODE_ENV=$NAMESPACE --skip-tls-verify
-      fi 
+      fi
     - KANIKO_RESULT=$?
     - echo "$SERVICE" > service_status.txt
     - >
       if [ $KANIKO_RESULT -eq 0 ]; then
-        echo "✅ 성공" > build_status.txt
+        echo "SUCCESS" > build_status.txt
       else
-        echo "❌ 실패" > build_status.txt
+        echo "FAILED" > build_status.txt
       fi
 
   .common_update_before_script: &common_update_before_script
@@ -110,25 +112,27 @@ variables:
     - chmod 644 ~/.ssh/known_hosts
 
   .common_update_script: &common_update_script
-    - git clone git@gitlab.somaz.io:infra/kubernetes-infra.git
+    - git clone git@gitlab.example.com:infra/kubernetes-infra.git
     - cd kubernetes-infra
     - git checkout master
     - cd applied/argocd/applicationset/environment_branch
     - echo -n "${CI_COMMIT_REF_NAME}" > ${NAMESPACE}.txt
-    - cd ../../../argocd/applicationset/charts/sgn-server/$SERVICE
+    - cd ../../../argocd/applicationset/charts/example-server/$SERVICE
     - 'sed -i "s/tag: \".*\"/tag: \"$BUILD_TAG\"/" $NAMESPACE.values.yaml'
     - git add .
-    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.email "cicd@example.com"
     - git config --global user.name "cicd"
     - git commit -am "Update image $SERVICE-$NAMESPACE tag to $BUILD_TAG"
+    - git pull
     - >
-      for i in {1..5}; do
+      for i in $(seq 1 5); do
         if git pull origin master; then
           echo "Pull succeeded"
           break
         else
           if [ $i -eq 5 ]; then
             echo "Pull failed after 5 attempts, exiting."
+            echo "PULL FAILED" > /builds/group/server/update_status.txt
             exit 1
           else
             echo "Pull failed, retrying in 15 seconds..."
@@ -137,18 +141,19 @@ variables:
         fi
       done
     - >
-      for i in {1..5}; do
+      for i in $(seq 1 5); do
         if git push -u origin master; then
           echo "Push succeeded"
-          echo "✅ 성공" > /builds/somaz94/server/update_status.txt
+          echo "SUCCESS" > /builds/group/server/update_status.txt
           break
         else
           if [ $i -eq 5 ]; then
             echo "Push failed after 5 attempts, exiting."
-            echo "❌ 실패" > /builds/somaz94/server/update_status.txt
+            echo "FAILED" > /builds/group/server/update_status.txt
             exit 1
           else
             echo "Push failed, retrying in 15 seconds..."
+            git pull --rebase origin master
             sleep 15
           fi
         fi
@@ -157,20 +162,21 @@ variables:
   .common_update_after_script: &common_update_after_script
     - >
       if [ "$CI_JOB_STATUS" = "success" ]; then
-        echo "✅ 성공" > /builds/somaz94/server/update_status.txt
+        echo "SUCCESS" > /builds/group/server/update_status.txt
       elif [ "$CI_JOB_STATUS" = "failed" ]; then
-        echo "❌ 실패" > /builds/somaz94/server/update_status.txt
+        echo "FAILED" > /builds/group/server/update_status.txt
       elif [ "$CI_JOB_STATUS" = "canceled" ]; then
-        echo "⚠️ 취소" > /builds/somaz94/server/update_status.txt
+        echo "CANCELED" > /builds/group/server/update_status.txt
       else
-        echo "🔍 상태 불명" > /builds/somaz94/server/update_status.txt
+        echo "UNKNOWN" > /builds/group/server/update_status.txt
       fi
 
   .common_notify_slack_script: &common_notify_slack_script
-    - export GENERATOR_STATUS=$(cat generator_status.txt || echo "⏭️ 스킵 or ✅ Commit Massage 확인")
-    - export BUILD_STATUS=$(cat build_status.txt || echo "⏭️ 스킵")
-    - export UPDATE_STATUS=$(cat update_status.txt || echo "⏭️ 스킵")
-    - export DEPLOY_SERVICE=$(cat service_status.txt || echo "⏭️ 스킵")
+    - >
+      export GENERATOR_STATUS=$(if [ -z "$GENERATOR_STATUS" ]; then cat generator_status.txt || echo "SKIPPED or CHECK Commit Message"; else echo $GENERATOR_STATUS; fi)
+    - export BUILD_STATUS=$(cat build_status.txt || echo "SKIPPED")
+    - export UPDATE_STATUS=$(cat update_status.txt || echo "SKIPPED")
+    - export DEPLOY_SERVICE=$(cat service_status.txt || echo "SKIPPED")
     - export CLEAN_COMMIT_MESSAGE=$(echo "$CI_COMMIT_MESSAGE" | tr -d '\n' | tr -d '\r')
     - >
       export JSON_DATA="{\"source_branch\": \"$CI_COMMIT_REF_NAME\", \"generator_result\": \"$GENERATOR_STATUS\", \"deploy_result\": \"$UPDATE_STATUS\", \"build_result\": \"$BUILD_STATUS\", \"commit_message\": \"$CLEAN_COMMIT_MESSAGE\", \"trigger_user\": \"$GITLAB_USER_LOGIN\", \"gitlab_ci_run_url\": \"$CI_PIPELINE_URL\", \"repository_name\": \"$CI_PROJECT_PATH\", \"environment\": \"$NAMESPACE\", \"deploy_service\": \"$DEPLOY_SERVICE\"}"
@@ -196,20 +202,19 @@ generator:
   tags:
     - build-image
   before_script:
-    - echo [INFO] NAMESPACE is $NAMESPACE
     - apt update && apt install -y unzip
     - corepack enable
     - pnpm install
-    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.somaz.io/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
+    - 'curl --location --output artifacts.zip --header "PRIVATE-TOKEN: ${ARTIFACT_DOWNLOAD_TOKEN}" "http://gitlab.example.com/api/v4/projects/${STATIC_DATA_PROJECT_ID}/jobs/${GENERATE_JOB_ID}/artifacts"'
     - zipinfo artifacts.zip
     - unzip -o artifacts.zip
     - mkdir ServerJson
     - cp -r Convertor/ServerJson/* ServerJson
   script:
-    - git config --global user.email "datatool@oozooinc.com"
-    - git config --global user.name "datatool"
+    - git config --global user.email "cicd@example.com"
+    - git config --global user.name "cicd"
     - git config --global push.default current
-    - git remote add gitlab_origin http://datatool:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.somaz.io/somaz94/server.git
+    - git remote add gitlab_origin http://cicd:${ARTIFACT_DOWNLOAD_TOKEN}@gitlab.example.com/group/server.git
     - git checkout ${CI_COMMIT_REF_NAME}
     - git pull
     - npm run gen-static
@@ -218,41 +223,50 @@ generator:
     - CHANGES=$(git status --porcelain | wc -l)
     - PUSHED=false
     - |
-      if [ "$CHANGES" -gt "0" ]; then 
+      if [ "$CHANGES" -gt "0" ]; then
         git commit -m "Update generated files jobId ${GENERATE_JOB_ID} "
         git push gitlab_origin ${CI_COMMIT_REF_NAME}
       fi
+    # Curl request
     - echo "$CHANGED_ServerJson"
     - |
-      if [ "$PUSHED" = "false" ] && [ ! -z "$CHANGED_ServerJson" ]; then 
+      if [ "$PUSHED" = "false" ] && [ ! -z "$CHANGED_ServerJson" ]; then
         NAMES_ARRAY="["
         for file in $CHANGED_ServerJson; do
           NAMES_ARRAY+="\"$file\","
         done
+        # Remove the last comma
         NAMES_ARRAY=${NAMES_ARRAY%,}
         NAMES_ARRAY+="]"
 
         echo $NAMES_ARRAY
 
-        RESPONSE=$(curl -X 'POST' "https://${NAMESPACE}-admin.sgn.somaz.io/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: sgn-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
+        RESPONSE=$(curl -X 'POST' "https://${NAMESPACE}-admin.app.example.com/static-data/reload" -H 'accept: application/json' -H 'X-API-KEY: example-super-user' -H 'Content-Type: application/json' -d "{\"names\": $NAMES_ARRAY}")
         echo $RESPONSE
       fi
   after_script:
     - |
       if [ "$CI_JOB_STATUS" = "success" ]; then
-        echo "✅ 성공" > generator_status.txt
+        echo "SUCCESS" > generator_status.txt
       elif [ "$CI_JOB_STATUS" = "failed" ]; then
-        echo "❌ 실패" > generator_status.txt
+        echo "FAILED" > generator_status.txt
       elif [ "$CI_JOB_STATUS" = "canceled" ]; then
-        echo "⚠️ 취소" > generator_status.txt
+        echo "CANCELED" > generator_status.txt
       else
-        echo "🔍 상태 불명" > generator_status.txt
+        echo "UNKNOWN" > generator_status.txt
       fi
   artifacts:
     paths:
       - generator_status.txt
   rules:
     - if: '$CI_PIPELINE_SOURCE == "trigger"'
+
+.change_files_admin: &change_files_admin
+  changes:
+    - apps/admin/src/**/*
+    - libs/common/src/**/*
+    - libs/dao/src/**/*
+    - admin.Dockerfile
 
 prepare_admin:
   stage: prepare
@@ -267,32 +281,33 @@ prepare_admin:
     exit_codes:
       - 137 # Retry on OOM (Out Of Memory) kill
   variables:
-    NODE_ENV: $NAMESPACE
+    NODE_ENV: $CI_COMMIT_REF_NAME
   before_script:
     - corepack enable
     - pnpm install
     - apt-get update
     - apt-get install -y git
   script:
-    - git config --global user.email "cicd@somaz.io"
+    - git config --global user.email "cicd@example.com"
     - git config --global user.name "cicd"
     - git config --global push.default current
-    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.somaz.io/somaz94/server.git
+    - git remote add gitlab_origin http://cicd:${CICD_ACCESS_TOKEN}@gitlab.example.com/group/server.git
     - git checkout ${CI_COMMIT_REF_NAME}
     - git pull gitlab_origin ${CI_COMMIT_REF_NAME}
     - pnpm run gen-admin
     - git add .
     - |-
       CHANGES=$(git status --porcelain | wc -l)
-      if [ "$CHANGES" -gt "0" ]; then 
+      if [ "$CHANGES" -gt "0" ]; then
         git commit -m "Preparation step before admin build-$CI_COMMIT_SHORT_SHA"
         git push gitlab_origin ${CI_COMMIT_REF_NAME} -o ci.skip
       fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web") && ($SERVICE == "admin")'
+    - if: '($CI_PIPELINE_SOURCE == "push")'
+      <<: *change_files_admin
   tags:
     - build-image
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "trigger"'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $SERVICE == "admin"'
 
 gcloud:
   stage: gcloud
@@ -320,13 +335,13 @@ gcloud:
     - gcloud auth activate-service-account --key-file=${CLOUDSDK_CONFIG}/gcloud-service-key.json
     - token=$(gcloud auth print-access-token)
     - docker_token=$(echo -n "gclouddockertoken:$token" | base64 | tr -d "\n")
-    - echo "{\"auths\":{\"$GCP_CI_REGISTRY\":{\"auth\":\"$docker_token\",\"email\":\"admin@somaz.io\"}}}" > gcloud/config.json
+    - echo "{\"auths\":{\"$GCP_CI_REGISTRY\":{\"auth\":\"$docker_token\",\"email\":\"admin@example.com\"}}}" > gcloud/config.json
   artifacts:
     paths:
       - gcloud/config.json
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "sena-dev"'
-    - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESPACE == "sena-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $NAMESPACE == "special-dev"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger" && $NAMESPACE == "special-dev"'
   tags:
     - build-image
 
@@ -350,7 +365,7 @@ build_manual_image:
       - build_status.txt
       - service_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: '($CI_PIPELINE_SOURCE == "web")'
   tags:
     - build-image
 
@@ -367,7 +382,7 @@ update_manual_image:
     exit_codes:
       - 137 # Retry on OOM (Out Of Memory) kill
   before_script: *common_update_before_script
-  script: *common_update_script 
+  script: *common_update_script
   # after_script: *common_update_after_script
   artifacts:
     paths:
@@ -376,10 +391,27 @@ update_manual_image:
     - if: $CI_PIPELINE_SOURCE == "web"
   tags:
     - deploy-image
+  dependencies:
+    - build_manual_image
+
+#------------------------------------------------------------------------------------------------
+.change_files_game: &change_files_game
+  changes:
+    - apps/game/src/**/*
+    - libs/common/src/**/*
+    - libs/dao/src/**/*
+    - game.Dockerfile
+
+.change_files_batch: &change_files_batch
+  changes:
+    - apps/batch/src/**/*
+    - libs/common/src/**/*
+    - libs/dao/src/**/*
+    - batch.Dockerfile
 
 build_auto_image_game:
   stage: build
-  image: 
+  image:
     name: gcr.io/kaniko-project/executor:v1.22.0-debug
   interruptible: true
   retry:
@@ -401,7 +433,8 @@ build_auto_image_game:
       - build_status.txt
       - service_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger" 
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_game
   tags:
     - build-image
 
@@ -420,13 +453,14 @@ update_auto_image_game:
   variables:
     SERVICE: $GAME_SERVICE
   before_script: *common_update_before_script
-  script: *common_update_script 
+  script: *common_update_script
   # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_game
   tags:
     - deploy-image
   dependencies:
@@ -453,9 +487,10 @@ build_auto_image_batch:
   artifacts:
     paths:
       - build_status.txt
-      - service_status.txt 
+      - service_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_batch
   tags:
     - build-image
 
@@ -474,13 +509,14 @@ update_auto_image_batch:
   variables:
     SERVICE: $BATCH_SERVICE
   before_script: *common_update_before_script
-  script: *common_update_script 
+  script: *common_update_script
   # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_batch
   tags:
     - deploy-image
   dependencies:
@@ -507,9 +543,10 @@ build_auto_image_admin:
   artifacts:
     paths:
       - build_status.txt
-      - service_status.txt 
+      - service_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
   tags:
     - build-image
 
@@ -528,13 +565,14 @@ update_auto_image_admin:
   variables:
     SERVICE: $ADMIN_SERVICE
   before_script: *common_update_before_script
-  script: *common_update_script 
+  script: *common_update_script
   # after_script: *common_update_after_script
   artifacts:
     paths:
       - update_status.txt
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
   tags:
     - deploy-image
   dependencies:
@@ -554,9 +592,12 @@ notify_slack:
 notify_slack_auto_game:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "SKIPPED or CHECK Commit Message"
   script: *common_notify_slack_script
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_game
   tags:
     - deploy-image
   when: always
@@ -567,9 +608,12 @@ notify_slack_auto_game:
 notify_slack_auto_batch:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "SKIPPED or CHECK Commit Message"
   script: *common_notify_slack_script
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_batch
   tags:
     - deploy-image
   when: always
@@ -580,9 +624,12 @@ notify_slack_auto_batch:
 notify_slack_auto_admin:
   stage: notify
   image: curlimages/curl:latest
+  variables:
+    GENERATOR_STATUS: "SKIPPED or CHECK Commit Message"
   script: *common_notify_slack_script
   rules:
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+      <<: *change_files_admin
   tags:
     - deploy-image
   when: always
