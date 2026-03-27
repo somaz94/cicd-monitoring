@@ -1,0 +1,36 @@
+---
+# GKE Managed Certificate for HTTPS
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: argocd-certificate
+  namespace: argocd
+spec:
+  domains:
+    - argocd.somaz.example.com
+---
+# BackendConfig for health check
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: argocd-backend-config
+  namespace: argocd
+spec:
+  healthCheck:
+    checkIntervalSec: 30
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP
+    requestPath: /healthz
+    port: 8080
+---
+# FrontendConfig for HTTPS redirect
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: argocd-frontend-config
+  namespace: argocd
+spec:
+  redirectToHttps:
+    enabled: true

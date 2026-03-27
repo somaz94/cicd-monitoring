@@ -1,0 +1,27 @@
+repositories:
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+
+releases:
+  - name: loki
+    namespace: monitoring
+    createNamespace: true
+    chart: grafana/loki
+    version: 6.55.0
+    values:
+      - values/mgmt.yaml
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "monitoring"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

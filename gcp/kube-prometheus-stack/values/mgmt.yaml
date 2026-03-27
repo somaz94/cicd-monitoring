@@ -1,0 +1,166 @@
+---
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+  # -- Schedule alertmanager on specific GKE nodes using nodeSelector.
+  # nodeSelector:
+  #   cloud.google.com/gke-nodepool: example-node-pool
+  serviceMonitor:
+    selfMonitor: true
+
+grafana:
+  enabled: false
+
+kubelet:
+  enabled: true
+  namespace: kube-system
+
+kubeControllerManager:
+  enabled: false
+
+coreDns:
+  enabled: true
+
+kubeDns:
+  enabled: true
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: true
+
+kubeEtcd:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  namespaceOverride: ""
+  rbac:
+    create: true
+  releaseLabel: true
+  prometheus:
+    monitor:
+      enabled: true
+
+kubeApiServer:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+  operatingSystems:
+    linux:
+      enabled: true
+    darwin:
+      enabled: false
+  forceDeployDashboards: false
+
+prometheusOperator:
+  enabled: true
+  # -- Schedule prometheus-operator on specific GKE nodes using nodeSelector.
+  # nodeSelector:
+  #   cloud.google.com/gke-nodepool: example-node-pool
+
+prometheus:
+  enabled: true
+
+  # ── Nginx ingress (active) ──
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - prometheus.somaz.example.com
+
+  # ── GKE Ingress alternative ──
+  # Requires separate BackendConfig, FrontendConfig, and ManagedCertificate resources.
+  # See examples/gke-ingress.yaml for the required manifests.
+  # ingress:
+  #   enabled: true
+  #   annotations:
+  #     kubernetes.io/ingress.global-static-ip-name: "example-gke-prometheus-lb-ip"
+  #     networking.gke.io/managed-certificates: "prometheus-certificate"
+  #     kubernetes.io/ingress.class: "gce"
+  #     networking.gke.io/v1beta1.FrontendConfig: prometheus-frontend-config
+  #   hosts:
+  #     - prometheus.somaz.example.com
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
+  #   hosts:
+  #     - prometheus.somaz.example.com
+  #   tls:
+  #     - secretName: prometheus-tls
+  #       hosts:
+  #         - prometheus.somaz.example.com
+
+  serviceMonitor:
+    selfMonitor: true
+
+  prometheusSpec:
+    # -- Schedule prometheus on specific GKE nodes using nodeSelector.
+    # nodeSelector:
+    #   cloud.google.com/gke-nodepool: example-node-pool
+    replicas: 1
+
+    # ── Filestore CSI persistence (active) ──
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: fs-sc
+          accessModes: ["ReadWriteMany"]
+          resources:
+            requests:
+              storage: 10Gi
+    # ── PD CSI persistence alternative (ReadWriteOnce) ──
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: pd-sc
+    #       accessModes: ["ReadWriteOnce"]
+    #       resources:
+    #         requests:
+    #           storage: 10Gi
+    # ── NFS persistence alternative (ReadWriteMany) ──
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: nfs-client
+    #       accessModes: ["ReadWriteMany"]
+    #       resources:
+    #         requests:
+    #           storage: 10Gi
+
+    externalLabels:
+      provider: example
+      region: asia-northeast3
+      cluster: mgmt
+      cluster_id: example-asia-northeast3-mgmt
+    retention: 15d
+
+    # Extra scrape configs for application monitoring
+    # additionalScrapeConfigs:
+    #   - job_name: 'api-prometheus'
+    #     metrics_path: /metrics
+    #     scrape_interval: 10s
+    #     scrape_timeout: 10s
+    #     params:
+    #       module: [https]
+    #     static_configs:
+    #       - targets: ['api.somaz.example.com']

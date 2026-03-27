@@ -1,7 +1,8 @@
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
-  name: argocd-certificate
+  name: grafana-certificate
 spec:
   domains:
-    - argocd.somaz.link
+    - grafana.somaz.example.com
+

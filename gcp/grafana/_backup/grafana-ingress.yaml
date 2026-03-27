@@ -1,8 +1,8 @@
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: prometheus-backend-config
-  namespace: prometheus
+  name: grafana-backend-config
+  namespace: monitoring
 spec:
   healthCheck:
     checkIntervalSec: 30
@@ -10,14 +10,14 @@ spec:
     healthyThreshold: 1
     unhealthyThreshold: 2
     type: HTTP
-    requestPath: /-/healthy
-    port: 9090
+    requestPath: /api/health
+    port: 3000
 ---
 apiVersion: networking.gke.io/v1beta1
 kind: FrontendConfig
 metadata:
-  name: prometheus-frontend-config
-  namespace: prometheus
+  name: grafana-frontend-config
+  namespace: monitoring
 spec:
   redirectToHttps:
     enabled: true
@@ -25,22 +25,24 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: prometheus-server-ingress
-  namespace: prometheus
+  name: grafana-server-ingress
+  namespace: monitoring
   annotations:
-    kubernetes.io/ingress.global-static-ip-name: "somaz-gke-prometheus-lb-ip"
-    networking.gke.io/managed-certificates: "prometheus-certificate"
+    kubernetes.io/ingress.global-static-ip-name: "example-gke-grafana-lb-ip"
+    networking.gke.io/managed-certificates: "grafana-certificate"
     kubernetes.io/ingress.class: "gce"
-    networking.gke.io/v1beta1.FrontendConfig: prometheus-frontend-config
+    networking.gke.io/v1beta1.FrontendConfig: grafana-frontend-config
 spec:
   rules:
-  - host: prometheus.somaz.link
+  - host: grafana.somaz.example.com
     http:
       paths:
       - pathType: Prefix
         path: "/"
         backend:
           service:
-            name: prometheus-server
+            name: grafana
             port:
               number: 80
+
+

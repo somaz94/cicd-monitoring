@@ -1,107 +1,97 @@
-# Loki Installation and Configuration Guide using Helm
+# Loki GCP Helm Chart
+
+Manages Grafana Loki on GCP GKE using Helmfile. Configured with SingleBinary deployment mode, nginx ingress (or GKE Ingress alternative), and Filestore/PD/NFS persistence options.
 
 <br/>
 
-## Table of Contents
+## Directory Structure
 
-1. [Add the Grafana Helm Repository](#1-add-the-grafana-helm-repository)
-2. [Creating Namespace, Persistent Volumes (PV), and StorageClass](#2-creating-namespace-persistent-volumes-pv-and-storageclass)
-   - [Persistent Disk CSI](#for-persistent-disk-csi)
-   - [Filestore CSI](#for-filestore-csi)
-   - [Filestore CSI with Shared VPC](#for-filestore-csi-with-shared-vpc)
-   - [NFS PV](#for-nfs-pv)
-3. [Install or Upgrade Loki](#3-install-or-upgrade-loki)
-4. [Modify the Loki Service](#4-modify-the-loki-service)
-5. [Add Ingress and Certificate for Loki](#5-add-ingress-and-certificate-for-loki)
-6. [Additional Notes](#additional-notes)
-7. [Reference](#reference)
-
-<br/>
-
-## 1. Add the Grafana Helm Repository:
-
-```bash
-helm repo add grafana https://grafana.github.io/helm-charts
 ```
-
-<br/>
-
-## 2. Creating Namespace, Persistent Volumes (PV), and StorageClass:
-
-Firstly, create a namespace for monitoring:
-```bash
-kubectl create ns monitoring
-```
-
-Next, choose and apply the appropriate PV and StorageClass configuration:
-
-- For Persistent Disk CSI:
-```bash
-kubectl apply -f pd-csi-pv.yaml -n monitoring
-kubectl apply -f pd-csi-sc.yaml -n monitoring 
-```
-
-- For Filestore CSI:
-```bash
-kubectl apply -f fs-csi-pv.yaml -n monitoring
-kubectl apply -f fs-csi-sc.yaml -n monitoring
-```
-
-- For Filestore CSI with Shared VPC:
-```bash
-kubectl apply -f fs-csi-pv.yaml -n monitoring
-kubectl apply -f fs-csi-sc-shared-vpc.yaml -n monitoring
-```
-
-- For NFS PV (Refer to nfs-sc-Readme.md if using this):
-```bash
-kubectl apply -f nfs-pv.yaml -n monitoring
+loki/
+├── Chart.yaml          # Version tracking (no local templates)
+├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values/
+│   └── mgmt.yaml       # Management environment configuration
+├── examples/
+│   ├── gke-ingress.yaml        # GKE Ingress + ManagedCertificate + BackendConfig
+│   ├── pd-csi-pv.yaml          # PD CSI PersistentVolume example
+│   ├── pd-csi-sc.yaml          # PD CSI StorageClass example
+│   ├── fs-csi-pv.yaml          # Filestore CSI PersistentVolume example
+│   ├── fs-csi-sc.yaml          # Filestore CSI StorageClass example
+│   ├── fs-csi-sc-shared-vpc.yaml  # Filestore CSI StorageClass for Shared VPC
+│   ├── nfs-pv.yaml             # NFS PersistentVolume example
+│   └── nfs-sc-README.md        # NFS Provisioner setup guide
+├── upgrade.sh          # Version upgrade script
+├── backup/             # Auto backup on upgrade
+├── _backup/            # Old files (manual manifests)
+└── README.md
 ```
 
 <br/>
 
-## 3. Install or Upgrade Loki:
+## Prerequisites
 
-To install Loki:
-```bash
-helm install loki grafana/loki --version 2.16.0 -n monitoring -f values.yaml
-```
+- GCP GKE cluster
+- Helm 3
+- Helmfile
+- Nginx Ingress Controller (or GKE Ingress)
+- Filestore CSI driver, PD CSI driver, or NFS provisioner for persistence
 
-To upgrade Loki:
+<br/>
+
+## Deployment Modes
+
+Currently configured for **SingleBinary** mode.
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **SingleBinary** | All components in a single process (current) | Small to medium workloads |
+| **SimpleScalable** | Read/Write/Backend separation | Medium to large workloads |
+| **Distributed** | Full microservices deployment | Large-scale production |
+
+<br/>
+
+## Storage Options
+
+| Storage | Driver | Access Mode | Use Case |
+|---------|--------|-------------|----------|
+| Filestore CSI | `filestore.csi.storage.gke.io` | ReadWriteMany | Multi-node, shared access, recommended |
+| PD CSI | `pd.csi.storage.gke.io` | ReadWriteOnce | Single-node, better IOPS |
+| NFS | `nfs-client` | ReadWriteMany | Manual NFS server setup |
+
+<br/>
+
+## Quick Start
+
 ```bash
-helm upgrade loki grafana/loki --version 2.16.0 -n monitoring -f values.yaml
+helmfile lint     # Validate
+helmfile diff     # Preview
+helmfile apply    # Deploy
+helmfile destroy  # Delete
 ```
 
 <br/>
 
-## 4. Modify the Loki Service:
+## Connecting Grafana to Loki
 
-Use kubectl edit to modify the Loki service and add the backend-config annotation:
-```bash
-kubectl edit svc -n monitoring loki
-```
-
-Add the following annotation under `metadata`:
-```bash
-annotations:
-  cloud.google.com/backend-config: '{"ports": {"http":"loki-backend-config"}}'
-```
+- **URL**: `http://loki-gateway.monitoring.svc.cluster.local`
+- **Type**: Loki
 
 <br/>
 
-## 5. Add Ingress and Certificate for Loki:
+## Upgrade
+
 ```bash
-kubectl apply -f loki-ingress.yaml -n monitoring
-kubectl apply -f loki-certificate.yaml -n monitoring
+./upgrade.sh              # Upgrade to latest
+./upgrade.sh --dry-run    # Preview only
+./upgrade.sh --rollback   # Restore from backup
 ```
 
 <br/>
 
-## Additional Notes:
+## References
 
-Remember to modify the `Domain`, `host`, and `static-ip` portions in all the provided yaml files.
-
-<br/>
-
-## Reference:
-- [Grafana Helm Charts GitHub Repository](https://github.com/grafana/helm-charts)
+- https://github.com/grafana/loki
+- https://grafana.com/docs/loki/latest/
+- https://grafana.github.io/helm-charts

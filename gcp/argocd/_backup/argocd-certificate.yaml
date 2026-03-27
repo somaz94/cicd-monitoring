@@ -1,8 +1,7 @@
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
-  name: prometheus-certificate
+  name: argocd-certificate
 spec:
   domains:
-    - prometheus.somaz.link
-
+    - argocd.somaz.example.com

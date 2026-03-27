@@ -1,99 +1,99 @@
-# Grafana Installation and Configuration Guide
+# Grafana GCP Helm Chart
+
+Manages Grafana on GCP GKE using Helmfile. Configured with nginx ingress (or GKE Ingress alternative) and Filestore/PD/NFS persistence options.
 
 <br/>
 
-## Table of Contents
+## Directory Structure
 
-- [ADD Helm Repo](#add-helm-repo)
-- [Creating NAMESPACE & PV & StorageClass](#creating-namespace--pv--storageclass)
-  - [Select Disk](#select-disk)
-  - [If using NFS](#if-using-nfs)
-- [Installing Grafana](#installing-grafana)
-- [Modifying a Service](#modifying-a-service)
-- [ADD Ingress and Certificate](#add-ingress-and-certificate)
-- [Notes](#notes)
-- [Reference](#reference)
+```
+grafana/
+├── Chart.yaml          # Version tracking (no local templates)
+├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values/
+│   └── mgmt.yaml       # Management environment configuration
+├── examples/
+│   ├── gke-ingress.yaml        # GKE Ingress + ManagedCertificate + BackendConfig
+│   ├── pd-csi-pv.yaml          # PD CSI PersistentVolume example
+│   ├── pd-csi-sc.yaml          # PD CSI StorageClass example
+│   ├── fs-csi-pv.yaml          # Filestore CSI PersistentVolume example
+│   ├── fs-csi-sc.yaml          # Filestore CSI StorageClass example
+│   ├── fs-csi-sc-shared-vpc.yaml  # Filestore CSI StorageClass for Shared VPC
+│   ├── nfs-pv.yaml             # NFS PersistentVolume example
+│   └── nfs-sc-README.md        # NFS Provisioner setup guide
+├── upgrade.sh          # Version upgrade script
+├── backup/             # Auto backup on upgrade
+├── _backup/            # Old files (manual manifests)
+└── README.md
+```
 
 <br/>
 
-## ADD Helm Repo
+## Prerequisites
+
+- GCP GKE cluster
+- Helm 3
+- Helmfile
+- Nginx Ingress Controller (or GKE Ingress)
+- Filestore CSI driver, PD CSI driver, or NFS provisioner for persistence
+
+<br/>
+
+## Storage Options
+
+| Storage | Driver | Access Mode | Use Case |
+|---------|--------|-------------|----------|
+| Filestore CSI | `filestore.csi.storage.gke.io` | ReadWriteMany | Multi-node, shared access, recommended |
+| PD CSI | `pd.csi.storage.gke.io` | ReadWriteOnce | Single-node, better IOPS |
+| NFS | `nfs-client` | ReadWriteMany | Manual NFS server setup |
+
+### Setup Storage
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
+# Option A: Filestore CSI (default)
+kubectl apply -f examples/fs-csi-sc.yaml
+
+# Option B: PD CSI
+kubectl apply -f examples/pd-csi-sc.yaml
+
+# Option C: NFS (see examples/nfs-sc-README.md for provisioner setup)
 ```
 
 <br/>
 
-## Creating NAMESPACE & PV & StorageClass
-
-Choose either PV or Storage Class based on your requirements.
+## Quick Start
 
 ```bash
-kubectl create ns monitoring
+# Deploy
+helmfile apply
 
+# Get initial admin password (set in values/mgmt.yaml)
+# Default: admin / exampleAdminPassword
 
-# Select Disk 
-kubectl apply -f pd-csi-pv.yaml -n monitoring
-kubectl apply -f pd-csi-sc.yaml -n monitoring  
-
-kubectl apply -f fs-csi-pv.yaml -n monitoring
-kubectl apply -f fs-csi-sc.yaml -n monitoring
-
-kubectl apply -f fs-csi-pv.yaml -n monitoring
-kubectl apply -f fs-csi-sc-shared-vpc.yaml -n monitoring
-
-# If using NFS, read the guidance in nfs-sc-Readme.md
-kubectl apply -f nfs-pv.yaml -n monitoring
+# Access: https://grafana.somaz.example.com
 ```
 
 <br/>
 
-## Installing Grafana
+### Add Data Sources
+
+- **Prometheus**: `http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090`
+- **Loki**: `http://loki-gateway.monitoring.svc.cluster.local`
+
+<br/>
+
+## Upgrade
 
 ```bash
-helm install grafana grafana/grafana -n monitoring -f values.yaml
-
-# To upgrade Grafana
-helm upgrade grafana grafana/grafana -n monitoring -f values.yaml
+./upgrade.sh              # Upgrade to latest
+./upgrade.sh --dry-run    # Preview only
+./upgrade.sh --rollback   # Restore from backup
 ```
 
 <br/>
 
-## Modifying a Service
+## References
 
-To modify the Grafana service:
-
-```bash
-kubectl edit svc -n monitoring grafana
-```
-
-Then, update the annotations in the service as shown below:
-
-```
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    cloud.google.com/backend-config: '{"ports": {"http":"grafana-backend-config"}}'
-```
-
-<br/>
-
-## ADD Ingress and Certificate
-
-```bash
-kubectl apply -f grafana-ingress.yaml -n monitoring
-kubectl apply -f grafana-certificate.yaml -n monitoring
-```
-
-<br/>
-
-## Notes:
-
-Make sure to adjust the `Domain`, `host`, and `static-ip` sections in all yaml files as needed.
-
-<br/>
-
-## Reference:
-
-- [Grafana Helm Charts](https://github.com/grafana/helm-charts)
+- https://grafana.com/docs/grafana/latest/
+- https://github.com/grafana-community/helm-charts

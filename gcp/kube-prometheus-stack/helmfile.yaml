@@ -1,0 +1,27 @@
+repositories:
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+
+releases:
+  - name: kube-prometheus-stack
+    namespace: monitoring
+    createNamespace: true
+    chart: prometheus-community/kube-prometheus-stack
+    version: 82.14.1
+    values:
+      - values/mgmt.yaml
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "monitoring"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

@@ -1,0 +1,8 @@
+persistence:
+  enabled: true
+  storageClassName: nfs-client # Select StorageClass
+  accessModes:
+    - ReadWriteMany # Select AccessMode
+  size: 10Gi 
+serviceMonitor:
+  enabled: true

@@ -1,8 +1,8 @@
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
 metadata:
-  name: grafana-certificate
+  name: prometheus-certificate
 spec:
   domains:
-    - grafana.somaz.link
+    - prometheus.somaz.example.com
 

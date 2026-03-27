@@ -1,0 +1,36 @@
+---
+# GKE Managed Certificate for HTTPS
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: loki-certificate
+  namespace: monitoring
+spec:
+  domains:
+    - loki.somaz.example.com
+---
+# BackendConfig for health check
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: loki-backend-config
+  namespace: monitoring
+spec:
+  healthCheck:
+    checkIntervalSec: 30
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    type: HTTP
+    requestPath: /ready
+    port: 3100
+---
+# FrontendConfig for HTTPS redirect
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: loki-frontend-config
+  namespace: monitoring
+spec:
+  redirectToHttps:
+    enabled: true
