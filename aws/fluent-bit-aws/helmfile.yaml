@@ -1,0 +1,27 @@
+repositories:
+  - name: fluent
+    url: https://fluent.github.io/helm-charts
+
+releases:
+  - name: fluent-bit
+    namespace: fluent-bit
+    createNamespace: true
+    chart: fluent/fluent-bit
+    version: 0.56.0
+    values:
+      - values/mgmt.yaml
+
+# Hooks to ensure proper installation and upgrades
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "fluent-bit"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

@@ -22,9 +22,9 @@ deployment:
   #     name: config-secret
   extraEnvs:
     - name: "ELASTICSEARCH_USERNAME"
-      value: "somaz"
+      value: "example-user"
     - name: "ELASTICSEARCH_PASSWORD"
-      value: "somaz123!"
+      value: "example-password"
     - name: "TZ"
       value: "Asia/Seoul"
   # Allows you to add any config files in /usr/share/filebeat
@@ -41,17 +41,17 @@ deployment:
       filebeat.inputs:
       - type: log
         paths:
-          - /usr/share/filebeat/app/somaz/alpha/game/logs/*  # 마운트된 경로의 로그 파일
+          - /usr/share/filebeat/app/somaz/alpha/game/logs/*  # Log files from mounted path
           - /usr/share/filebeat/app/somaz/alpha/game/logs/**/*
         fields:
-          log_source: "alpha-somaz-game"  # 이 값이 Elasticsearch 인덱스 이름이 됨
+          log_source: "alpha-somaz-game"  # This value becomes the Elasticsearch index name
           environment: "alpha"
           app: "somaz"
           component: "game"
         fields_under_root: true
-        json.keys_under_root: true      # JSON 필드를 루트 레벨로 승격
-        json.add_error_key: true        # JSON 파싱 에러 시 에러 필드 추가
-        json.expand_keys: true          # 추가: 중첩된 JSON 문자열을 객체로 확장
+        json.keys_under_root: true      # Promote JSON fields to root level
+        json.add_error_key: true        # Add error field on JSON parsing failure
+        json.expand_keys: true          # Expand nested JSON strings into objects
         processors:
           - decode_json_fields:
               fields: ["data"]
@@ -84,17 +84,17 @@ deployment:
                 }
       - type: log
         paths:
-          - /usr/share/filebeat/app/somaz/alpha/battle/logs/*  # 마운트된 경로의 로그 파일
+          - /usr/share/filebeat/app/somaz/alpha/battle/logs/*  # Log files from mounted path
           - /usr/share/filebeat/app/somaz/alpha/battle/logs/**/*
         fields:
-          log_source: "alpha-somaz-battle"  # 이 값이 Elasticsearch 인덱스 이름이 됨
+          log_source: "alpha-somaz-battle"  # This value becomes the Elasticsearch index name
           environment: "alpha"
           app: "somaz"
           component: "battle"
         fields_under_root: true
-        json.keys_under_root: true      # JSON 필드를 루트 레벨로 승격
-        json.add_error_key: true        # JSON 파싱 에러 시 에러 필드 추가
-        json.expand_keys: true          # 추가: 중첩된 JSON 문자열을 객체로 확장
+        json.keys_under_root: true      # Promote JSON fields to root level
+        json.add_error_key: true        # Add error field on JSON parsing failure
+        json.expand_keys: true          # Expand nested JSON strings into objects
         processors:
           - decode_json_fields:
               fields: ["data"]
@@ -131,10 +131,10 @@ deployment:
                 }
 
       output.logstash:
-        hosts: ["somaz.iptime.org:32087"]
+        hosts: ["logstash.somaz.example.com:32087"]
         
   nodeSelector:
-    eks.amazonaws.com/nodegroup: Somaz-NodeGroup-worker-node
+    eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
   # A list of secrets and their paths to mount inside the pod
   # This is useful for mounting certificates for security other sensitive values
   secretMounts: []
@@ -169,7 +169,7 @@ efs:
     items:
       - name: "alpha-somaz-game-app-logs-pv-filebeat"
         fileSystemId: "fs-xxxxxxxxxxxx"
-        accessPointId: "fsap-xxxxxxxxxxx"  # Terraform으로 생성된 Access Point ID
+        accessPointId: "fsap-xxxxxxxxxxx"  # Access Point ID created by Terraform
         storage: "5Gi"
         volumeMode: Filesystem
         accessModes:
@@ -179,7 +179,7 @@ efs:
 
       - name: "alpha-somaz-battle-app-logs-pv-filebeat"
         fileSystemId: "fs-xxxxxxxxxxxx"
-        accessPointId: "fsap-xxxxxxxxxxx"  # Terraform으로 생성된 Access Point ID
+        accessPointId: "fsap-xxxxxxxxxxx"  # Access Point ID created by Terraform
         storage: "5Gi"
         volumeMode: Filesystem
         accessModes:

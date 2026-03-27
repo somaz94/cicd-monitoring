@@ -1,0 +1,227 @@
+---
+# Fluent Bit configuration for AWS mgmt environment
+kind: Deployment
+replicaCount: 1
+
+image:
+  repository: cr.fluentbit.io/fluent/fluent-bit
+  tag: "3.1.4"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+rbac:
+  create: true
+  nodeAccess: false
+
+podSecurityContext: {}
+
+securityContext:
+  runAsUser: 0
+  privileged: false
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "100Mi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+tolerations: []
+
+nodeSelector:
+  eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+
+affinity: {}
+
+env: []
+
+# Volume mounts for log collection (EFS)
+extraVolumeMounts:
+  - name: alpha-luckyday-game-app-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/luckyday/alpha/game
+    readOnly: true
+  # - name: alpha-luckyday-battle-app-logs-pvc-fluentbit
+  #   mountPath: /fluent-bit/logs/luckyday/alpha/battle
+  #   readOnly: true
+  # - name: review-luckyday-game-app-logs-pvc-fluentbit
+  #   mountPath: /fluent-bit/logs/luckyday/review/game
+  #   readOnly: true
+
+config:
+  service: |
+    [SERVICE]
+        Daemon Off
+        Flush 1
+        Log_Level info
+        Parsers_File /fluent-bit/etc/parsers.conf
+        Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port 2020
+        Health_Check On
+
+  inputs: |
+    # Alpha Luckyday Game logs
+    [INPUT]
+        Name tail
+        Path /fluent-bit/logs/luckyday/alpha/game/*
+        Path_Key filepath
+        Tag luckyday.alpha.game
+        Parser luckyday_json
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head true
+        Ignore_Older 0
+
+    # # Alpha Luckyday Battle logs
+    # [INPUT]
+    #     Name tail
+    #     Path /fluent-bit/logs/luckyday/alpha/battle/*
+    #     Path_Key filepath
+    #     Tag luckyday.alpha.battle
+    #     Parser luckyday_json
+    #     Mem_Buf_Limit 50MB
+    #     Skip_Long_Lines On
+    #     Skip_Empty_Lines On
+    #     Refresh_Interval 10
+    #     Read_from_Head true
+    #     Ignore_Older 0
+
+    # # Review Luckyday Game logs
+    # [INPUT]
+    #     Name tail
+    #     Path /fluent-bit/logs/luckyday/review/game/*
+    #     Path_Key filepath
+    #     Tag luckyday.review.game
+    #     Parser luckyday_json
+    #     Mem_Buf_Limit 50MB
+    #     Skip_Long_Lines On
+    #     Skip_Empty_Lines On
+    #     Refresh_Interval 10
+    #     Read_from_Head true
+    #     Ignore_Older 0
+
+  filters: |
+    # Add metadata for alpha game logs
+    [FILTER]
+        Name modify
+        Match luckyday.alpha.game
+        Set log_source alpha-luckyday-game
+        Set environment alpha
+        Set app luckyday
+        Set component game
+
+    # # Add metadata for alpha battle logs
+    # [FILTER]
+    #     Name modify
+    #     Match luckyday.alpha.battle
+    #     Set log_source alpha-luckyday-battle
+    #     Set environment alpha
+    #     Set app luckyday
+    #     Set component battle
+
+    # # Add metadata for review game logs
+    # [FILTER]
+    #     Name modify
+    #     Match luckyday.review.game
+    #     Set log_source review-luckyday-game
+    #     Set environment review
+    #     Set app luckyday
+    #     Set component game
+
+  outputs: |
+    # Send to Fluentd for further processing
+    [OUTPUT]
+        Name forward
+        Match luckyday.*
+        Host fluentd
+        Port 24224
+        Retry_Limit 5
+
+  customParsers: |
+    [PARSER]
+        Name luckyday_json
+        Format json
+        Time_Keep On
+        Time_Key @timestamp
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+    [PARSER]
+        Name docker_no_time
+        Format json
+        Time_Keep Off
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+logLevel: info
+
+# EFS PersistentVolumes for log collection
+persistentVolumes:
+  enabled: true
+  items:
+    - name: alpha-luckyday-game-app-logs-pv-fluentbit
+      storage: 5Gi
+      volumeMode: Filesystem
+      accessModes:
+        - ReadWriteMany
+      reclaimPolicy: Retain
+      storageClassName: efs-sc
+      efs:
+        fileSystemId: "fs-0xxxxxxxxxxxxxxxxxxxx"
+        accessPointId: "fsap-0xxxxxxxxxxxxxxxxxxxx"
+
+    # - name: alpha-luckyday-battle-app-logs-pv-fluentbit
+    #   storage: 5Gi
+    #   volumeMode: Filesystem
+    #   accessModes:
+    #     - ReadWriteMany
+    #   reclaimPolicy: Retain
+    #   storageClassName: efs-sc
+    #   efs:
+    #     fileSystemId: "fs-0xxxxxxxxxxxxxxxxxxxx"
+    #     accessPointId: "fsap-0xxxxxxxxxxxxxxxxxxxx"
+
+    # - name: review-luckyday-game-app-logs-pv-fluentbit
+    #   storage: 5Gi
+    #   volumeMode: Filesystem
+    #   accessModes:
+    #     - ReadWriteMany
+    #   reclaimPolicy: Retain
+    #   storageClassName: efs-sc
+    #   efs:
+    #     fileSystemId: "fs-0xxxxxxxxxxxxxxxxxxxx"
+    #     accessPointId: "fsap-0xxxxxxxxxxxxxxxxxxxx"
+
+# EFS PersistentVolumeClaims for log collection
+persistentVolumeClaims:
+  enabled: true
+  items:
+    - name: alpha-luckyday-game-app-logs-pvc-fluentbit
+      accessModes:
+        - ReadWriteMany
+      storageClassName: efs-sc
+      storage: 5Gi
+      selector:
+        volumeName: alpha-luckyday-game-app-logs-pv-fluentbit
+
+    # - name: alpha-luckyday-battle-app-logs-pvc-fluentbit
+    #   accessModes:
+    #     - ReadWriteMany
+    #   storageClassName: efs-sc
+    #   storage: 5Gi
+    #   selector:
+    #     volumeName: alpha-luckyday-battle-app-logs-pv-fluentbit
+
+    # - name: review-luckyday-game-app-logs-pvc-fluentbit
+    #   accessModes:
+    #     - ReadWriteMany
+    #   storageClassName: efs-sc
+    #   storage: 5Gi
+    #   selector:
+    #     volumeName: review-luckyday-game-app-logs-pv-fluentbit
