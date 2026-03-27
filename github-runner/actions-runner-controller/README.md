@@ -33,6 +33,8 @@ There are three main Helm chart components for managing GitHub Actions runners o
 | `gha-runner-scale-set-controller` | Implements GitHub Scale Set Runner in Kubernetes | Manages runners in scale set units, optimizes efficiency | Unified runner management in large-scale CI/CD environments |
 | `gha-runner-scale-set` | Defines specific configuration and deployment resources for Scale Set Runners | Integrates with Scale Set API for detailed runner group configuration and scaling | Grouping and efficiently scaling runners based on workflow request volume |
 
+<br/>
+
 ### actions-runner-controller (This Chart)
 
 - Manages GitHub Actions runners on Kubernetes clusters
@@ -40,12 +42,16 @@ There are three main Helm chart components for managing GitHub Actions runners o
 - Supports repository, organization, and enterprise level deployments
 - Supports auto-scaling using Kubernetes HPA
 
+<br/>
+
 ### gha-runner-scale-set-controller
 
 - Manages large-scale runner deployments
 - Leverages Scale Set Runners feature
 - Provides efficient runner management through a single endpoint
 - Integrates with GitHub's Scale Set Runners API
+
+<br/>
 
 ### gha-runner-scale-set
 
@@ -71,6 +77,8 @@ There are three main Helm chart components for managing GitHub Actions runners o
 ## Authentication Setup
 
 Choose **one** of the following authentication methods. GitHub App is recommended for better security and permission management.
+
+<br/>
 
 ### Option 1: GitHub PAT (Personal Access Token)
 
@@ -121,6 +129,8 @@ authSecret:
 
 ## Quick Start
 
+<br/>
+
 ### 1. Deploy the Controller
 
 ```bash
@@ -133,6 +143,8 @@ helmfile diff
 # Deploy controller
 helmfile apply
 ```
+
+<br/>
 
 ### 2. Deploy Runner Instances
 
@@ -150,6 +162,8 @@ kubectl get runners -n actions-runner-system
 kubectl get runnerdeployments -n actions-runner-system
 ```
 
+<br/>
+
 ### 3. Use in GitHub Actions Workflow
 
 ```yaml
@@ -163,6 +177,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: echo "Running on self-hosted runner"
 ```
+
+<br/>
 
 ### 4. Verify Runner Connection
 

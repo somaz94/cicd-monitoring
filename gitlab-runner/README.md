@@ -41,7 +41,76 @@ gitlab-runner/
 
 <br/>
 
+## Runner Token Setup
+
+GitLab Runner requires a **runner authentication token** to register with the GitLab instance.
+
+<br/>
+
+### Option 1: Runner Token (Recommended, GitLab 15.10+)
+
+1. Go to GitLab **Admin Area** > **CI/CD** > **Runners** > **New instance runner**
+   - Or for project-level: **Settings** > **CI/CD** > **Runners** > **New project runner**
+2. Configure the runner (tags, description, etc.) and click **Create runner**
+3. Copy the runner authentication token (starts with `glrt-`)
+4. Set in values file:
+
+```yaml
+runnerToken: "glrt-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+<br/>
+
+### Option 2: Registration Token (Deprecated)
+
+> **Warning:** Registration tokens are deprecated since GitLab 15.6 and will be removed in future versions.
+
+1. Go to GitLab **Admin Area** > **CI/CD** > **Runners** and copy the registration token
+2. Set in values file:
+
+```yaml
+runnerRegistrationToken: "GR1348941xxxxxxxxxxxxxxxxxxxxxx"
+```
+
+<br/>
+
+## Runner Configuration
+
+Each runner instance is configured via its values file under `values/`. Key configuration options:
+
+```yaml
+# GitLab server URL
+gitlabUrl: http://gitlab.example.com/
+
+# Runner token
+runnerToken: "glrt-xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Number of runner pods
+replicas: 2
+
+# Maximum concurrent jobs
+concurrent: 10
+
+# Runner tags (used in .gitlab-ci.yml)
+runners:
+  tags: "build-image"
+
+# Kubernetes executor configuration
+runners:
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        namespace = "{{.Release.Namespace}}"
+        image = "alpine"
+```
+
+<br/>
+
 ## Quick Start
+
+<br/>
+
+### 1. Deploy Runners
 
 ```bash
 # Validate configuration
@@ -53,6 +122,50 @@ helmfile diff
 # Deploy all runners
 helmfile apply
 
+# Deploy specific runner only
+helmfile -l name=build-image sync
+```
+
+<br/>
+
+### 2. Verify Runner Registration
+
+```bash
+# Check runner pods
+kubectl get pods -n gitlab-runner
+
+# Check runner logs
+kubectl logs -n gitlab-runner -l app=gitlab-runner --tail=50
+```
+
+Then go to GitLab **Admin Area** > **CI/CD** > **Runners** to confirm the runners are registered and online.
+
+<br/>
+
+### 3. Use in `.gitlab-ci.yml`
+
+```yaml
+build:
+  stage: build
+  tags:
+    - build-image    # Matches runner tag
+  script:
+    - echo "Running on self-hosted GitLab Runner"
+    - docker build -t myimage .
+
+deploy:
+  stage: deploy
+  tags:
+    - build-image
+  script:
+    - kubectl apply -f manifests/
+```
+
+<br/>
+
+### 4. Manage Individual Runners
+
+```bash
 # Deploy specific runner only
 helmfile -l name=build-image sync
 
