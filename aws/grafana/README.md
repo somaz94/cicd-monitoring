@@ -143,7 +143,7 @@ Open `https://grafana.somaz.example.com` in your browser (replace with your actu
 ### 4. Add Data Sources
 
 After deployment, configure data sources in Grafana UI:
-- **Prometheus**: `http://prometheus-server.monitoring.svc.cluster.local`
+- **Prometheus**: `http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090`
 - **Loki**: `http://loki-gateway.monitoring.svc.cluster.local`
 
 <br/>
@@ -180,5 +180,5 @@ helmfile destroy
 ## References
 
 - https://grafana.com/docs/grafana/latest/
-- https://github.com/grafana/helm-charts
-- https://github.com/grafana/helm-charts/releases
+- https://github.com/grafana-community/helm-charts
+- https://github.com/grafana-community/helm-charts/releases

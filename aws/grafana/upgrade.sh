@@ -7,10 +7,10 @@ set -euo pipefail
 # and modify ONLY the variables below.
 # ============================================================
 SCRIPT_NAME="Grafana AWS Helm Chart Upgrade Script"
-HELM_REPO_NAME="grafana"
-HELM_REPO_URL="https://grafana.github.io/helm-charts"
-HELM_CHART="grafana/grafana"
-CHANGELOG_URL="https://github.com/grafana/helm-charts/releases"
+HELM_REPO_NAME="grafana-community"
+HELM_REPO_URL="https://grafana-community.github.io/helm-charts"
+HELM_CHART="grafana-community/grafana"
+CHANGELOG_URL="https://github.com/grafana-community/helm-charts/releases"
 CHART_TYPE="external"  # "local" = manages Chart.yaml + values.yaml / "external" = helmfile + values/ only
 # ============================================================
 
