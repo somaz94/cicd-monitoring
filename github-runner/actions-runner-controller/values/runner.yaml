@@ -12,7 +12,7 @@ authSecret:
   #github_app_installation_id: ""
   #github_app_private_key: |
   ### GitHub PAT Configuration
-  github_token: "ghp_xxxxxxxxxxxxxxxxxxxxxxxx"
+  github_token: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   ### Basic auth for github API proxy
   #github_basicauth_username: ""
   #github_basicauth_password: ""

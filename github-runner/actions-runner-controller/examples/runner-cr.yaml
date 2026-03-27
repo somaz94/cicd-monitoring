@@ -1,0 +1,30 @@
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: example-runner
+spec:
+  replicas: 1
+  template:
+    spec:
+      # Single repository connection
+      repository: "example-org/example-repo"
+      # Or connect to entire organization
+      # organization: "your-organization"
+
+      # Runner labels (used in GitHub Actions workflow)
+      labels:
+        - self-hosted
+        - linux
+        - x64
+      # env:
+      #   - name: RUNNER_FEATURE_FLAG_CUSTOM_COMMANDS
+      #     value: "true"
+      # # Use secrets
+      # envFrom:
+      #   - secretRef:
+      #       name: runner-secrets
+
+      # For GitHub Enterprise
+      # ephemeral: true  # Auto-remove runner after job completion
+      # group: "default"  # Specify runner group
+      # workDir: "/home/runner/work"  # Specify working directory

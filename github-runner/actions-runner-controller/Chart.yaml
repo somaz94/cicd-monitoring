@@ -1,0 +1,6 @@
+apiVersion: v2
+name: actions-runner-controller
+description: GitHub Actions Runner Controller (ARC) - Self-hosted runner management for Kubernetes
+type: application
+version: 0.23.7
+appVersion: "0.27.6"
