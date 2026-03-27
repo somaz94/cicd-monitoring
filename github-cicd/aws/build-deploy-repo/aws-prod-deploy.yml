@@ -19,16 +19,16 @@ jobs:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: somaz94/somaz-applicationset
+          repository: example-org/example-applicationset
           ref: master
           token: ${{ secrets.CICD_PAT }}
-          path: somaz-applicationset
+          path: example-applicationset
 
       - name: Get Staging tag
         env:
           SERVICE_NAME: ${{ github.event.inputs.service }}
         run: |
-          cd somaz-applicationset/charts/$SERVICE_NAME
+          cd example-applicationset/charts/$SERVICE_NAME
           echo "STAGING_TAG_LINE=$(sed -n -e '/^  staging_tag: /p' prod.values.yaml)" >> $GITHUB_ENV
           echo "${{ env.STAGING_TAG_LINE }}"
           echo $STAGING_TAG_LINE
@@ -41,7 +41,7 @@ jobs:
         env:
           SERVICE_NAME: ${{ github.event.inputs.service }}
         run: |
-          cd somaz-applicationset/charts/$SERVICE_NAME
+          cd example-applicationset/charts/$SERVICE_NAME
           sed -i 's/^  tag:.*/  tag: "${{ env.STAGING_TAG }}"/g' prod.values.yaml
 
       - name: Commit files
@@ -50,8 +50,8 @@ jobs:
           TAG: ${{ env.STAGING_TAG }}
           TRIGGER_USER: ${{ github.event.sender.login }}
         run: |
-          cd somaz-applicationset
-          git config --global user.email "somaz@nerdystar.io"
-          git config --global user.name "somaz"
+          cd example-applicationset
+          git config --global user.email "admin@example.com"
+          git config --global user.name "cicd"
           git commit -am "Update $SERVICE_NAME image tag to $TAG by $TRIGGER_USER"
           git push -u origin master

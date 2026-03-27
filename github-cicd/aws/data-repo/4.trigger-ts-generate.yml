@@ -16,21 +16,21 @@ on:
 
 jobs:
   trigger-ts-file-generate:
-    name: Trigger ts-file-generate workflow on somaz_server repository
+    name: Trigger ts-file-generate workflow on example_server repository
     runs-on: ubuntu-20.04
     env:
-      CD_REPOSITORY: somaz-applicationset
+      CD_REPOSITORY: example-applicationset
       ENVIRONMENT: ${{ inputs.environment }}
     steps:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: somaz94/${{ env.CD_REPOSITORY }}
+          repository: example-org/${{ env.CD_REPOSITORY }}
           ref: master
           token: ${{ secrets.CICD_PAT }}
           path: ${{ env.CD_REPOSITORY }}
 
-      # Step to get the repository to run gen.ts from the <environment>.txt file in the environment environment_branch folder of somaz-applicationset.
+      # Step to get the repository to run gen.ts from the <environment>.txt file in the environment environment_branch folder of example-applicationset.
       - name: Get target branch from environment
         id: target-branch
         run: |
@@ -42,7 +42,7 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.CICD_PAT }}
-          repository: somaz94/somaz-server
+          repository: example-org/example-server
           event-type: generate_files
           client-payload: '{"ref": "${{ steps.target-branch.outputs.target_branch }}", "ref_name": "${{ env.ENVIRONMENT }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}'
 

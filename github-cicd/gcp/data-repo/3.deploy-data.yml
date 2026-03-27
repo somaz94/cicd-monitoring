@@ -41,31 +41,31 @@ jobs:
       # - name: Set secrets to gcs 
       #   uses: noliran/branch-based-secrets@v1
       #   with:
-      #     # This action makes env which concatenated with ASP_PATCH_S3_BUCKET and Branch name.
+      #     # This action makes env which concatenated with APP_PATCH_S3_BUCKET and Branch name.
       #     # So, we can find branch based secret dynamic.
-      #     # example _) ASP_PATCH_S3_BUCKET_DEVELOP
-      #     secrets: SM_CDN_GCS_BUCKET,GCP_ASP_PROJECT     
+      #     # example _) APP_PATCH_S3_BUCKET_DEVELOP
+      #     secrets: APP_CDN_GCS_BUCKET,GCP_APP_PROJECT     
 
       - name: Set secrets to gcs 
         uses: noliran/branch-based-secrets@v1
         with:
-          secrets: SM_CDN_GCS_BUCKET,GCP_SM_PROJECT,GCP_SM_CLOUDCDN_URL_MAP
+          secrets: APP_CDN_GCS_BUCKET,GCP_APP_PROJECT,GCP_APP_CLOUDCDN_URL_MAP
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
 
       # - name: Select Project
       #   env:
-      #     GCP_ASP_PROJECT: ${{ secrets[env.GCP_ASP_PROJECT_NAME] }}
+      #     GCP_APP_PROJECT: ${{ secrets[env.GCP_APP_PROJECT_NAME] }}
       #   run: |
-      #     gcloud config set project ${{ env.GCP_ASP_PROJECT }}
+      #     gcloud config set project ${{ env.GCP_APP_PROJECT }}
       #     gcloud config configurations list
 
       - name: Select Project
         env:
-          GCP_SM_PROJECT: ${{ secrets[env.GCP_SM_PROJECT_NAME] }}
+          GCP_APP_PROJECT: ${{ secrets[env.GCP_APP_PROJECT_NAME] }}
         run: |
-          gcloud config set project ${{ env.GCP_SM_PROJECT }}
+          gcloud config set project ${{ env.GCP_APP_PROJECT }}
           gcloud config configurations list
 
       - name: Set short sha
@@ -86,69 +86,69 @@ jobs:
         if: github.ref_name != 'production'
         env:
           COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
-          SM_CDN_GCS_BUCKET: ${{ secrets[env.SM_CDN_GCS_BUCKET_NAME] }}
+          APP_CDN_GCS_BUCKET: ${{ secrets[env.APP_CDN_GCS_BUCKET_NAME] }}
         run: |
-          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.SM_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/asp/latest
-          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.SM_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/asp/${{ env.COMMIT_HASH }}
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.APP_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/app/latest
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.APP_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/app/${{ env.COMMIT_HASH }}
 
       - name: Deploy to GCS Production
         if: github.ref_name == 'production'
         env:
           COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
-          SM_CDN_GCS_BUCKET: ${{ secrets[env.SM_CDN_GCS_BUCKET_NAME] }}
+          APP_CDN_GCS_BUCKET: ${{ secrets[env.APP_CDN_GCS_BUCKET_NAME] }}
         run: |
-          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/latest
-          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/${{ env.COMMIT_HASH }}
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.APP_CDN_GCS_BUCKET }}/data/app/latest
+          gsutil -m rsync -d -r ./Convertor/ClientJson/ gs://${{ env.APP_CDN_GCS_BUCKET }}/data/app/${{ env.COMMIT_HASH }}
 
       - name: Delete previous commit folders
         if: github.ref_name != 'production'
         env:
           COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
-          SM_CDN_GCS_BUCKET: ${{ secrets[env.SM_CDN_GCS_BUCKET_NAME] }}
+          APP_CDN_GCS_BUCKET: ${{ secrets[env.APP_CDN_GCS_BUCKET_NAME] }}
         run: |
-          gsutil ls -d gs://${{ env.SM_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/asp/*/ | grep -E -v "/latest|/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
-          # gsutil ls gs://${{ env.SM_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/asp/ | grep -E -v "/latest|/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
+          gsutil ls -d gs://${{ env.APP_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/app/*/ | grep -E -v "/latest|/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
+          # gsutil ls gs://${{ env.APP_CDN_GCS_BUCKET }}/${{ github.ref_name }}/data/app/ | grep -E -v "/latest|/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
 
       - name: Delete previous commit folders Prodcution
         if: github.ref_name == 'production'
         env:
           COMMIT_HASH: ${{ steps.vars.outputs.short_sha }}
-          SM_CDN_GCS_BUCKET: ${{ secrets[env.SM_CDN_GCS_BUCKET_NAME] }}
+          APP_CDN_GCS_BUCKET: ${{ secrets[env.APP_CDN_GCS_BUCKET_NAME] }}
         run: |
-          gsutil ls -d gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/"
-          gsutil ls -d gs://${{ env.SM_CDN_GCS_BUCKET }}/data/asp/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
+          gsutil ls -d gs://${{ env.APP_CDN_GCS_BUCKET }}/data/app/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/"
+          gsutil ls -d gs://${{ env.APP_CDN_GCS_BUCKET }}/data/app/*/ | grep -v "/latest" | grep -v "/${{ env.COMMIT_HASH }}/" | xargs -I {} gsutil -m rm -r {}
 
       - name: Invalidate cache CloudCDN
         if: github.ref_name != 'production'
         env:
-          GCP_SM_PROJECT: ${{ secrets[env.GCP_SM_PROJECT_NAME] }}
+          GCP_APP_PROJECT: ${{ secrets[env.GCP_APP_PROJECT_NAME] }}
         run: |
           echo "Invalidating cache for production environment..."
-          gcloud compute url-maps list --project ${{ env.GCP_SM_PROJECT }}
-          gcloud compute url-maps invalidate-cdn-cache ${{ secrets[env.GCP_SM_CLOUDCDN_URL_MAP_NAME] }} \
-          --path "/${{ github.ref_name }}/data/asp/latest" \
+          gcloud compute url-maps list --project ${{ env.GCP_APP_PROJECT }}
+          gcloud compute url-maps invalidate-cdn-cache ${{ secrets[env.GCP_APP_CLOUDCDN_URL_MAP_NAME] }} \
+          --path "/${{ github.ref_name }}/data/app/latest" \
           --global \
-          --project ${{ env.GCP_SM_PROJECT }}
+          --project ${{ env.GCP_APP_PROJECT }}
 
       - name: Invalidate cache CloudCDN Production
         if: github.ref_name == 'production'
         env:
-          GCP_SM_PROJECT: ${{ secrets[env.GCP_SM_PROJECT_NAME] }}        
+          GCP_APP_PROJECT: ${{ secrets[env.GCP_APP_PROJECT_NAME] }}        
         run: |
           echo "Invalidating cache for production environment..."
-          gcloud compute url-maps list --project ${{ env.GCP_SM_PROJECT }}
-          gcloud compute url-maps invalidate-cdn-cache ${{ secrets[env.GCP_SM_CLOUDCDN_URL_MAP_NAME] }} \
-          --path "/data/asp/latest" \
+          gcloud compute url-maps list --project ${{ env.GCP_APP_PROJECT }}
+          gcloud compute url-maps invalidate-cdn-cache ${{ secrets[env.GCP_APP_CLOUDCDN_URL_MAP_NAME] }} \
+          --path "/data/app/latest" \
           --global \
-          --project ${{ env.GCP_SM_PROJECT }}
+          --project ${{ env.GCP_APP_PROJECT }}
 
-  # ASP 완전 삭제 시 전부 수정        
+  # Update all when removing app service        
   # copy data files to ec2 using sftp
   rsync:
     name: Upload data to the gcp computer engine
     runs-on: ubuntu-20.04
     env:
-      PROJECT: asp
+      PROJECT: app
     steps:
       - name: Check out branch
         uses: actions/checkout@v2
@@ -158,52 +158,52 @@ jobs:
       # - name: Set secrets
       #   uses: noliran/branch-based-secrets@v1
       #   with:
-      #     secrets: GCP_ASP_BASTION_IP
+      #     secrets: GCP_APP_BASTION_IP
 
       - name: Set secrets
         uses: noliran/branch-based-secrets@v1
         with:
-          secrets: GCP_SM_BASTION_IP
+          secrets: GCP_APP_BASTION_IP
 
       # - name: Upload data files to Bastion Server
       #   uses: easingthemes/ssh-deploy@main
       #   env:
-      #     SSH_PRIVATE_KEY: ${{ secrets.GCP_ASP_BASTION_PEM }}
-      #     REMOTE_HOST: ${{ secrets[env.GCP_ASP_BASTION_IP_NAME] }}
-      #     REMOTE_USER: somaz
+      #     SSH_PRIVATE_KEY: ${{ secrets.GCP_APP_BASTION_PEM }}
+      #     REMOTE_HOST: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
+      #     REMOTE_USER: appuser
       #     SOURCE: "Convertor/ServerJson/data/"
-      #     TARGET: /home/somaz/${{ inputs.environment }}
+      #     TARGET: /home/appuser/${{ inputs.environment }}
       #     ARGS: "-rltDvzO --delete"
       #     # ARGS: "-avzr --delete"
 
       - name: Upload data files to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.GCP_SM_BASTION_PEM }}
-          REMOTE_HOST: ${{ secrets[env.GCP_SM_BASTION_IP_NAME] }}
-          REMOTE_USER: somaz
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_APP_BASTION_PEM }}
+          REMOTE_HOST: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
+          REMOTE_USER: appuser
           SOURCE: "Convertor/ServerJson/data/"
-          TARGET: /home/somaz/${{ inputs.environment }}-${{ env.PROJECT }}
+          TARGET: /home/appuser/${{ inputs.environment }}-${{ env.PROJECT }}
           ARGS: "-rltDvzO --delete"
 
       # - name: Upload data reload api shell script to Bastion Server
       #   uses: easingthemes/ssh-deploy@main
       #   env:
-      #     SSH_PRIVATE_KEY: ${{ secrets.GCP_ASP_BASTION_PEM }}
-      #     REMOTE_HOST: ${{ secrets[env.GCP_ASP_BASTION_IP_NAME] }}
-      #     REMOTE_USER: somaz
+      #     SSH_PRIVATE_KEY: ${{ secrets.GCP_APP_BASTION_PEM }}
+      #     REMOTE_HOST: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
+      #     REMOTE_USER: appuser
       #     SOURCE: "static_publish.sh"
-      #     TARGET: "/home/somaz/"
+      #     TARGET: "/home/appuser/"
       #     ARGS: "-rltDvzO --delete"
 
       - name: Upload data reload api shell script to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.GCP_SM_BASTION_PEM }}
-          REMOTE_HOST: ${{ secrets[env.GCP_SM_BASTION_IP_NAME] }}
-          REMOTE_USER: somaz
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_APP_BASTION_PEM }}
+          REMOTE_HOST: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
+          REMOTE_USER: appuser
           SOURCE: "static_publish.sh"
-          TARGET: "/home/somaz/"
+          TARGET: "/home/appuser/"
           ARGS: "-rltDvzO --delete"
 
   # curl update version and server memory reload api
@@ -217,7 +217,7 @@ jobs:
     #   - name: Set secrets
     #     uses: noliran/branch-based-secrets@v1
     #     with:
-    #       secrets: GCP_ASP_DATA_PUBLISH_API_DOMAIN,GCP_ASP_BASTION_IP
+    #       secrets: GCP_APP_DATA_PUBLISH_API_DOMAIN,GCP_APP_BASTION_IP
 
     name: Update version info and Call reload api
     runs-on: ubuntu-20.04
@@ -225,28 +225,28 @@ jobs:
       - name: Set secrets
         uses: noliran/branch-based-secrets@v1
         with:
-          secrets: GCP_ASP_DATA_PUBLISH_API_DOMAIN,GCP_SM_BASTION_IP
+          secrets: GCP_APP_DATA_PUBLISH_API_DOMAIN,GCP_APP_BASTION_IP
 
       # - name: Curl reload api
       #   uses: appleboy/ssh-action@master
       #   with:
-      #     host: ${{ secrets[env.GCP_ASP_BASTION_IP_NAME] }}
+      #     host: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
       #     port: 22
-      #     username: somaz
-      #     key: ${{ secrets.GCP_ASP_BASTION_PEM }}
+      #     username: appuser
+      #     key: ${{ secrets.GCP_APP_BASTION_PEM }}
       #     script: |
-      #       export GCP_ASP_DATA_PUBLISH_API_DOMAIN_NAME=${{ secrets[env.GCP_ASP_DATA_PUBLISH_API_DOMAIN_NAME] }}
-      #       export ASP_DATA_PUBLISH_API_KEY=${{ secrets.ASP_DATA_PUBLISH_API_KEY }}
+      #       export GCP_APP_DATA_PUBLISH_API_DOMAIN_NAME=${{ secrets[env.GCP_APP_DATA_PUBLISH_API_DOMAIN_NAME] }}
+      #       export APP_DATA_PUBLISH_API_KEY=${{ secrets.APP_DATA_PUBLISH_API_KEY }}
       #       sh ./static_publish.sh ${{ inputs.modifiedJsonFileNames }}
 
       - name: Curl reload api
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets[env.GCP_SM_BASTION_IP_NAME] }}
+          host: ${{ secrets[env.GCP_APP_BASTION_IP_NAME] }}
           port: 22
-          username: somaz
-          key: ${{ secrets.GCP_SM_BASTION_PEM }}
+          username: appuser
+          key: ${{ secrets.GCP_APP_BASTION_PEM }}
           script: |
-            export GCP_ASP_DATA_PUBLISH_API_DOMAIN_NAME=${{ secrets[env.GCP_ASP_DATA_PUBLISH_API_DOMAIN_NAME] }}
-            export ASP_DATA_PUBLISH_API_KEY=${{ secrets.ASP_DATA_PUBLISH_API_KEY }}
+            export GCP_APP_DATA_PUBLISH_API_DOMAIN_NAME=${{ secrets[env.GCP_APP_DATA_PUBLISH_API_DOMAIN_NAME] }}
+            export APP_DATA_PUBLISH_API_KEY=${{ secrets.APP_DATA_PUBLISH_API_KEY }}
             sh ./static_publish.sh ${{ inputs.modifiedJsonFileNames }}

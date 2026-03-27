@@ -93,15 +93,15 @@ jobs:
       - name: Set up SSH Connection
         run: |
           if [ "${{ env.ENVIRONMENT }}" == "dev1" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_APP_BASTION_IP_DEV1 }}" >> $GITHUB_ENV
           elif [ "${{ env.ENVIRONMENT }}" == "dev2" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_APP_BASTION_IP_DEV2 }}" >> $GITHUB_ENV
           elif [ "${{ env.ENVIRONMENT }}" == "qa1" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_QA1 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_APP_BASTION_IP_QA1 }}" >> $GITHUB_ENV
           elif [ "${{ env.ENVIRONMENT }}" == "qa2" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_QA2 }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_APP_BASTION_IP_QA2 }}" >> $GITHUB_ENV
           elif [ "${{ env.ENVIRONMENT }}" == "prod" ]; then
-            echo "BASTION_IP=${{ secrets.GCP_SOMAZ_BASTION_IP_PROD }}" >> $GITHUB_ENV
+            echo "BASTION_IP=${{ secrets.GCP_APP_BASTION_IP_PROD }}" >> $GITHUB_ENV
           else
             echo "Error: Unknown environment '${{ env.ENVIRONMENT }}'"
             exit 1
@@ -110,11 +110,11 @@ jobs:
       - name: Upload data files to Bastion Server
         uses: easingthemes/ssh-deploy@main
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.GCP_SOMAZ_BASTION_PEM }}
+          SSH_PRIVATE_KEY: ${{ secrets.GCP_APP_BASTION_PEM }}
           REMOTE_HOST: ${{ env.BASTION_IP }}
-          REMOTE_USER: nerdystar
+          REMOTE_USER: appuser
           SOURCE: "data/"
-          TARGET: /home/nerdystar/${{ env.ENVIRONMENT }}
+          TARGET: /home/appuser/${{ env.ENVIRONMENT }}
           ARGS: "-rltDvzO --delete"
 
       - name: Get version from JSON
@@ -127,7 +127,7 @@ jobs:
         env:
           TRIGGER_USER: ${{ github.event.sender.login }}
         run: |
-          git config --global user.email "cicd@nerdystar.io"
+          git config --global user.email "cicd@example.com"
           git config --global user.name "cicd"
           git add libs
           git commit -m "Update generated files by $TRIGGER_USER. Version: ${{ env.DATA_VERSION }}"

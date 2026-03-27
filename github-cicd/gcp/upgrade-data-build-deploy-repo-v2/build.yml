@@ -27,7 +27,7 @@ on:
           - game
           - admin
           - api
-          - qsp-game
+          - sub-game
           - batch
         default: game
   workflow_call:
@@ -53,8 +53,8 @@ jobs:
     name: Build Image
     runs-on: ubuntu-20.04
     env:
-      sm_PROJECT: sm
-      qsp_PROJECT: qsp
+      app_PROJECT: app
+      sub_PROJECT: sub
       SERVICE: ${{ github.event.inputs.service || inputs.service }}
       ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
       GCP_REGION: asia-northeast3
@@ -103,18 +103,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Determine change service name for qsp-game -> game
-        if: ${{ inputs.service == 'qsp-game' }}
+      - name: Determine change service name for sub-game -> game
+        if: ${{ inputs.service == 'sub-game' }}
         run: |
           echo "SERVICE_TAG=game" >> $GITHUB_ENV
 
       - name: Build, tag, and push image to GCP Artifact Registry
         uses: docker/build-push-action@v5
         env:
-          GCP_PROJECT: ${{ (inputs.service == 'game' || inputs.service == 'batch') && secrets.GCP_sm_MGMT_PROJECT || secrets.GCP_MGMT_PROJECT }}
+          GCP_PROJECT: ${{ (inputs.service == 'game' || inputs.service == 'batch') && secrets.GCP_APP_MGMT_PROJECT || secrets.GCP_MGMT_PROJECT }}
           GAR_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev
-          SERVICE_NAME: ${{ inputs.service == 'qsp-game' && env.SERVICE_TAG || inputs.service }}
-          GAR_REPOSITORY: ${{ (inputs.service == 'game' || inputs.service == 'batch') && env.sm_PROJECT || env.qsp_PROJECT }}
+          SERVICE_NAME: ${{ inputs.service == 'sub-game' && env.SERVICE_TAG || inputs.service }}
+          GAR_REPOSITORY: ${{ (inputs.service == 'game' || inputs.service == 'batch') && env.app_PROJECT || env.sub_PROJECT }}
           IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
         with:
           context: .
@@ -225,5 +225,5 @@ jobs:
              "workflow_run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
            }
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.sm_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.APP_SLACK_WEBHOOK_URL }}
 

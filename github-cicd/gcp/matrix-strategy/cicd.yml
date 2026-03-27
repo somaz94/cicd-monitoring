@@ -23,7 +23,7 @@ jobs:
         service: [backend, frontend]
       fail-fast: false    
     env:
-      PROJECT_NAME: wcidfu
+      PROJECT_NAME: example-app
       GCP_REGION: asia-northeast3
       PROJECT_ENV: ${{ (github.ref == 'refs/heads/main') && 'prod' || 'dev' }}
       SERVICE_NAME: ${{ matrix.service }}
@@ -94,7 +94,7 @@ jobs:
         service: [backend, frontend]
       fail-fast: false 
     env:
-      PROJECT_NAME: wcidfu
+      PROJECT_NAME: example-app
       GCP_REGION: asia-northeast3
       PROJECT_ENV: ${{ (github.ref == 'refs/heads/main') && 'prod' || 'dev' }}
       SERVICE_NAME: ${{ matrix.service }}

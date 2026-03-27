@@ -51,13 +51,13 @@ jobs:
     name: Update helm image tag
     runs-on: ubuntu-20.04
     env:
-      PROJECT: jm
-      CD_REPOSITORY: jm-applicationset
+      PROJECT: app
+      CD_REPOSITORY: app-applicationset
     steps:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: nerdy-star/${{ env.CD_REPOSITORY }}
+          repository: example-org/${{ env.CD_REPOSITORY }}
           ref: main
           token: ${{ secrets.CICD_PAT }}
           path: ${{ env.CD_REPOSITORY }}
@@ -96,7 +96,7 @@ jobs:
         run: |
           cd ${{ env.CD_REPOSITORY }}
           git pull
-          git config --global user.email "cicd@nerdystar.io"
+          git config --global user.email "cicd@example.com"
           git config --global user.name "cicd"
           git pull
           git commit -am "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"

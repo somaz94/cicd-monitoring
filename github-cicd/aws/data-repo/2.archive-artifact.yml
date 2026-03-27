@@ -34,7 +34,7 @@ jobs:
       - name: Archive data json files
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.ENVIRONMENT }}_somaz_data_server_v${{ github.run_number }}
+          name: ${{ env.ENVIRONMENT }}_example_data_server_v${{ github.run_number }}
           path: |
             Convertor/ServerJson
           retention-days: 30

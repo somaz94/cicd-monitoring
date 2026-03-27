@@ -24,7 +24,7 @@ on:
 
 jobs:
   generate:
-    name: Download dsp staticdata files and Generate ts files
+    name: Download app staticdata files and Generate ts files
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout repository
@@ -71,20 +71,20 @@ jobs:
             const { BRANCH, RUN_ID, RUN_NUMBER } = process.env
             let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
                owner: context.repo.owner,
-               repo: 'somaz-data',
+               repo: 'example-data',
                run_id: `${RUN_ID}`,
             });
             let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
-              return artifact.name == `${BRANCH}_somaz_data_server_v${RUN_NUMBER}`
+              return artifact.name == `${BRANCH}_example_data_server_v${RUN_NUMBER}`
             })[0];
             let download = await github.rest.actions.downloadArtifact({
                owner: context.repo.owner,
-               repo: 'somaz-data',
+               repo: 'example-data',
                artifact_id: matchArtifact.id,
                archive_format: 'zip',
             });
             let fs = require('fs');
-            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_somaz_data_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/${BRANCH}_example_data_server_v${RUN_NUMBER}.zip`, Buffer.from(download.data));
 
       - name: Unzip artifact
         env:
@@ -92,7 +92,7 @@ jobs:
           RUN_NUMBER: ${{ env.RUN_NUMBER }}
         run: |
           mkdir ServerJson
-          unzip -d ServerJson "${{ env.BRANCH }}_somaz_data_server_v${{ env.RUN_NUMBER }}".zip
+          unzip -d ServerJson "${{ env.BRANCH }}_example_data_server_v${{ env.RUN_NUMBER }}".zip
           ls -al ServerJson
 
       # node modules 캐싱
@@ -132,7 +132,7 @@ jobs:
           BRANCH: ${{ env.BRANCH }}
           RUN_NUMBER: ${{ env.RUN_NUMBER }}
         run: |
-          git config --global user.email "cicd@somaz.link"
+          git config --global user.email "cicd@example.com"
           git config --global user.name "cicd"
           git add libs
           git commit -m "Update generated files by $TRIGGER_USER. Run number: ${{ env.RUN_NUMBER }}"
@@ -146,7 +146,7 @@ jobs:
           RUN_NUMBER: ${{ env.RUN_NUMBER }}
           CICD_PAT: ${{ secrets.CICD_PAT }} # Add CICD_PAT from organization secrets
         run: |
-          git config --global user.email "cicd@somaz.link"
+          git config --global user.email "cicd@example.com"
           git config --global user.name "cicd"
   
           # Create a new branch for the changes

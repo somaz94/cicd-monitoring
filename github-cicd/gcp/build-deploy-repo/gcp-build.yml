@@ -36,7 +36,7 @@ jobs:
     name: Build Image
     runs-on: ubuntu-20.04
     env:
-      PROJECT: somaz
+      PROJECT: example-app
 
     strategy:
       matrix:

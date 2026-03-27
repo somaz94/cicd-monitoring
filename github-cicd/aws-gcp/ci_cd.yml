@@ -28,7 +28,7 @@ jobs:
         service: [backend-celery]
       fail-fast: false    
     env:
-      PROJECT_NAME: somaz
+      PROJECT_NAME: example-app
       GCP_REGION: asia-northeast3
       SERVICE_NAME: ${{ matrix.service }}
       GCP_MGMT_PROJECT: ${{ secrets.GCP_MGMT_PROJECT }}
@@ -134,7 +134,7 @@ jobs:
         if: ${{ github.ref_name == 'awsdev'  || github.ref_name == 'awsprod'  }}
         uses: actions/checkout@v4
         with:
-          repository: nerdy-star-ai/${{ env.CD_REPOSITORY }} 
+          repository: example-org/${{ env.CD_REPOSITORY }} 
           ref: master
           token: ${{ secrets.CICD_PAT }} 
           path: ${{ env.CD_REPOSITORY }}
@@ -149,10 +149,10 @@ jobs:
       - name: Update docker-compose.yml, redeploy, and remove old images
         if: ${{ github.ref_name == 'gcp' }}
         run: |
-          ssh -o "StrictHostKeyChecking=no" somaz@11.11.111.11 << 'EOF'
-          cd /home/somaz
+          ssh -o "StrictHostKeyChecking=no" appuser@10.0.0.1 << 'EOF'
+          cd /home/appuser
           # Use a more dynamic sed command to match any existing tag and replace it
-          sed -i 's|image: asia-northeast3-docker.pkg.dev/mgmt-2023/somaz-backend-celery/somaz-backend-celery:[^"]*|image: asia-northeast3-docker.pkg.dev/mgmt-2023/somaz-backend-celery/somaz-backend-celery:${{ needs.build_and_push.outputs.image_tag }}|' docker-compose.yml
+          sed -i 's|image: asia-northeast3-docker.pkg.dev/example-project/example-backend-celery/example-backend-celery:[^"]*|image: asia-northeast3-docker.pkg.dev/example-project/example-backend-celery/example-backend-celery:${{ needs.build_and_push.outputs.image_tag }}|' docker-compose.yml
           nohup docker-compose up -d > nohup_docker_compose.out 2>&1 &
           # Clean up unused Docker images to free up space
           # docker image prune -a -f --filter "until=24h"
@@ -184,7 +184,7 @@ jobs:
   #       # service: [backend, celery]
   #     fail-fast: false 
   #   env:
-  #     PROJECT_NAME: somaz
+  #     PROJECT_NAME: example-app
   #     GCP_REGION: asia-northeast3
   #     PROJECT_ENV: ${{ (github.ref == 'refs/heads/main') && 'prod' || 'dev' }}
   #     SERVICE_NAME: ${{ matrix.service }}
@@ -227,7 +227,7 @@ jobs:
   #   steps:
   #     - name: Set Environments
   #       run: |
-  #         echo PROJECT_NAME=asif >> $GITHUB_ENV
+  #         echo PROJECT_NAME=example-app >> $GITHUB_ENV
   #         echo PROJECT_ENV=$(test ${GITHUB_REF##*/} = main && echo prod || echo dev) >> $GITHUB_ENV
   #     - name: Checkout
   #       uses: actions/checkout@v3

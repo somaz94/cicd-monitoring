@@ -51,10 +51,10 @@ jobs:
     name: Update helm image tag
     runs-on: ubuntu-20.04
     env:
-      sm_PROJECT: sm
-      sm_CD_REPOSITORY: sm-applicationset
-      msp_PROJECT: msp
-      msp_CD_REPOSITORY: msp-applicationset
+      app_PROJECT: app
+      app_CD_REPOSITORY: app-applicationset
+      ext_PROJECT: ext
+      ext_CD_REPOSITORY: ext-applicationset
       SERVICE: ${{ github.event.inputs.service || inputs.service }}
       ENVIRONMENT: ${{ github.event.inputs.environment || inputs.environment }}
 
@@ -62,10 +62,10 @@ jobs:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: nerdy-star/${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          repository: example-org/${{ env.SERVICE == 'game' && env.app_CD_REPOSITORY || env.ext_CD_REPOSITORY }}
           ref: ${{ env.SERVICE == 'game' && 'main' || 'master' }}
           token: ${{ secrets.CICD_PAT }}
-          path: ${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          path: ${{ env.SERVICE == 'game' && env.app_CD_REPOSITORY || env.ext_CD_REPOSITORY }}
 
       - name: Set environment variables
         run: |
@@ -77,8 +77,8 @@ jobs:
             echo "TAG_STRING=tag" >> $GITHUB_ENV
           fi
 
-      - name: Determine change service name for msp-game -> game
-        if: ${{ inputs.service == 'msp-game' }}
+      - name: Determine change service name for ext-game -> game
+        if: ${{ inputs.service == 'ext-game' }}
         run: |
           echo "SERVICE_TAG=game" >> $GITHUB_ENV
 
@@ -87,9 +87,9 @@ jobs:
           echo ${{ github.ref_name }}
           echo ${{ inputs.tag }} 
 
-          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
-          PROJECT=${{ env.SERVICE == 'game' && env.sm_PROJECT || env.msp_PROJECT }}
-          SERVICE_NAME=${{ inputs.service == 'msp-game' && env.SERVICE_TAG || inputs.service }}
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.app_CD_REPOSITORY || env.ext_CD_REPOSITORY }}
+          PROJECT=${{ env.SERVICE == 'game' && env.app_PROJECT || env.ext_PROJECT }}
+          SERVICE_NAME=${{ inputs.service == 'ext-game' && env.SERVICE_TAG || inputs.service }}
           echo "Updating ${SERVICE_NAME} in ${SERVICE_PATH} for ${PROJECT}"
           
           cd ${SERVICE_PATH}/charts/${PROJECT}/${SERVICE_NAME}
@@ -99,7 +99,7 @@ jobs:
       - name: Update release_branch for workflow_dispatch 
         if: ${{ inputs.is_build_triggered_by_workflow_dispatch == 'true' }}
         run: |
-          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.app_CD_REPOSITORY || env.ext_CD_REPOSITORY }}
           cd ${SERVICE_PATH}/environment_branch
           existing_branch=$(cat ${{ inputs.environment }}.txt)
           if [ "$existing_branch" != "${{ inputs.build_branch }}" ]; then
@@ -111,11 +111,11 @@ jobs:
 
       - name: Commit files
         run: |
-          SERVICE_PATH=${{ env.SERVICE == 'game' && env.sm_CD_REPOSITORY || env.msp_CD_REPOSITORY }}
+          SERVICE_PATH=${{ env.SERVICE == 'game' && env.app_CD_REPOSITORY || env.ext_CD_REPOSITORY }}
           ref=${{ env.SERVICE == 'game' && 'main' || 'master' }}
           cd ${SERVICE_PATH}
           git pull
-          git config user.email "cicd@somaz.io"
+          git config user.email "cicd@example.com"
           git config user.name "cicd"
           git add -A
           git commit -m "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"

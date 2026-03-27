@@ -51,18 +51,18 @@ jobs:
     name: Update helm image tag
     runs-on: ubuntu-20.04
     env:
-      PROJECT: somaz
-      CD_REPOSITORY: somaz-applicationset
+      PROJECT: example-app
+      CD_REPOSITORY: example-applicationset
     steps:
       - name: Checkout config repository
         uses: actions/checkout@v2
         with:
-          repository: somaz94/${{ env.CD_REPOSITORY }}
+          repository: example-org/${{ env.CD_REPOSITORY }}
           ref: master
           token: ${{ secrets.CICD_PAT }}
           path: ${{ env.CD_REPOSITORY }}
 
-      # Change the name so that prod.values.yml can be changed if the data is changed due to the data raised to the master branch of somaz-data.
+      # Change the name so that prod.values.yml can be changed if the data is changed due to the data raised to the master branch of example-data.
       - name: Set env for stage
         id: set-tag-string-for-stage
         if: ${{ inputs.environment == 'stage' }}
@@ -96,7 +96,7 @@ jobs:
       - name: Commit files
         run: |
           cd ${{ env.CD_REPOSITORY }}
-          git config --global user.email "somaz@somaz.link"
-          git config --global user.name "somaz"
+          git config --global user.email "admin@example.com"
+          git config --global user.name "cicd"
           git commit -am "Update ${{ inputs.service }} image tag to ${{ inputs.tag }} by ${{ inputs.trigger_user }}"
           git push -u origin master
