@@ -6,7 +6,7 @@ expose:
     certSource: none
   ingress:
     hosts:
-      core: harbor.somaz.example.com
+      core: harbor.example.com
     controller: default
     className: "nginx"
     annotations:
@@ -18,14 +18,14 @@ expose:
       httpPort: 80
       httpsPort: 443
 
-externalURL: http://harbor.somaz.example.com
+externalURL: http://harbor.example.com
 
 # ── HTTPS expose with cert-manager + Let's Encrypt ──
 # Prerequisites:
 #   1. Install cert-manager: https://cert-manager.io/docs/installation/
 #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
 # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/somaz94/certmanager-letsencrypt
+# Ref: https://github.com/example-user/certmanager-letsencrypt
 #
 # expose:
 #   type: ingress
@@ -36,7 +36,7 @@ externalURL: http://harbor.somaz.example.com
 #       secretName: harbor-tls
 #   ingress:
 #     hosts:
-#       core: harbor.somaz.example.com
+#       core: harbor.example.com
 #     controller: default
 #     className: "nginx"
 #     annotations:
@@ -49,7 +49,7 @@ externalURL: http://harbor.somaz.example.com
 #       httpPort: 80
 #       httpsPort: 443
 #
-# externalURL: https://harbor.somaz.example.com
+# externalURL: https://harbor.example.com
 
 persistence:
   enabled: true

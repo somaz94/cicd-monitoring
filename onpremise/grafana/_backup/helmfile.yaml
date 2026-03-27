@@ -8,4 +8,4 @@ releases:
     chart: .
     version: 8.5.1
     values:
-      - values/somaz-onpremise.yaml
+      - values/onpremise.yaml

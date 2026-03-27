@@ -78,14 +78,14 @@ controller:
     annotations:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: "2G"
-    hostName: jenkins.somaz.example.com
+    hostName: jenkins.example.com
 
   # ── HTTPS ingress with cert-manager + Let's Encrypt ──
   # Prerequisites:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
   # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
   #   enabled: true
@@ -94,11 +94,11 @@ controller:
   #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
   #     nginx.ingress.kubernetes.io/proxy-body-size: "2G"
   #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   hostName: jenkins.somaz.example.com
+  #   hostName: jenkins.example.com
   #   tls:
   #     - secretName: jenkins-tls
   #       hosts:
-  #         - jenkins.somaz.example.com
+  #         - jenkins.example.com
 
   prometheus:
     enabled: false

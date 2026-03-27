@@ -4,5 +4,5 @@ metadata:
   name: prometheus-certificate
 spec:
   domains:
-    - prometheus.somaz.example.com
+    - prometheus.example.com
 

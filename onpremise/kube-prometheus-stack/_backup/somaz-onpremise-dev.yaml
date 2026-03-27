@@ -161,7 +161,7 @@ prometheus:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     hosts:
-      - prometheus-dev.somaz.link
+      - prometheus-dev.example.com
   serviceMonitor:
     disableCompaction: true
     selfMonitor: true

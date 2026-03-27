@@ -100,7 +100,7 @@ gateway:
       alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
     ingressClassName: "alb"
     hosts:
-      - host: loki.somaz.example.com
+      - host: loki.example.com
 ```
 
 | Annotation | Description |

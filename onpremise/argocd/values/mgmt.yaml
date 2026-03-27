@@ -1,7 +1,7 @@
 global:
   # -- Default domain used by all components
   ## Used for ingresses, certificates, SSO, notifications, etc.
-  domain: argocd.somaz.example.com
+  domain: argocd.example.com
 
 configs:
   cm:
@@ -18,10 +18,10 @@ configs:
           id: gitlab
           name: GitLab
           config:
-            baseURL: http://gitlab.somaz.example.com
+            baseURL: http://gitlab.example.com
             clientID: your-gitlab-application-client-id
             clientSecret: your-gitlab-application-client-secret
-            redirectURI: https://argocd.somaz.example.com/api/dex/callback
+            redirectURI: https://argocd.example.com/api/dex/callback
             groups:
               - server
   params:
@@ -52,11 +52,11 @@ configs:
   ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
   ssh:
     # -- Additional known hosts for private repositories
-    # Generate with: ssh-keyscan gitlab.somaz.example.com
+    # Generate with: ssh-keyscan gitlab.example.com
     extraHosts: |
-      gitlab.somaz.example.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ...your-ssh-rsa-key...
-      gitlab.somaz.example.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY...your-ecdsa-key...
-      gitlab.somaz.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...your-ed25519-key...
+      gitlab.example.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ...your-ssh-rsa-key...
+      gitlab.example.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY...your-ecdsa-key...
+      gitlab.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...your-ed25519-key...
   # RBAC settings
   rbac:
     create: true
@@ -139,7 +139,7 @@ server:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
   # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
   #   enabled: true

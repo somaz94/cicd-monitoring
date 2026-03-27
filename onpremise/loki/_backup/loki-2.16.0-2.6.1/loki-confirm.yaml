@@ -94,7 +94,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   nfs:
     path: /data/loki
-    server: nfs-server.somaz.example.com
+    server: nfs-server.example.com
 ---
 # Source: loki/templates/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -333,10 +333,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - "loki.somaz.example.com"
+        - "loki.example.com"
       secretName: loki-tls-gcp
   rules:
-    - host: "loki.somaz.example.com"
+    - host: "loki.example.com"
       http:
         paths:
           - path: /

@@ -71,7 +71,7 @@ ingress:
       stickiness.enabled=false
   ingressClassName: "alb"
   hosts:
-    - grafana.somaz.example.com
+    - grafana.example.com
 
 # ── Nginx ingress alternative ──
 # ingress:
@@ -83,13 +83,13 @@ ingress:
 #   path: /
 #   pathType: Prefix
 #   hosts:
-#     - grafana.somaz.example.com
+#     - grafana.example.com
 
 # ── HTTPS ingress with cert-manager + Let's Encrypt ──
 # Prerequisites:
 #   1. Install cert-manager: https://cert-manager.io/docs/installation/
 #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
-# Ref: https://github.com/somaz94/certmanager-letsencrypt
+# Ref: https://github.com/example-user/certmanager-letsencrypt
 # ingress:
 #   enabled: true
 #   ingressClassName: nginx
@@ -100,11 +100,11 @@ ingress:
 #   path: /
 #   pathType: Prefix
 #   hosts:
-#     - grafana.somaz.example.com
+#     - grafana.example.com
 #   tls:
 #     - secretName: grafana-tls
 #       hosts:
-#         - grafana.somaz.example.com
+#         - grafana.example.com
 
 resources: {}
 #  limits:

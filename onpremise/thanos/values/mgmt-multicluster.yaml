@@ -21,8 +21,8 @@ query:
   dnsDiscovery:
     enabled: false
   stores:
-    - dev-thanos-query.somaz.example.com:443
-    - qa-thanos-query.somaz.example.com:443
+    - dev-thanos-query.example.com:443
+    - qa-thanos-query.example.com:443
   extraFlags:
     - "--grpc-client-tls-secure"
   replicaCount: 0

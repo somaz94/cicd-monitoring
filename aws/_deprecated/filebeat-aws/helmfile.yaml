@@ -4,7 +4,7 @@ repositories:
 
 releases:
   - name: filebeat
-    namespace: somaz
+    namespace: example-app
     chart: .
     # -- Version of the filebeat chart to use.
     # -- This should match the version in the Chart.yaml file.

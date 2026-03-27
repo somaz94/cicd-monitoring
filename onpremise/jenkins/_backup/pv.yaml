@@ -15,5 +15,5 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   nfs:
     path: /data/jenkins
-    server: nfs-server.somaz.link
+    server: nfs-server.example.com
 

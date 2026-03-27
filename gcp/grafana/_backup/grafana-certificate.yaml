@@ -4,5 +4,5 @@ metadata:
   name: grafana-certificate
 spec:
   domains:
-    - grafana.somaz.example.com
+    - grafana.example.com
 

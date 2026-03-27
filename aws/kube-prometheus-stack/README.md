@@ -104,7 +104,7 @@ prometheus:
       alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
     ingressClassName: "alb"
     hosts:
-      - prometheus.somaz.example.com
+      - prometheus.example.com
 ```
 
 | Annotation | Description |
@@ -142,7 +142,7 @@ prometheusSpec:
     - job_name: 'api-prometheus'
       metrics_path: /metrics
       static_configs:
-        - targets: ['api.somaz.example.com']
+        - targets: ['api.example.com']
 ```
 
 <br/>

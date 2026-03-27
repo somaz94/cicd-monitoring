@@ -32,7 +32,7 @@ nodeSelector:
 ## The GitLab Server URL (with protocol) that want to register the runner against
 ## ref: https://docs.gitlab.com/runner/commands/index.html#gitlab-runner-register
 ##
-gitlabUrl: http://gitlab.somaz.example.com/
+gitlabUrl: http://gitlab.example.com/
 
 ## The Runner Token for adding new Runners to the GitLab Server. This must
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
@@ -115,8 +115,8 @@ runners:
   # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
   config: |
     [[runners]]
-      url = "http://gitlab.somaz.example.com/"
-      clone_url = "http://gitlab.somaz.example.com/"
+      url = "http://gitlab.example.com/"
+      clone_url = "http://gitlab.example.com/"
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"

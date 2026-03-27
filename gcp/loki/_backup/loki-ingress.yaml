@@ -34,7 +34,7 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: loki-frontend-config
 spec:
   rules:
-  - host: loki.somaz.example.com
+  - host: loki.example.com
     http:
       paths:
       - pathType: Prefix

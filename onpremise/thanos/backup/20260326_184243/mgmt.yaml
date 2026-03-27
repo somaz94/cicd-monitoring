@@ -40,7 +40,7 @@ query:
   # ── HTTP ingress (active) ──
   ingress:
     enabled: true
-    hostname: thanos-query.somaz.example.com
+    hostname: thanos-query.example.com
     ingressClassName: nginx
     pathType: ImplementationSpecific
     path: /
@@ -55,11 +55,11 @@ query:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
   # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
   #   enabled: true
-  #   hostname: thanos-query.somaz.example.com
+  #   hostname: thanos-query.example.com
   #   ingressClassName: nginx
   #   pathType: ImplementationSpecific
   #   path: /
@@ -95,7 +95,7 @@ queryFrontend:
   # ── HTTP ingress (active) ──
   ingress:
     enabled: true
-    hostname: thanos.somaz.example.com
+    hostname: thanos.example.com
     ingressClassName: nginx
     pathType: ImplementationSpecific
     path: /
@@ -108,11 +108,11 @@ queryFrontend:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
   # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
   #   enabled: true
-  #   hostname: thanos.somaz.example.com
+  #   hostname: thanos.example.com
   #   ingressClassName: nginx
   #   pathType: ImplementationSpecific
   #   path: /
@@ -151,7 +151,7 @@ compactor:
   # ── HTTP ingress (active) ──
   ingress:
     enabled: true
-    hostname: thanos-compactor.somaz.example.com
+    hostname: thanos-compactor.example.com
     ingressClassName: nginx
     pathType: ImplementationSpecific
     path: /
@@ -164,11 +164,11 @@ compactor:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
   # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
   #   enabled: true
-  #   hostname: thanos-compactor.somaz.example.com
+  #   hostname: thanos-compactor.example.com
   #   ingressClassName: nginx
   #   pathType: ImplementationSpecific
   #   path: /

@@ -10,7 +10,7 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   rules:
-    - host: jenkins.somaz.link
+    - host: jenkins.example.com
       http:
         paths:
           - path: /
@@ -22,6 +22,6 @@ spec:
                   number: https
   tls:
   - hosts:
-    - jenkins.somaz.link
+    - jenkins.example.com
     secretName: jenkins-tls
 

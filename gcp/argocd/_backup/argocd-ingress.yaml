@@ -34,7 +34,7 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: argocd-frontend-config
 spec:
   rules:
-  - host: argocd.somaz.example.com # Modified Domain
+  - host: argocd.example.com # Modified Domain
     http:
       paths:
       - pathType: Prefix

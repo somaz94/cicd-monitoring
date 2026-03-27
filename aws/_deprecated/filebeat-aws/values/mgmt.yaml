@@ -41,12 +41,12 @@ deployment:
       filebeat.inputs:
       - type: log
         paths:
-          - /usr/share/filebeat/app/somaz/alpha/game/logs/*  # Log files from mounted path
-          - /usr/share/filebeat/app/somaz/alpha/game/logs/**/*
+          - /usr/share/filebeat/app/example-app/alpha/game/logs/*  # Log files from mounted path
+          - /usr/share/filebeat/app/example-app/alpha/game/logs/**/*
         fields:
-          log_source: "alpha-somaz-game"  # This value becomes the Elasticsearch index name
+          log_source: "alpha-example-app-game"  # This value becomes the Elasticsearch index name
           environment: "alpha"
-          app: "somaz"
+          app: "example-app"
           component: "game"
         fields_under_root: true
         json.keys_under_root: true      # Promote JSON fields to root level
@@ -84,12 +84,12 @@ deployment:
                 }
       - type: log
         paths:
-          - /usr/share/filebeat/app/somaz/alpha/battle/logs/*  # Log files from mounted path
-          - /usr/share/filebeat/app/somaz/alpha/battle/logs/**/*
+          - /usr/share/filebeat/app/example-app/alpha/battle/logs/*  # Log files from mounted path
+          - /usr/share/filebeat/app/example-app/alpha/battle/logs/**/*
         fields:
-          log_source: "alpha-somaz-battle"  # This value becomes the Elasticsearch index name
+          log_source: "alpha-example-app-battle"  # This value becomes the Elasticsearch index name
           environment: "alpha"
-          app: "somaz"
+          app: "example-app"
           component: "battle"
         fields_under_root: true
         json.keys_under_root: true      # Promote JSON fields to root level
@@ -131,7 +131,7 @@ deployment:
                 }
 
       output.logstash:
-        hosts: ["logstash.somaz.example.com:32087"]
+        hosts: ["logstash.example.com:32087"]
         
   nodeSelector:
     eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
@@ -167,7 +167,7 @@ efs:
   persistentVolumes:
     enabled: true
     items:
-      - name: "alpha-somaz-game-app-logs-pv-filebeat"
+      - name: "alpha-example-app-game-app-logs-pv-filebeat"
         fileSystemId: "fs-xxxxxxxxxxxx"
         accessPointId: "fsap-xxxxxxxxxxx"  # Access Point ID created by Terraform
         storage: "5Gi"
@@ -177,7 +177,7 @@ efs:
         reclaimPolicy: Retain
         storageClassName: "efs-sc"
 
-      - name: "alpha-somaz-battle-app-logs-pv-filebeat"
+      - name: "alpha-example-app-battle-app-logs-pv-filebeat"
         fileSystemId: "fs-xxxxxxxxxxxx"
         accessPointId: "fsap-xxxxxxxxxxx"  # Access Point ID created by Terraform
         storage: "5Gi"
@@ -190,23 +190,23 @@ efs:
   persistentVolumeClaims:
     enabled: true
     items:
-      - name: "alpha-somaz-game-app-logs-pvc-filebeat"
+      - name: "alpha-example-app-game-app-logs-pvc-filebeat"
         accessModes:
           - ReadWriteMany
         storageClassName: "efs-sc"
         storage: "5Gi"
-        mountPath: "/usr/share/filebeat/app/somaz/alpha/game/logs"
+        mountPath: "/usr/share/filebeat/app/example-app/alpha/game/logs"
         selector:
-          volumeName: "alpha-somaz-game-app-logs-pv-filebeat"
+          volumeName: "alpha-example-app-game-app-logs-pv-filebeat"
 
-      - name: "alpha-somaz-battle-app-logs-pvc-filebeat"
+      - name: "alpha-example-app-battle-app-logs-pvc-filebeat"
         accessModes:
           - ReadWriteMany
         storageClassName: "efs-sc"
         storage: "5Gi"
-        mountPath: "/usr/share/filebeat/app/somaz/alpha/battle/logs"
+        mountPath: "/usr/share/filebeat/app/example-app/alpha/battle/logs"
         selector:
-          volumeName: "alpha-somaz-battle-app-logs-pv-filebeat"
+          volumeName: "alpha-example-app-battle-app-logs-pv-filebeat"
 
 # Replicas being used for the filebeat deployment
 replicas: 1

@@ -46,7 +46,7 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
   hosts:
-    - host: kibana.somaz.example.com
+    - host: kibana.example.com
       paths:
         - path: /
 
@@ -55,7 +55,7 @@ ingress:
 #   1. Install cert-manager: https://cert-manager.io/docs/installation/
 #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
 # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/somaz94/certmanager-letsencrypt
+# Ref: https://github.com/example-user/certmanager-letsencrypt
 #
 # ingress:
 #   enabled: true
@@ -65,10 +65,10 @@ ingress:
 #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
 #   hosts:
-#     - host: kibana.somaz.example.com
+#     - host: kibana.example.com
 #       paths:
 #         - path: /
 #   tls:
 #     - secretName: kibana-tls
 #       hosts:
-#         - kibana.somaz.example.com
+#         - kibana.example.com

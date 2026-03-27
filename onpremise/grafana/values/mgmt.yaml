@@ -52,14 +52,14 @@ ingress:
   path: /
   pathType: Prefix
   hosts:
-    - grafana.somaz.example.com
+    - grafana.example.com
 
 # ── HTTPS ingress with cert-manager + Let's Encrypt ──
 # Prerequisites:
 #   1. Install cert-manager: https://cert-manager.io/docs/installation/
 #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
 # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/somaz94/certmanager-letsencrypt
+# Ref: https://github.com/example-user/certmanager-letsencrypt
 #
 # ingress:
 #   enabled: true
@@ -71,11 +71,11 @@ ingress:
 #   path: /
 #   pathType: Prefix
 #   hosts:
-#     - grafana.somaz.example.com
+#     - grafana.example.com
 #   tls:
 #     - secretName: grafana-tls
 #       hosts:
-#         - grafana.somaz.example.com
+#         - grafana.example.com
 
 resources: {}
 #  limits:
@@ -125,7 +125,7 @@ initChownData:
 #     datasources:
 #     - name: Thanos
 #       type: prometheus
-#       url: https://thanos.somaz.example.com
+#       url: https://thanos.example.com
 #       access: proxy
 #       isDefault: true
 #     - name: Loki

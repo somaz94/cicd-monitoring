@@ -71,7 +71,7 @@ helmfile apply
 # Get initial admin password (set in values/mgmt.yaml)
 # Default: admin / exampleAdminPassword
 
-# Access: https://grafana.somaz.example.com
+# Access: https://grafana.example.com
 ```
 
 <br/>

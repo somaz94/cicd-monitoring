@@ -7,7 +7,7 @@ metadata:
   namespace: argocd
 spec:
   domains:
-    - argocd.somaz.example.com
+    - argocd.example.com
 ---
 # BackendConfig for health check
 apiVersion: cloud.google.com/v1

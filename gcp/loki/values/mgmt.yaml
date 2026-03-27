@@ -66,7 +66,7 @@ gateway:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     hosts:
-      - host: loki.somaz.example.com
+      - host: loki.example.com
         paths:
           - path: /
             pathType: Prefix
@@ -82,7 +82,7 @@ gateway:
   #     kubernetes.io/ingress.class: "gce"
   #     networking.gke.io/v1beta1.FrontendConfig: loki-frontend-config
   #   hosts:
-  #     - host: loki.somaz.example.com
+  #     - host: loki.example.com
   #       paths:
   #         - path: /
   #           pathType: Prefix
@@ -91,7 +91,7 @@ gateway:
   # Prerequisites:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   # ingress:
   #   enabled: true
   #   ingressClassName: nginx
@@ -100,14 +100,14 @@ gateway:
   #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
   #   hosts:
-  #     - host: loki.somaz.example.com
+  #     - host: loki.example.com
   #       paths:
   #         - path: /
   #           pathType: Prefix
   #   tls:
   #     - secretName: loki-gateway-tls
   #       hosts:
-  #         - loki.somaz.example.com
+  #         - loki.example.com
 
 chunksCache:
   enabled: false

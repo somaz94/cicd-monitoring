@@ -118,7 +118,7 @@ prometheus:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     hosts:
-      - prometheus.somaz.link
+      - prometheus.example.com
   serviceMonitor:
     disableCompaction: true
     selfMonitor: true
@@ -161,10 +161,10 @@ prometheus:
             requests:
               storage: 100Gi
     externalLabels:
-      provider: somaz
+      provider: example
       region: seoul1
       cluster: mgmt
-      cluster_id: somaz-seoul1-mgmt
+      cluster_id: example-seoul1-mgmt
     retention: 10d
     # additionalScrapeConfigs: |
     #   - job_name: 'metrics-server'

@@ -89,7 +89,7 @@ ingress:
     alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
   ingressClassName: "alb"
   hosts:
-    - grafana.somaz.example.com
+    - grafana.example.com
 ```
 
 | Annotation | Description |
@@ -136,7 +136,7 @@ adminPassword: exampleAdminPassword
 
 ### 3. Access Grafana UI
 
-Open `https://grafana.somaz.example.com` in your browser (replace with your actual domain).
+Open `https://grafana.example.com` in your browser (replace with your actual domain).
 
 <br/>
 

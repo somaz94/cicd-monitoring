@@ -157,7 +157,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 ### 3. Access ArgoCD UI
 
-Open `https://argocd.somaz.example.com` in your browser (replace with your actual domain).
+Open `https://argocd.example.com` in your browser (replace with your actual domain).
 
 <br/>
 

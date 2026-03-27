@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
 
       - name: Mirror to GitLab
-        uses: somaz94/multi-git-mirror@v1
+        uses: example-user/multi-git-mirror@v1
         with:
           targets: |
             gitlab::https://gitlab.com/backup6695808/cicd-monitoring.git

@@ -95,7 +95,7 @@ prometheus:
         stickiness.enabled=false
     ingressClassName: "alb"
     hosts:
-      - prometheus.somaz.example.com
+      - prometheus.example.com
 
   # ── Nginx ingress alternative ──
   # ingress:
@@ -105,13 +105,13 @@ prometheus:
   #     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
   #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   #   hosts:
-  #     - prometheus.somaz.example.com
+  #     - prometheus.example.com
 
   # ── HTTPS ingress with cert-manager + Let's Encrypt ──
   # Prerequisites:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
-  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # Ref: https://github.com/example-user/certmanager-letsencrypt
   # ingress:
   #   enabled: true
   #   ingressClassName: nginx
@@ -120,11 +120,11 @@ prometheus:
   #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
   #   hosts:
-  #     - prometheus.somaz.example.com
+  #     - prometheus.example.com
   #   tls:
   #     - secretName: prometheus-tls
   #       hosts:
-  #         - prometheus.somaz.example.com
+  #         - prometheus.example.com
 
   serviceMonitor:
     selfMonitor: true
@@ -170,4 +170,4 @@ prometheus:
     #     params:
     #       module: [https]
     #     static_configs:
-    #       - targets: ['api.somaz.example.com']
+    #       - targets: ['api.example.com']

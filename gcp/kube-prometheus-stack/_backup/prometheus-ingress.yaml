@@ -34,7 +34,7 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: prometheus-frontend-config
 spec:
   rules:
-  - host: prometheus.somaz.example.com
+  - host: prometheus.example.com
     http:
       paths:
       - pathType: Prefix

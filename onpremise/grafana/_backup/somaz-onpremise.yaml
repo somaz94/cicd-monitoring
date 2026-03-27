@@ -55,7 +55,7 @@ ingress:
   path: /
   pathType: Prefix
   hosts:
-    - grafana.somaz.link
+    - grafana.example.com
 resources: {}
 #  limits:
 #    cpu: 100m
@@ -116,7 +116,7 @@ initChownData:
 #     datasources:
 #     - name: Thanos
 #       type: prometheus
-#       url: https://thanos.somaz.link
+#       url: https://thanos.example.com
 #       access: proxy
 #       isDefault: true
 #     - name: Loki

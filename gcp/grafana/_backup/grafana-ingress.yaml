@@ -34,7 +34,7 @@ metadata:
     networking.gke.io/v1beta1.FrontendConfig: grafana-frontend-config
 spec:
   rules:
-  - host: grafana.somaz.example.com
+  - host: grafana.example.com
     http:
       paths:
       - pathType: Prefix

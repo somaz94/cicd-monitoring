@@ -23,7 +23,7 @@ ingress:
     # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
-    - host: loki.somaz.example.com
+    - host: loki.example.com
       paths:
         - pathType: Prefix
           path: "/"
@@ -38,7 +38,7 @@ ingress:
   #      - chart-example.local
    - secretName: loki-tls-gcp
      hosts:
-       - loki.somaz.example.com
+       - loki.example.com
 
 ## Affinity for pod assignment
 ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
@@ -192,7 +192,7 @@ persistentVolumes:
     reclaimPolicy: Retain
     storageClassName: nfs-client
     path: /data/loki
-    server: nfs-server.somaz.example.com
+    server: nfs-server.example.com
 
 ## Pod Labels
 podLabels: {}

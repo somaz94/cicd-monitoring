@@ -70,16 +70,16 @@ helmfile destroy
 ## Jenkins CLI
 
 ```bash
-wget http://jenkins.somaz.example.com/jnlpJars/jenkins-cli.jar
+wget http://jenkins.example.com/jnlpJars/jenkins-cli.jar
 
 # Check version
-java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> -version
+java -jar jenkins-cli.jar -s http://jenkins.example.com/ -auth <user>:<api-token> -version
 
 # Copy job
-java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> copy-job <origin-job> <copy-job>
+java -jar jenkins-cli.jar -s http://jenkins.example.com/ -auth <user>:<api-token> copy-job <origin-job> <copy-job>
 
 # Reload configuration
-java -jar jenkins-cli.jar -s http://jenkins.somaz.example.com/ -auth <user>:<api-token> reload-configuration
+java -jar jenkins-cli.jar -s http://jenkins.example.com/ -auth <user>:<api-token> reload-configuration
 ```
 
 <br/>

@@ -435,7 +435,7 @@ controller:
     # Set this path to jenkinsUriPrefix above or use annotations to rewrite path
     # path: "/jenkins"
     # configures the hostname e.g. jenkins.example.com
-    hostName: jenkins.somaz.link
+    hostName: jenkins.example.com
     tls:
     # - secretName: jenkins.cluster.local
     #   hosts:

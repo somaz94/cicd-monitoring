@@ -1258,7 +1258,7 @@ persistentVolumes:
     reclaimPolicy: Retain
     storageClassName: nfs-client
     path: /data/loki
-    server: nfs-server.somaz.example.com
+    server: nfs-server.example.com
 
 # Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
@@ -1303,7 +1303,7 @@ ingress:
 
   # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
-    - host: loki.somaz.example.com
+    - host: loki.example.com
       paths:
         - pathType: Prefix
           path: "/"
@@ -1319,7 +1319,7 @@ ingress:
   #    secretName: loki-distributed-tls
    - secretName: loki-tls-gcp
      hosts:
-       - loki.somaz.example.com
+       - loki.example.com
 
 # Configuration for the memberlist service
 memberlist:
@@ -1460,7 +1460,7 @@ gateway:
     labels: {}
     # -- Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating
     hosts:
-      - host: loki-gateway.somaz.example.com
+      - host: loki-gateway.example.com
         paths:
           - pathType: Prefix
             path: "/"
@@ -1473,7 +1473,7 @@ gateway:
     tls:
       - secretName: loki-gateway-tls-gcp
         hosts:
-          - loki-gateway.somaz.example.com
+          - loki-gateway.example.com
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway

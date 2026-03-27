@@ -25,7 +25,7 @@ data:
     [FILTER]
         Name    grep
         Match   nginx_access
-        Regex   log .*somaz.*
+        Regex   log .*example.*
 
     [FILTER]
         Name    modify
@@ -44,7 +44,7 @@ data:
     [OUTPUT]
         Name loki
         Match *
-        Host loki.somaz.link
+        Host loki.example.com
         Port 443
         URI /loki/api/v1/push
         tls On

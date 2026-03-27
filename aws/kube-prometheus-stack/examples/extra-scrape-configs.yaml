@@ -8,4 +8,4 @@ extraScrapeConfigs: |
     params:
       module: [https]
     static_configs:
-      - targets: ['api.somaz.example.com']
+      - targets: ['api.example.com']

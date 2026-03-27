@@ -52,7 +52,7 @@ ingress:
   path: /
   pathType: Prefix
   hosts:
-    - grafana.somaz.example.com
+    - grafana.example.com
 
 resources: {}
 #  limits:
@@ -102,7 +102,7 @@ initChownData:
 #     datasources:
 #     - name: Thanos
 #       type: prometheus
-#       url: https://thanos.somaz.example.com
+#       url: https://thanos.example.com
 #       access: proxy
 #       isDefault: true
 #     - name: Loki

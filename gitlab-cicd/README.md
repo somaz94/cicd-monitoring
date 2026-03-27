@@ -64,7 +64,7 @@ gitlab-cicd/
 │
 ├── scripts/
 │   ├── sync_to_gcs.py                 # GCS data synchronization
-│   └── concrit/                        # Version parsing tools
+│   └── version-scripts/                # Version parsing tools
 │       ├── package.json
 │       ├── parser.ts
 │       ├── versions.ts
