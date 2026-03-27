@@ -14,7 +14,7 @@ metadata:
   namespace: argocd
 spec:
   rules:
-  - host: argocd.somaz.link
+  - host: argocd.somaz.example.com
     http:
       paths:
       - path: /*

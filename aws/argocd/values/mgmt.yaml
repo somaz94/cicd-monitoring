@@ -1,0 +1,423 @@
+global:
+  # -- Default domain used by all components
+  ## Used for ingresses, certificates, SSO, notifications, etc.
+  domain: argocd.somaz.example.com
+
+configs:
+  cm:
+    # Reconciliation timeout setting (default: 180s)
+    # Prevents reconciliation loop resets when many apps can't complete sync within timeout
+    timeout.reconciliation: 600s
+    # Hard reconciliation timeout (default: 0s, disabled)
+    # Setting to 0 prevents forced termination of reconciliation operations
+    timeout.hard.reconciliation: 0s
+    # Dex SSO configuration (GitHub example for AWS)
+    # dex.config: |
+    #   connectors:
+    #     - type: github
+    #       id: github
+    #       name: GitHub
+    #       config:
+    #         clientID: your-github-oauth-app-client-id
+    #         clientSecret: your-github-oauth-app-client-secret
+    #         orgs:
+    #           - name: your-organization
+  params:
+    create: true
+    server.insecure: true
+    # Repo server timeout (default: 60s)
+    # Increased timeout needed for large repository synchronization
+    server.repo.server.timeout.seconds: "180"
+    # Controller timeout for fetching manifests from repo server (default: 60s)
+    # Increase this value when "Context deadline exceeded" errors occur
+    controller.repo.server.timeout.seconds: "180"
+    # Number of status reconciliation processors (default: 20)
+    # Improves app status checking speed (Synced, Health, OutOfSync, etc.)
+    controller.status.processors: "600"
+    # Number of operation processors (default: 10)
+    # Improves parallel processing of sync operations
+    controller.operation.processors: "300"
+    # Kubectl parallel execution limit (default: 20)
+    # Increases concurrent kubectl apply operations for faster deployments
+    controller.kubectl.parallelism.limit: "100"
+    # Controller sharding algorithm (default: legacy)
+    # Round-robin provides balanced workload distribution across replicas
+    controller.sharding.algorithm: "round-robin"
+    # Repo server parallelism limit (default: 0, unlimited)
+    # Unlimited can cause OOMKilled or slow manifest generation
+    reposerver.parallelism.limit: "100"
+  # SSH known hosts for Git repositories
+  ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
+  ssh:
+    # -- Additional known hosts for private repositories
+    # Generate with: ssh-keyscan github.com
+    extraHosts: ""
+  # RBAC settings
+  rbac:
+    create: true
+    policy.csv: |
+      p, role:org-admin, applications, *, */*, allow
+      p, role:org-admin, clusters, get, *, allow
+      p, role:org-admin, repositories, *, *, allow
+      p, role:org-admin, projects, get, *, allow
+      p, role:org-admin, logs, get, *, allow
+      p, role:org-admin, exec, create, */*, allow
+      p, role:org-admin, certificates, *, *, allow
+      p, role:org-admin, accounts, *, *, allow
+      p, role:org-admin, gpgkeys, *, *, allow
+
+  secrets:
+    # GitHub SSO Configuration (if using Dex with GitHub)
+    # dex.github.clientId: "your-github-oauth-app-client-id"
+    # dex.github.clientSecret: "your-github-oauth-app-client-secret"
+
+## Application controller
+controller:
+  replicas: 1
+  # Controller environment variable optimization
+  env:
+    # Kubernetes API request QPS limit (default: 50)
+    # Reduces bottlenecks during large-scale app synchronization
+    - name: ARGOCD_K8S_CLIENT_QPS
+      value: "150"
+    # Kubernetes API burst request limit (default: 100)
+    # Improves sync speed during traffic spikes
+    - name: ARGOCD_K8S_CLIENT_BURST
+      value: "300"
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 6Gi
+    requests:
+      cpu: 1000m
+      memory: 3Gi
+
+## Dex
+dex:
+  # -- Enable dex
+  enabled: false
+
+## Redis
+redis:
+  # -- Enable redis
+  enabled: true
+
+## Redis-HA subchart replaces custom redis deployment when `redis-ha.enabled=true`
+redis-ha:
+  # -- Enables the Redis HA subchart and disables the custom Redis single node deployment
+  enabled: false
+
+redisSecretInit:
+  # -- Enable Redis secret initialization. If disabled, secret must be provisioned by alternative methods
+  enabled: true
+
+## Server
+server:
+  replicas: 1
+  # ── AWS ALB ingress (active) ──
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      alb.ingress.kubernetes.io/healthcheck-path: /
+      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    ingressClassName: "alb"
+    path: /*
+    pathType: ImplementationSpecific
+
+  # ── Nginx ingress alternative ──
+  # Prerequisites:
+  #   1. Install nginx-ingress-controller
+  #   2. (Optional) Install cert-manager for HTTPS
+  #
+  # ingress:
+  #   enabled: true
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+  #     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+  #   ingressClassName: "nginx"
+  #   path: /
+  #   pathType: Prefix
+
+## Repo Server
+repoServer:
+  replicas: 1
+  # Repo server environment variable optimization
+  env:
+    # Command execution timeout (default: 90s)
+    # Increased timeout needed for large Helm chart manifest generation
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "180"
+    # Git operation retry count (default: 1)
+    # Improves stability through retries on git ls-remote failures
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"
+    # Allow Helm concurrent execution (default: false)
+    # Improves performance when syncing multiple Helm-based apps simultaneously
+    # Warning: Verify no interdependencies between templates
+    - name: ARGOCD_HELM_ALLOW_CONCURRENCY
+      value: "true"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+## ApplicationSet controller
+applicationSet:
+  replicas: 1
+
+## Notifications controller
+notifications:
+  # -- Enable notifications controller
+  enabled: true
+
+  secret:
+    create: true
+    items:
+      slack-token: "xoxb-your-slack-bot-token"
+
+  notifiers:
+    service.slack: |
+      token: $slack-token
+      username: ArgoCD
+      icon: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+      channel: "#argocd-alarm"
+
+  templates:
+    template.app-deployed: |
+      message: |
+        :white_check_mark: Application {{.app.metadata.name}} has been successfully deployed.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Deploy Succeeded",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#18be52",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Deploy Time",
+              "value": "{{.app.status.operationState.finishedAt}}",
+              "short": true
+            },
+            {
+              "title": "Destination",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    template.app-health-degraded: |
+      message: |
+        :red_circle: Application {{.app.metadata.name}} has degraded.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Health Degraded",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#E96D76",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Occurred At",
+              "value": "{{.app.status.operationState.finishedAt}}",
+              "short": true
+            },
+            {
+              "title": "Destination",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            }
+            {{range $index, $c := .app.status.conditions}}
+            ,{
+              "title": "{{$c.type}}",
+              "value": "{{$c.message}}",
+              "short": false
+            }
+            {{end}}
+            ,{
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    template.app-sync-failed: |
+      message: |
+        :x: Application {{.app.metadata.name}} sync has failed.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Sync Failed",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true",
+            "color": "#E96D76",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Failed At",
+              "value": "{{.app.status.operationState.finishedAt}}",
+              "short": true
+            },
+            {
+              "title": "Destination",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Error",
+              "value": "{{.app.status.operationState.message}}",
+              "short": false
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    template.app-sync-status-out-of-sync: |
+      message: |
+        :warning: Application {{.app.metadata.name}} is OutOfSync.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - OutOfSync",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#f4c030",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Detected At",
+              "value": "{{.app.status.operationState.finishedAt}}",
+              "short": true
+            },
+            {
+              "title": "Destination",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+  triggers:
+    trigger.on-deployed: |
+      - description: Application is synced and healthy after any operation.
+        send:
+        - app-deployed
+        when: |
+          app.status.operationState.phase == 'Succeeded' and
+          app.status.health.status == 'Healthy' and
+          app.status.operationState != null
+        oncePer: app.status.summary.images[0]
+
+    trigger.on-health-degraded: |
+      - description: Application has degraded
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    trigger.on-sync-failed: |
+      - description: Application syncing has failed
+        send:
+        - app-sync-failed
+        when: app.status.operationState.phase in ['Error', 'Failed']
+
+    trigger.on-sync-status-out-of-sync: |
+      - description: Application sync status is 'OutOfSync'
+        send:
+        - app-sync-status-out-of-sync
+        when: |
+          app.status.sync.status == 'OutOfSync' and
+          app.status.health.status not in ['Progressing', 'Healthy'] and
+          (app.metadata.creationTimestamp == null or
+            time.Now().Sub(time.Parse(app.metadata.creationTimestamp)).Minutes() > 5) and
+          ((app.status.operationState == null) or
+          (app.status.operationState != null and
+            app.status.operationState.phase != 'Running' and
+            app.status.operationState.finishedAt != null and
+            time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60))
+
+  subscriptions:
+    - recipients:
+      - slack:#argocd-alarm
+      triggers:
+      - on-deployed
+      - on-health-degraded
+      - on-sync-failed
+      - on-sync-status-out-of-sync

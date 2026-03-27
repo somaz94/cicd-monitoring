@@ -1,0 +1,6 @@
+apiVersion: v2
+name: argocd-aws
+description: ArgoCD for AWS EKS - GitOps continuous delivery tool
+type: application
+version: 9.4.16
+appVersion: "v3.3.5"

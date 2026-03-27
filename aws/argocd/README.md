@@ -1,56 +1,181 @@
-# ArgoCD Guide
+# ArgoCD AWS Helm Chart
 
-This guide will take you through the process of installing ArgoCD, 
-adding ingress, and registering a git source repository.
+Manages ArgoCD on AWS EKS using Helmfile. Configured with AWS ALB ingress, performance tuning, and Slack notifications.
 
-## Table of Contents
+<br/>
 
-- [Installing ArgoCD](#installing-argocd)
-- [Adding Ingress](#adding-ingress)
-- [Adding Git Source Repository](#adding-git-source-repo)
-- [Additional Notes](#in-addition)
-- [Reference](#reference)
+## Directory Structure
 
-## Installing ArgoCD
-
-Install ArgoCD using the following commands:
-
-```bash
-kubectl create ns argocd
-
-# Normal mode
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-# HA mode
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+```
+argocd/
+├── Chart.yaml          # Version tracking (no local templates)
+├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values/
+│   └── mgmt.yaml       # Management environment configuration
+├── examples/
+│   └── repo-secret.yaml  # Git repository Secret example
+├── upgrade.sh          # Version upgrade script
+├── backup/             # Auto backup on upgrade
+├── _backup/            # Old files (manual manifests)
+└── README.md
 ```
 
-## Adding Ingress
+<br/>
 
-Add ingress for ArgoCD with:
+## Prerequisites
 
-```bash
-kubectl apply -f argocd-ingress.yaml -n argocd
+- AWS EKS cluster
+- Helm 3
+- Helmfile
+- AWS ALB Ingress Controller (aws-load-balancer-controller)
+- ACM certificate for HTTPS
+
+<br/>
+
+## Key Features
+
+| Feature | Configuration |
+|---------|--------------|
+| Ingress | AWS ALB with HTTPS (ACM certificate) |
+| Performance | Optimized controller processors, kubectl parallelism, repo server timeouts |
+| Notifications | Slack integration (deploy, degraded, sync-failed, out-of-sync) |
+| SSO | GitHub Dex connector (commented, ready to enable) |
+| RBAC | org-admin role with full access |
+
+<br/>
+
+## Configuration
+
+### AWS ALB Ingress
+
+The ingress is configured to use AWS Application Load Balancer:
+
+```yaml
+server:
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:..."
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+    ingressClassName: "alb"
 ```
 
-## Adding Git Source Repo
+> **Note:** Update `certificate-arn` with your ACM certificate ARN.
 
-Before registering the git source repo, 
-generate the ssh key and register it with the repo:
+<br/>
+
+### Git Repository Registration
+
+Register private Git repositories for ArgoCD to access:
 
 ```bash
-ssh-keygen -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # rsa format
-ssh-keygen -m PEM -t rsa -f ~/.ssh/[KEY_FILENAME] -C [USERNAME]  # pem format
+# Generate SSH key
+ssh-keygen -t ed25519 -f ~/.ssh/argocd-repo-key -C "argocd"
 
-kubectl apply -f repo-secret.yaml -n argocd
+# Register the public key in your Git provider (GitHub/GitLab)
+
+# Apply repository secret
+kubectl apply -f examples/repo-secret.yaml -n argocd
 ```
 
-## In addition
+<br/>
 
-Make sure to modify the `Domain`, `host`, and parts in all yaml files. 
-Also, adjust the key details within the `repo-secret.yaml` file as necessary.
+### Slack Notifications
 
-## Reference
+Notifications are pre-configured for the following events:
 
-- [ArgoCD Ingress Operator Manual](https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode)
+| Trigger | Description |
+|---------|-------------|
+| `on-deployed` | Application synced and healthy |
+| `on-health-degraded` | Application health degraded |
+| `on-sync-failed` | Sync operation failed |
+| `on-sync-status-out-of-sync` | Application out of sync |
 
+Update the Slack bot token in `values/mgmt.yaml`:
+
+```yaml
+notifications:
+  secret:
+    items:
+      slack-token: "xoxb-your-slack-bot-token"
+```
+
+<br/>
+
+## Quick Start
+
+<br/>
+
+### 1. Deploy ArgoCD
+
+```bash
+# Validate configuration
+helmfile lint
+
+# Preview changes
+helmfile diff
+
+# Deploy
+helmfile apply
+```
+
+<br/>
+
+### 2. Get Initial Admin Password
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+
+<br/>
+
+### 3. Access ArgoCD UI
+
+Open `https://argocd.somaz.example.com` in your browser (replace with your actual domain).
+
+<br/>
+
+### 4. Register Git Repository
+
+```bash
+kubectl apply -f examples/repo-secret.yaml -n argocd
+```
+
+<br/>
+
+## Cleanup
+
+```bash
+# Delete ArgoCD
+helmfile destroy
+```
+
+<br/>
+
+## Upgrade
+
+```bash
+# Check latest version and upgrade
+./upgrade.sh
+
+# Preview changes only
+./upgrade.sh --dry-run
+
+# Upgrade to a specific version
+./upgrade.sh --version 9.5.0
+
+# Rollback from backup
+./upgrade.sh --rollback
+```
+
+<br/>
+
+## References
+
+- https://argo-cd.readthedocs.io/en/stable/
+- https://github.com/argoproj/argo-helm
+- https://github.com/argoproj/argo-cd/releases
+- https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#aws-application-load-balancers-albs-and-classic-elb-http-mode
