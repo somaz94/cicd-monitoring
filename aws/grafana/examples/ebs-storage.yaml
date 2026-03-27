@@ -1,0 +1,26 @@
+---
+# EBS StorageClass
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: ebs-sc
+provisioner: ebs.csi.aws.com
+reclaimPolicy: Retain
+---
+# EBS PersistentVolume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ebs-pv-grafana
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc
+  csi:
+    driver: ebs.csi.aws.com
+    fsType: ext4
+    volumeHandle: vol-0xxxxxxxxxxxxxxxxxxxx  # Replace with your EBS volume ID

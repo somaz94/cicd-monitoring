@@ -1,0 +1,98 @@
+replicas: 1
+
+deploymentStrategy:
+  type: RollingUpdate
+
+image:
+  registry: docker.io
+  repository: grafana/grafana
+
+adminUser: admin
+adminPassword: exampleAdminPassword
+
+service:
+  enabled: true
+  type: ClusterIP
+
+serviceMonitor:
+  enabled: true
+  path: /metrics
+
+# ── AWS ALB ingress (active) ──
+ingress:
+  enabled: true
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    # -- Ingress Group: share a single ALB across multiple ingress resources
+    # All ingresses with the same group.name use the same ALB, reducing cost
+    # group.order controls rule priority (1-1000, lower = higher priority)
+    alb.ingress.kubernetes.io/group.name: example-shared-alb
+    alb.ingress.kubernetes.io/group.order: "20"
+    # -- Health check configuration
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    # -- Listener configuration
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # -- ACM certificate for HTTPS termination
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    # -- Tagging
+    alb.ingress.kubernetes.io/tags: "Environment=mgmt,Service=grafana"
+    # -- Target group tuning
+    alb.ingress.kubernetes.io/target-group-attributes: |
+      deregistration_delay.timeout_seconds=30,
+      stickiness.enabled=false
+  ingressClassName: "alb"
+  hosts:
+    - grafana.somaz.example.com
+
+# ── Nginx ingress alternative ──
+# ingress:
+#   enabled: true
+#   ingressClassName: nginx
+#   annotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+#   hosts:
+#     - grafana.somaz.example.com
+
+# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
+# ingress:
+#   enabled: true
+#   ingressClassName: nginx
+#   annotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
+#   hosts:
+#     - grafana.somaz.example.com
+#   tls:
+#     - secretName: grafana-tls
+#       hosts:
+#         - grafana.somaz.example.com
+
+# ── Persistence with EFS (ReadWriteMany) ──
+persistence:
+  type: pvc
+  enabled: true
+  storageClassName: efs-sc
+  accessModes:
+    - ReadWriteMany
+  size: 10Gi
+
+# ── Persistence with EBS alternative (ReadWriteOnce) ──
+# persistence:
+#   type: pvc
+#   enabled: true
+#   storageClassName: ebs-sc
+#   accessModes:
+#     - ReadWriteOnce
+#   size: 10Gi
+
+# -- Schedule Grafana on specific nodes using nodeSelector.
+# nodeSelector:
+#   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
