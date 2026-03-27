@@ -1,0 +1,42 @@
+---
+# EFS StorageClass
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
+reclaimPolicy: Retain
+---
+# EFS PersistentVolume for Prometheus server
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: efs-pv-prometheus-server
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-0xxxxxxxxxxxxxxxxxxxx  # Replace with your EFS file system ID
+---
+# EFS PersistentVolume for AlertManager
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: efs-pv-prometheus-alertmanager
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-0xxxxxxxxxxxxxxxxxxxx  # Replace with your EFS file system ID

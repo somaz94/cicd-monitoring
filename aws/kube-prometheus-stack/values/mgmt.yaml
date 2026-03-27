@@ -1,0 +1,173 @@
+---
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+  # -- Schedule alertmanager on specific EKS nodes using nodeSelector.
+  # nodeSelector:
+  #   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+  serviceMonitor:
+    selfMonitor: true
+
+grafana:
+  enabled: false
+
+kubelet:
+  enabled: true
+  namespace: kube-system
+
+kubeControllerManager:
+  enabled: false
+
+coreDns:
+  enabled: true
+
+kubeDns:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: true
+
+kubeEtcd:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  namespaceOverride: ""
+  rbac:
+    create: true
+  releaseLabel: true
+  prometheus:
+    monitor:
+      enabled: true
+
+kubeApiServer:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+  operatingSystems:
+    linux:
+      enabled: true
+    darwin:
+      enabled: false
+  forceDeployDashboards: false
+
+prometheusOperator:
+  enabled: true
+  # -- Schedule prometheus-operator on specific EKS nodes using nodeSelector.
+  # nodeSelector:
+  #   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+
+prometheus:
+  enabled: true
+
+  # ── AWS ALB ingress (active) ──
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      # -- Ingress Group: share a single ALB across multiple ingress resources
+      alb.ingress.kubernetes.io/group.name: example-shared-alb
+      alb.ingress.kubernetes.io/group.order: "40"
+      # -- Health check configuration
+      alb.ingress.kubernetes.io/healthcheck-path: /-/healthy
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+      # -- Listener configuration
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      # -- ACM certificate for HTTPS termination
+      alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-northeast-2:xxxxxxxxxxxx:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+      # -- Tagging
+      alb.ingress.kubernetes.io/tags: "Environment=mgmt,Service=prometheus"
+      # -- Target group tuning
+      alb.ingress.kubernetes.io/target-group-attributes: |
+        deregistration_delay.timeout_seconds=30,
+        stickiness.enabled=false
+    ingressClassName: "alb"
+    hosts:
+      - prometheus.somaz.example.com
+
+  # ── Nginx ingress alternative ──
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #   hosts:
+  #     - prometheus.somaz.example.com
+
+  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
+  # Prerequisites:
+  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
+  #   2. Create ClusterIssuer (e.g., letsencrypt-issuer)
+  # Ref: https://github.com/somaz94/certmanager-letsencrypt
+  # ingress:
+  #   enabled: true
+  #   ingressClassName: nginx
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  #     cert-manager.io/cluster-issuer: "letsencrypt-issuer"
+  #   hosts:
+  #     - prometheus.somaz.example.com
+  #   tls:
+  #     - secretName: prometheus-tls
+  #       hosts:
+  #         - prometheus.somaz.example.com
+
+  serviceMonitor:
+    selfMonitor: true
+
+  prometheusSpec:
+    # -- Schedule prometheus on specific EKS nodes using nodeSelector.
+    # nodeSelector:
+    #   eks.amazonaws.com/nodegroup: Example-NodeGroup-worker-node
+    replicas: 1
+
+    # ── EFS persistence (active) ──
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: efs-sc
+          accessModes: ["ReadWriteMany"]
+          resources:
+            requests:
+              storage: 10Gi
+    # ── EBS persistence alternative (ReadWriteOnce) ──
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: ebs-sc
+    #       accessModes: ["ReadWriteOnce"]
+    #       resources:
+    #         requests:
+    #           storage: 10Gi
+
+    externalLabels:
+      provider: example
+      region: ap-northeast-2
+      cluster: mgmt
+      cluster_id: example-ap-northeast-2-mgmt
+    retention: 15d
+
+    # Extra scrape configs for application monitoring
+    # additionalScrapeConfigs:
+    #   - job_name: 'api-prometheus'
+    #     metrics_path: /metrics
+    #     scrape_interval: 10s
+    #     scrape_timeout: 10s
+    #     params:
+    #       module: [https]
+    #     static_configs:
+    #       - targets: ['api.somaz.example.com']

@@ -1,0 +1,11 @@
+# Extra scrape configs for application monitoring
+# Merge this into values/mgmt.yaml or pass as additional values file
+extraScrapeConfigs: |
+  - job_name: 'api-prometheus'
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 10s
+    params:
+      module: [https]
+    static_configs:
+      - targets: ['api.somaz.example.com']

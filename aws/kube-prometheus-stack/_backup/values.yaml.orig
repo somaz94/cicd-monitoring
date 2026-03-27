@@ -35,7 +35,7 @@ server:
       alb.ingress.kubernetes.io/ssl-redirect: '443'
       alb.ingress.kubernetes.io/group.name: 'mgmt'
     hosts:
-      - prometheus.somaz.link
+      - prometheus.somaz.example.com
 
 alertmanager:
   enabled: true
