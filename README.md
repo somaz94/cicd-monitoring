@@ -197,7 +197,18 @@ jenkins/
 └── res-jenkinsfile          # Resource build pipeline
 ```
 
+See [jenkins/README.md](jenkins/) for details.
+
 </details>
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture Overview](docs/architecture.md) | Platform architecture, component dependency graph, network flow, storage layout |
+| [Disaster Recovery](docs/disaster-recovery.md) | Recovery procedures for each major component |
 
 <br/>
 

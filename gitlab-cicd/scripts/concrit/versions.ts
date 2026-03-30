@@ -15,8 +15,15 @@ type MasterDataVersion = {
 /**
  * Calculate SHA-256 checksum of a file
  */
-const calculateFileChecksum = (filePath: string): string =>
-  crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+const calculateFileChecksum = (filePath: string): string => {
+  try {
+    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+  } catch (err) {
+    throw new Error(
+      `Failed to read file for checksum '${filePath}': ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+};
 
 /**
  * Load files from a specified directory and calculate checksums in parallel
@@ -66,8 +73,14 @@ const generateDataVersion = async (versions?: string): Promise<void> => {
   };
 
   const filePath = path.join(__dirname, "..", "version", "DataVersion.json");
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(masterDataVersion), "utf8");
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(masterDataVersion), "utf8");
+  } catch (err) {
+    throw new Error(
+      `Failed to write version file '${filePath}': ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 };
 
 // Extract --version from command line arguments and execute
@@ -75,4 +88,7 @@ const versionArg = process.argv.find(
   (arg, i) => process.argv[i - 1] === "version"
 );
 
-generateDataVersion(versionArg).catch(console.error);
+generateDataVersion(versionArg).catch((err) => {
+  console.error("Fatal error:", err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});

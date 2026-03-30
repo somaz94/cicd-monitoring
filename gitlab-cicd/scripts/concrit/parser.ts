@@ -43,6 +43,11 @@ export class CSharpParser {
                     return;
                 }
 
+                if (idIndex < 2) {
+                    console.error(`Not enough header rows above 'Id' row in: ${sheetName} (idIndex=${idIndex})`);
+                    return;
+                }
+
                 if(sheetName.endsWith("Setting"))
                 {
                     CSharpParser.parseSettingTable(jsonRows, idIndex, sheetName, csPath);
@@ -56,7 +61,12 @@ export class CSharpParser {
                 return;
             }
         });
-        CSharpParser.parseDataManager(path, csPath);
+
+        try {
+            CSharpParser.parseDataManager(path, csPath);
+        } catch (err) {
+            console.error(`Error generating DataManager:`, err);
+        }
     }
 
     static parseNormalTable(jsonRows: any[][], idIndex: number, sheetName: string, csPath: string) : void
@@ -154,6 +164,11 @@ export class CSharpParser {
         const keyIndex = fieldsNames.findIndex((name: string) => name === "Key");
         const ValueIndex = fieldsNames.findIndex((name: string) => name === "Value");
 
+        if (keyIndex === -1 || ValueIndex === -1) {
+            console.error(`Required columns 'Key' or 'Value' not found in setting table: ${sheetName}`);
+            return;
+        }
+
         const builder: string[] = [];
         builder.push(`using System.Reflection;`);
         builder.push(`using Newtonsoft.Json.Linq;`);
@@ -196,9 +211,14 @@ export class CSharpParser {
 
     static parseDataManager(tablePath: string, csPath: string): void
     {
-        const jsonFiles = fs.readdirSync(tablePath)
-            .filter(file => file.endsWith('.xlsm') || file.endsWith('.xlsx') || file.endsWith('.xls'))
-            .map(file => file.replace(/\.(xlsm|xlsx|xls)$/i, ''));
+        let jsonFiles: string[];
+        try {
+            jsonFiles = fs.readdirSync(tablePath)
+                .filter(file => file.endsWith('.xlsm') || file.endsWith('.xlsx') || file.endsWith('.xls'))
+                .map(file => file.replace(/\.(xlsm|xlsx|xls)$/i, ''));
+        } catch (err) {
+            throw new Error(`Failed to read table directory '${tablePath}': ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         const fileName = 'DataManager';
         const builder: string[] = [];
@@ -254,8 +274,12 @@ export class CSharpParser {
         builder.push(`   }`);
         builder.push(`}`);
 
-        const csFilePath = pathModule.join(csPath, `${fileName}.cs`);
-        fs.writeFileSync(csFilePath, builder.join('\n'), 'utf-8');
+        try {
+            const csFilePath = pathModule.join(csPath, `${fileName}.cs`);
+            fs.writeFileSync(csFilePath, builder.join('\n'), 'utf-8');
+        } catch (err) {
+            throw new Error(`Failed to write DataManager.cs: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     static toCamelCase (str: string): string
@@ -279,19 +303,25 @@ if (args.length >= 2)
 {
     const path = args[0];
     const arrArg = args[1];
-    if(arrArg === 'all')
-    {
-        const files = fs.readdirSync(path)
-            .filter(file => file.endsWith('.xlsm') || file.endsWith('.xlsx') || file.endsWith('.xls'));
-        CSharpParser.Parse(path, files);
-    }
-    else
-    {
-        const arr = arrArg.split(',');
-        CSharpParser.Parse(path, arr);
+    try {
+        if(arrArg === 'all')
+        {
+            const files = fs.readdirSync(path)
+                .filter(file => file.endsWith('.xlsm') || file.endsWith('.xlsx') || file.endsWith('.xls'));
+            CSharpParser.Parse(path, files);
+        }
+        else
+        {
+            const arr = arrArg.split(',');
+            CSharpParser.Parse(path, arr);
+        }
+    } catch (err) {
+        console.error('Fatal error:', err instanceof Error ? err.message : String(err));
+        process.exit(1);
     }
 }
 else
 {
     console.log('Command format: ts-node parser.ts <excel file path> <excel file name1,excel file name2,...>');
+    process.exit(1);
 }

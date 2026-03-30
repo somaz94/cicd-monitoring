@@ -20,7 +20,7 @@ pipeline {
     environment {
         //Upload NAS 설정 (개발 용)
         UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
-        UPLOAD_USER = 'somaz@dev-cluster.somaz.link'
+        UPLOAD_USER = 'deploy@dev-cluster.example.com'
     }
 
     stages {
@@ -36,7 +36,7 @@ pipeline {
                     // Set up environment and type variables
                     def envKey = params.GAME_SERVER.toLowerCase()
                     def typeKey = params.RESOURCE_TYPE
-                    def SERVER_VERSION_PATH = "${UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json"
+                    def SERVER_VERSION_PATH = "${UPLOAD_USER}:/mnt/nfs/example-app/${envKey}/server/version/${typeKey}Version.json"
                     
                     // Log version reset operation
                     echo "Resetting ${typeKey} version for ${envKey} environment"
@@ -52,7 +52,7 @@ pipeline {
                     
                     // Verify version file on remote server
                     sh """
-                        ssh -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no ${UPLOAD_USER} 'cat /mnt/nfs/somaz/${envKey}/server/version/${typeKey}Version.json'
+                        ssh -i ${UPLOAD_SSH_KEY} -o StrictHostKeyChecking=no ${UPLOAD_USER} 'cat /mnt/nfs/example-app/${envKey}/server/version/${typeKey}Version.json'
                     """
                 }
             }
@@ -70,7 +70,7 @@ pipeline {
                     echo "Sending API notification for ${typeKey} version reset in ${envKey} environment"
                     
                     // Set API endpoint based on environment and resource type
-                    def apiEndpoint = "http://${envKey}-admin.pm.somaz.link/versions/${typeKey}/publish"
+                    def apiEndpoint = "http://${envKey}-admin.app.example.com/versions/${typeKey}/publish"
                     
                     // Send notification to admin API
                     try {
@@ -79,7 +79,7 @@ pipeline {
                             curl -X 'POST' \\
                               '${apiEndpoint}' \\
                               -H 'accept: application/json' \\
-                              -H 'X-API-KEY: somaz-super-user'
+                              -H 'X-API-KEY: example-api-key'
                             echo "API notification complete"
                         """
                         echo "Successfully sent notification to ${apiEndpoint}"
