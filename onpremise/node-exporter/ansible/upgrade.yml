@@ -1,0 +1,166 @@
+---
+# =============================================================================
+# Node Exporter Upgrade Playbook
+#
+# Upgrades node_exporter binary on target hosts with zero-downtime.
+# Backs up current binary before replacing.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini upgrade.yml                                    # Upgrade to version in vars
+#   ansible-playbook -i inventory.ini upgrade.yml -e "node_exporter_version=1.12.0"  # Upgrade to specific version
+#   ansible-playbook -i inventory.ini upgrade.yml --check                            # Dry-run
+#   ansible-playbook -i inventory.ini upgrade.yml --limit server1                    # Upgrade single server
+# =============================================================================
+
+- name: Upgrade node_exporter
+  hosts: node_exporter
+  become: true
+
+  vars:
+    node_exporter_version: "1.11.0"
+    node_exporter_arch: "amd64"
+    node_exporter_port: "9100"
+    node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+    node_exporter_bin: "/usr/local/bin/node_exporter"
+
+  tasks:
+    # ------------------------------------------------------------------
+    # 0. Pre-checks
+    # ------------------------------------------------------------------
+    - name: Check if port {{ node_exporter_port }} is already in use
+      shell: ss -tlnp | grep ':{{ node_exporter_port }} ' || true
+      register: port_check
+      changed_when: false
+
+    - name: Fail if port {{ node_exporter_port }} is in use by another process
+      fail:
+        msg: |
+          Port {{ node_exporter_port }} is already in use on {{ inventory_hostname }} ({{ ansible_host }}).
+          Process: {{ port_check.stdout }}
+          Please free the port or change node_exporter_port variable.
+      when:
+        - port_check.stdout | length > 0
+        - "'node_exporter' not in port_check.stdout"
+
+    - name: Verify node_exporter service is running before upgrade
+      systemd:
+        name: node_exporter
+      register: service_status
+      failed_when: false
+
+    - name: Warn if service is not running
+      debug:
+        msg: "WARNING: node_exporter is not currently running on {{ inventory_hostname }}. Proceeding with upgrade anyway."
+      when: service_status.status.ActiveState | default('inactive') != 'active'
+
+    # ------------------------------------------------------------------
+    # 1. Check current version
+    # ------------------------------------------------------------------
+    - name: Get current node_exporter version
+      command: "{{ node_exporter_bin }} --version"
+      register: current_version
+      changed_when: false
+      failed_when: false
+
+    - name: Display current version
+      debug:
+        msg: "Current: {{ current_version.stderr_lines[0] | default('not installed') }} → Target: v{{ node_exporter_version }}"
+
+    # ------------------------------------------------------------------
+    # 2. Download new version
+    # ------------------------------------------------------------------
+    - name: Download node_exporter v{{ node_exporter_version }}
+      get_url:
+        url: "{{ node_exporter_url }}"
+        dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Extract node_exporter
+      unarchive:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        dest: /tmp
+        remote_src: true
+
+    # ------------------------------------------------------------------
+    # 3. Backup, replace, verify (with auto-rollback on failure)
+    # ------------------------------------------------------------------
+    - name: Backup current binary
+      copy:
+        src: "{{ node_exporter_bin }}"
+        dest: "{{ node_exporter_bin }}.bak"
+        remote_src: true
+        mode: "0755"
+      when: current_version.rc == 0
+
+    - name: Upgrade with auto-rollback on failure
+      block:
+        - name: Stop node_exporter
+          systemd:
+            name: node_exporter
+            state: stopped
+
+        - name: Install new binary
+          copy:
+            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+            dest: "{{ node_exporter_bin }}"
+            owner: node_exporter
+            group: node_exporter
+            mode: "0755"
+            remote_src: true
+
+        - name: Start node_exporter
+          systemd:
+            name: node_exporter
+            state: started
+            daemon_reload: true
+
+        - name: Wait for node_exporter to respond
+          uri:
+            url: "http://localhost:{{ node_exporter_port }}/metrics"
+            return_content: false
+            status_code: 200
+          register: result
+          retries: 3
+          delay: 2
+          until: result.status == 200
+
+        - name: Get new version
+          command: "{{ node_exporter_bin }} --version"
+          register: new_version
+          changed_when: false
+
+        - name: Display upgrade result
+          debug:
+            msg: "Upgraded {{ inventory_hostname }} ({{ ansible_host }}) → {{ new_version.stderr_lines[0] }}"
+
+      rescue:
+        - name: "[ROLLBACK] Restoring previous binary"
+          copy:
+            src: "{{ node_exporter_bin }}.bak"
+            dest: "{{ node_exporter_bin }}"
+            remote_src: true
+            owner: node_exporter
+            group: node_exporter
+            mode: "0755"
+          when: current_version.rc == 0
+
+        - name: "[ROLLBACK] Restarting node_exporter with previous version"
+          systemd:
+            name: node_exporter
+            state: restarted
+            daemon_reload: true
+
+        - name: "[ROLLBACK] Upgrade failed"
+          fail:
+            msg: "Upgrade failed on {{ inventory_hostname }} ({{ ansible_host }}). Rolled back to previous version."
+
+    # ------------------------------------------------------------------
+    # 5. Cleanup
+    # ------------------------------------------------------------------
+    - name: Cleanup temp files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"

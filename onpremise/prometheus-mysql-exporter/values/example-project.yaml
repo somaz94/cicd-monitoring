@@ -1,0 +1,42 @@
+# =============================================================================
+# prometheus-mysql-exporter Custom Values
+# Monitors: example-project-db MySQL instance
+# =============================================================================
+
+mysql:
+  host: "example-project-db.example-project-db-redis.svc.example-cluster.local"
+  port: 3306
+  user: "exporter"
+  pass: "exampleExporterPassword"
+  db: ""
+  # Dedicated read-only exporter user (minimal permissions: PROCESS, REPLICATION CLIENT, SELECT)
+  # How to create:
+  #   kubectl exec -it -n example-project-db-redis <mysql-pod> -- mysql -u root -p
+  #   CREATE USER 'exporter'@'%' IDENTIFIED BY 'password';
+  #   GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
+  #   FLUSH PRIVILEGES;
+
+# ServiceMonitor for Prometheus auto-discovery
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  jobLabel: "example-project-mysql"  # Displayed as job name in Grafana dashboards
+  additionalLabels:
+    release: kube-prometheus-stack  # Must match Prometheus serviceMonitorSelector
+
+# Resources
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Collector flags for slow query monitoring
+collectors:
+  perf_schema.eventsstatements: true
+  perf_schema.eventsstatementssum: true
+  info_schema.processlist: true
+  info_schema.tables: true

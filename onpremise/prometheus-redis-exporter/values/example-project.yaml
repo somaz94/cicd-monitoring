@@ -1,0 +1,42 @@
+# =============================================================================
+# prometheus-redis-exporter Custom Values
+# Monitors: all Redis instances in example-project namespace
+#
+# Redis instances (auth disabled):
+#   - dev-example-project-redis
+#   - qa-example-project-redis
+#   - stg-example-project-redis
+# =============================================================================
+
+# Primary Redis target
+redisAddress: "redis://dev-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
+
+# If auth is enabled:
+# redisAddress: "redis://:<password>@dev-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
+
+# Resources
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# ServiceMonitor for Prometheus auto-discovery
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  jobLabel: "example-project-redis"  # Displayed as job name in Grafana dashboards
+  labels:
+    release: kube-prometheus-stack  # Must match Prometheus serviceMonitorSelector
+
+  # Multi-target: scrape env-specific Redis instances
+  targets:
+    - url: "redis://dev-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
+      name: "dev-example-project-redis"
+    - url: "redis://qa-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
+      name: "qa-example-project-redis"
+    - url: "redis://stg-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
+      name: "stg-example-project-redis"

@@ -1,0 +1,12 @@
+repositories:
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+
+releases:
+  # Add new projects by copying the block below and creating a new values file
+  - name: example-project-mysql-exporter
+    chart: prometheus-community/prometheus-mysql-exporter
+    namespace: monitoring
+    version: 2.13.0
+    values:
+      - values/example-project.yaml

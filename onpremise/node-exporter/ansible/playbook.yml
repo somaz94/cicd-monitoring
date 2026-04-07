@@ -1,0 +1,132 @@
+---
+# =============================================================================
+# Node Exporter Installation Playbook
+#
+# Installs Prometheus node_exporter as a systemd service on target hosts.
+# Supports physical servers and VMs via inventory groups.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini playbook.yml            # Install
+#   ansible-playbook -i inventory.ini playbook.yml --check    # Dry-run
+#   ansible-playbook -i inventory.ini playbook.yml -t update  # Update binary only
+# =============================================================================
+
+- name: Install and configure node_exporter
+  hosts: node_exporter
+  become: true
+
+  vars:
+    node_exporter_version: "1.11.0"
+    node_exporter_port: "9100"
+    node_exporter_arch: "amd64"
+    node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+    node_exporter_bin: "/usr/local/bin/node_exporter"
+
+  tasks:
+    # ------------------------------------------------------------------
+    # 0. Pre-check: Verify port is available
+    # ------------------------------------------------------------------
+    - name: Check if port {{ node_exporter_port }} is already in use
+      shell: ss -tlnp | grep ':{{ node_exporter_port }} ' || true
+      register: port_check
+      changed_when: false
+
+    - name: Fail if port {{ node_exporter_port }} is in use by another process
+      fail:
+        msg: |
+          Port {{ node_exporter_port }} is already in use on {{ inventory_hostname }} ({{ ansible_host }}).
+          Process: {{ port_check.stdout }}
+          Please free the port or change node_exporter_port variable.
+      when:
+        - port_check.stdout | length > 0
+        - "'node_exporter' not in port_check.stdout"
+
+    # ------------------------------------------------------------------
+    # 1. Create system user
+    # ------------------------------------------------------------------
+    - name: Create node_exporter system user
+      user:
+        name: node_exporter
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: no
+
+    # ------------------------------------------------------------------
+    # 2. Download and install binary
+    # ------------------------------------------------------------------
+    - name: Download node_exporter
+      get_url:
+        url: "{{ node_exporter_url }}"
+        dest: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        mode: "0644"
+      tags: [update]
+
+    - name: Extract node_exporter
+      unarchive:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        dest: /tmp
+        remote_src: yes
+      tags: [update]
+
+    - name: Install node_exporter binary
+      copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+        dest: "{{ node_exporter_bin }}"
+        owner: node_exporter
+        group: node_exporter
+        mode: "0755"
+        remote_src: yes
+      notify: Restart node_exporter
+      tags: [update]
+
+    - name: Cleanup temp files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
+        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+      tags: [update]
+
+    # ------------------------------------------------------------------
+    # 3. Configure systemd service
+    # ------------------------------------------------------------------
+    - name: Deploy systemd unit file
+      template:
+        src: templates/node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart node_exporter
+
+    - name: Enable and start node_exporter
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: true
+        daemon_reload: yes
+
+    # ------------------------------------------------------------------
+    # 4. Verify
+    # ------------------------------------------------------------------
+    - name: Verify node_exporter is responding
+      uri:
+        url: "http://localhost:{{ node_exporter_port }}/metrics"
+        return_content: no
+        status_code: 200
+      register: result
+      retries: 3
+      delay: 2
+      until: result.status == 200
+
+    - name: Show node_exporter status
+      debug:
+        msg: "node_exporter v{{ node_exporter_version }} is running on {{ inventory_hostname }} ({{ ansible_host }}:{{ node_exporter_port }})"
+
+  handlers:
+    - name: Restart node_exporter
+      systemd:
+        name: node_exporter
+        state: restarted
+        daemon_reload: yes

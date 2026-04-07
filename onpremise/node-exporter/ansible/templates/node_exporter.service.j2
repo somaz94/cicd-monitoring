@@ -1,0 +1,34 @@
+[Unit]
+Description=Prometheus Node Exporter
+Documentation=https://github.com/prometheus/node_exporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=node_exporter
+Group=node_exporter
+ExecStart=/usr/local/bin/node_exporter \
+  --collector.systemd \
+  --collector.processes \
+  --web.listen-address=:{{ node_exporter_port | default('9100') }}
+
+Restart=always
+RestartSec=5
+KillMode=process
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=node-exporter
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+
+[Install]
+WantedBy=multi-user.target

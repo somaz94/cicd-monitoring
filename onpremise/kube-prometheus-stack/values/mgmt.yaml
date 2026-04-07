@@ -1,25 +1,149 @@
+# =============================================================================
+# kube-prometheus-stack Custom Values
+# Components: Prometheus, Grafana, Alertmanager, node-exporter, kube-state-metrics
+# =============================================================================
+
+# =============================================================================
+# Grafana
+# =============================================================================
+grafana:
+  enabled: true
+  adminPassword: "exampleAdminPassword"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.example.com
+    # tls:
+    #   - secretName: grafana-tls
+    #     hosts:
+    #       - grafana.example.com
+
+  # Persistent storage for dashboards and settings
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: local-path
+
+  # Default dashboards
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: Asia/Seoul
+
+  # Additional data sources (uncomment when Loki is enabled)
+  # additionalDataSources:
+  #   - name: Loki
+  #     type: loki
+  #     url: http://loki-gateway.monitoring.svc.example-cluster.local:80
+  #     access: proxy
+  #     isDefault: false
+
+# =============================================================================
+# Alertmanager -> Slack
+# =============================================================================
 alertmanager:
   enabled: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # -- Schedule alertmanager on specific nodes using tolerations and nodeSelector.
+    # tolerations:
+    #   - key: "monitoring"
+    #     operator: "Equal"
+    #     effect: "NoSchedule"
+    # nodeSelector:
+    #   local-path: enabled
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - alertmanager.example.com
+    # tls:
+    #   - secretName: alertmanager-tls
+    #     hosts:
+    #       - alertmanager.example.com
+
+  alertmanagerConfiguration:
+    name: ""
   config:
     global:
       resolve_timeout: 5m
-  service:
-    type: NodePort
-  # -- Schedule alertmanager on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
+    inhibit_rules:
+      - source_matchers:
+          - 'severity = critical'
+        target_matchers:
+          - 'severity =~ warning|info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'severity = warning'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'alertname = InfoInhibitor'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+      - target_matchers:
+          - 'alertname = InfoInhibitor'
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'slack-alerts'
+      routes:
+        - receiver: 'null'
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: 'null'
+          matchers:
+            - alertname = "InfoInhibitor"
+    receivers:
+      - name: 'null'
+      - name: 'slack-alerts'
+        slack_configs:
+          - api_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+            channel: "#alerts"
+            send_resolved: true
+            color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+            text: |-
+              {{ range .Alerts }}
+              *Namespace:* `{{ .Labels.namespace }}`
+              *Severity:* `{{ .Labels.severity }}`
+              *Description:* {{ .Annotations.description }}
+              {{ if .GeneratorURL }}*Source:* <{{ .GeneratorURL }}|Prometheus>{{ end }}
+              {{ end }}
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
+
   serviceMonitor:
     selfMonitor: true
 
-grafana:
-  enabled: false
-
+# =============================================================================
+# Prometheus
+# =============================================================================
 kubelet:
   enabled: true
   namespace: kube-system
@@ -36,52 +160,11 @@ kubeDns:
 kubeScheduler:
   enabled: true
 
-kubeProxy:
+kubeApiServer:
   enabled: true
 
 kubeEtcd:
   enabled: true
-
-kubeStateMetrics:
-  enabled: true
-
-kube-state-metrics:
-  namespaceOverride: ""
-  rbac:
-    create: true
-  releaseLabel: true
-  prometheus:
-    monitor:
-      enabled: true
-
-kubeApiServer:
-  enabled: true
-
-nodeExporter:
-  enabled: true
-  operatingSystems:
-    linux:
-      enabled: true
-    darwin:
-      enabled: true
-  forceDeployDashboards: false
-
-prometheusOperator:
-  enabled: true
-  # -- Schedule prometheus-operator on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
-  thanosImage:
-    registry: quay.io
-    repository: thanos/thanos
-    tag: v0.36.1
-    sha: ""
 
 prometheus:
   enabled: true
@@ -107,7 +190,6 @@ prometheus:
   # Prerequisites:
   #   1. Install cert-manager: https://cert-manager.io/docs/installation/
   #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
   # Ref: https://github.com/example-user/certmanager-letsencrypt
   #
   # ingress:
@@ -127,29 +209,11 @@ prometheus:
   serviceMonitor:
     disableCompaction: true
     selfMonitor: true
-    # -- Schedule serviceMonitor on specific nodes using tolerations and nodeSelector.
-    # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-    # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-    # tolerations:
-    #   - key: "monitoring"
-    #     operator: "Equal"
-    #     effect: "NoSchedule"
-    # nodeSelector:
-    #   local-path: enabled
     replicas: 1
     shards: 1
-    # resources:
-    #   requests:
-    #     cpu: 4
-    #     memory: 10Gi
-    #   limits:
-    #     cpu: 4
-    #     memory: 10Gi
 
   prometheusSpec:
     # -- Schedule prometheus on specific nodes using tolerations and nodeSelector.
-    # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-    # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
     # tolerations:
     #   - key: "monitoring"
     #     operator: "Equal"
@@ -157,6 +221,17 @@ prometheus:
     # nodeSelector:
     #   local-path: enabled
     replicas: 1
+
+    # Resources
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+
+    # Thanos sidecar for long-term storage
     thanos:
       baseImage: quay.io/thanos/thanos
       version: v0.36.1
@@ -164,6 +239,8 @@ prometheus:
         existingSecret:
           name: thanos-objstore
           key: objstore.yml
+
+    # Storage
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -172,9 +249,215 @@ prometheus:
           resources:
             requests:
               storage: 100Gi
+
     externalLabels:
       provider: example
       region: seoul1
       cluster: mgmt
       cluster_id: example-seoul1-mgmt
-    retention: 10d
+
+    # Retention period
+    retention: 15d
+
+    # Scrape external targets (physical servers, VMs)
+    # Install node-exporter on each server: https://github.com/prometheus/node_exporter
+    additionalScrapeConfigs:
+      - job_name: "physical-servers"
+        scrape_interval: 30s
+        static_configs:
+          - targets:
+              - "10.0.0.1:9100"  # server1
+              - "10.0.0.2:9100"  # server2
+              - "10.0.0.3:9100"  # server3
+              - "10.0.0.4:9100"  # server4
+            labels:
+              env: "physical"
+              group: "on-premise"
+
+      - job_name: "virtual-machines"
+        scrape_interval: 30s
+        static_configs:
+          - targets:
+              - "10.0.0.5:9100"  # gitlab
+            labels:
+              env: "vm"
+              group: "on-premise"
+
+    # Cilium metrics (no ServiceMonitor — scrape via kubernetes_sd_configs)
+      - job_name: "cilium-agent"
+        scrape_interval: 30s
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+            regex: cilium
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9962
+
+      - job_name: "cilium-operator"
+        scrape_interval: 30s
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - kube-system
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_name]
+            regex: cilium-operator
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: ${1}:9963
+
+    # ServiceMonitor selector - pick up all ServiceMonitors in monitoring namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+# =============================================================================
+# Kube Proxy (disable if using Cilium as kube-proxy replacement)
+# =============================================================================
+kubeProxy:
+  enabled: true
+
+# =============================================================================
+# Prometheus Operator
+# =============================================================================
+prometheusOperator:
+  enabled: true
+  thanosImage:
+    registry: quay.io
+    repository: thanos/thanos
+    tag: v0.36.1
+    sha: ""
+
+# =============================================================================
+# Node Exporter (for K8s nodes - auto deployed via DaemonSet)
+# =============================================================================
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# =============================================================================
+# Kube State Metrics (K8s object metrics - Pod, Deployment, etc.)
+# =============================================================================
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  namespaceOverride: ""
+  rbac:
+    create: true
+  releaseLabel: true
+  prometheus:
+    monitor:
+      enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# =============================================================================
+# Custom Alert Rules
+#
+# severity levels:
+#   critical — immediate action required (Pod crash, disk 95%+)
+#   warning  — investigate soon (high CPU/memory, disk 80%+)
+#
+# key fields:
+#   expr   — PromQL expression that triggers the alert
+#   for    — how long the condition must be true before firing
+#   labels — severity, used for Slack routing and inhibit rules
+# =============================================================================
+additionalPrometheusRulesMap:
+
+  # ---------------------------------------------------------------------------
+  # Node Alerts — K8s nodes + physical servers (via node-exporter)
+  # ---------------------------------------------------------------------------
+  node-alerts:
+    groups:
+      - name: node-alerts
+        rules:
+
+          # CPU usage > 85% for 5 minutes
+          - alert: HighCPUUsage
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage on {{ $labels.instance }}"
+              description: "CPU usage is above 85% for 5 minutes (current: {{ $value }}%)"
+
+          # Memory usage > 85% for 5 minutes
+          - alert: HighMemoryUsage
+            expr: (1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage on {{ $labels.instance }}"
+              description: "Memory usage is above 85% for 5 minutes (current: {{ $value }}%)"
+
+          # Disk usage > 80% for 10 minutes (warning)
+          - alert: DiskSpaceRunningLow
+            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 80
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Disk space running low on {{ $labels.instance }}"
+              description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+
+          # Disk usage > 95% for 5 minutes (critical)
+          - alert: DiskSpaceCritical
+            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Disk space critical on {{ $labels.instance }}"
+              description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+
+  # ---------------------------------------------------------------------------
+  # Pod Alerts — K8s workload health
+  # ---------------------------------------------------------------------------
+  pod-alerts:
+    groups:
+      - name: pod-alerts
+        rules:
+
+          # Pod restarting repeatedly (CrashLoopBackOff)
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+              description: "Pod has been restarting frequently in the last 15 minutes"
+
+          # Pod not ready for 10 minutes
+          - alert: PodNotReady
+            expr: kube_pod_status_ready{condition="true"} == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
+              description: "Pod has been in not-ready state for 10 minutes"

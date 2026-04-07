@@ -1,0 +1,82 @@
+---
+# =============================================================================
+# Node Exporter Uninstall Playbook
+#
+# Removes node_exporter from target hosts (stops service, removes binary, user).
+#
+# Usage:
+#   ansible-playbook -i inventory.ini uninstall.yml                    # Uninstall all
+#   ansible-playbook -i inventory.ini uninstall.yml --limit server1    # Single server
+#   ansible-playbook -i inventory.ini uninstall.yml --check            # Dry-run
+# =============================================================================
+
+- name: Uninstall node_exporter
+  hosts: node_exporter
+  become: true
+
+  vars:
+    node_exporter_bin: "/usr/local/bin/node_exporter"
+    node_exporter_service: "node_exporter"
+
+  tasks:
+    # ------------------------------------------------------------------
+    # 1. Stop and disable service
+    # ------------------------------------------------------------------
+    - name: Check if node_exporter service exists
+      stat:
+        path: /etc/systemd/system/{{ node_exporter_service }}.service
+      register: service_file
+
+    - name: Stop node_exporter service
+      systemd:
+        name: "{{ node_exporter_service }}"
+        state: stopped
+        enabled: false
+      when: service_file.stat.exists
+      ignore_errors: true
+
+    - name: Remove systemd unit file
+      file:
+        path: /etc/systemd/system/{{ node_exporter_service }}.service
+        state: absent
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: true
+
+    # ------------------------------------------------------------------
+    # 2. Remove binary and backup
+    # ------------------------------------------------------------------
+    - name: Remove node_exporter binary
+      file:
+        path: "{{ node_exporter_bin }}"
+        state: absent
+
+    - name: Remove node_exporter backup binary
+      file:
+        path: "{{ node_exporter_bin }}.bak"
+        state: absent
+
+    # ------------------------------------------------------------------
+    # 3. Remove user
+    # ------------------------------------------------------------------
+    - name: Remove node_exporter system user
+      user:
+        name: node_exporter
+        state: absent
+        remove: true
+
+    # ------------------------------------------------------------------
+    # 4. Verify
+    # ------------------------------------------------------------------
+    - name: Verify node_exporter is not running
+      shell: "ss -tlnp | grep ':9100 ' || true"
+      register: port_check
+      changed_when: false
+
+    - name: Display result
+      debug:
+        msg: >-
+          {{ 'node_exporter removed from ' + inventory_hostname + ' (' + ansible_host + ')'
+          if port_check.stdout | length == 0
+          else 'WARNING: Port 9100 still in use on ' + inventory_hostname }}

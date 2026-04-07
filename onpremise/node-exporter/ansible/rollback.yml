@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# Node Exporter Rollback Playbook
+#
+# Restores node_exporter from .bak backup (created by upgrade.yml).
+# Use when an upgrade fails or causes issues.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini rollback.yml                    # Rollback all
+#   ansible-playbook -i inventory.ini rollback.yml --limit server1    # Single server
+#   ansible-playbook -i inventory.ini rollback.yml --check            # Dry-run
+# =============================================================================
+
+- name: Rollback node_exporter to previous version
+  hosts: node_exporter
+  become: true
+
+  vars:
+    node_exporter_bin: "/usr/local/bin/node_exporter"
+    node_exporter_port: "9100"
+
+  tasks:
+    # ------------------------------------------------------------------
+    # 1. Check backup exists
+    # ------------------------------------------------------------------
+    - name: Check if backup binary exists
+      stat:
+        path: "{{ node_exporter_bin }}.bak"
+      register: backup_file
+
+    - name: Fail if no backup found
+      fail:
+        msg: "No backup found at {{ node_exporter_bin }}.bak — cannot rollback"
+      when: not backup_file.stat.exists
+
+    # ------------------------------------------------------------------
+    # 2. Get current version
+    # ------------------------------------------------------------------
+    - name: Get current node_exporter version
+      command: "{{ node_exporter_bin }} --version"
+      register: current_version
+      changed_when: false
+      failed_when: false
+
+    - name: Display current version
+      debug:
+        msg: "Current: {{ current_version.stderr_lines[0] | default('not running') }}"
+
+    # ------------------------------------------------------------------
+    # 3. Stop, rollback, start
+    # ------------------------------------------------------------------
+    - name: Stop node_exporter
+      systemd:
+        name: node_exporter
+        state: stopped
+
+    - name: Restore backup binary
+      copy:
+        src: "{{ node_exporter_bin }}.bak"
+        dest: "{{ node_exporter_bin }}"
+        remote_src: true
+        owner: node_exporter
+        group: node_exporter
+        mode: "0755"
+
+    - name: Start node_exporter
+      systemd:
+        name: node_exporter
+        state: started
+        daemon_reload: true
+
+    # ------------------------------------------------------------------
+    # 4. Verify
+    # ------------------------------------------------------------------
+    - name: Wait for node_exporter to respond
+      uri:
+        url: "http://localhost:{{ node_exporter_port }}/metrics"
+        return_content: false
+        status_code: 200
+      register: result
+      retries: 3
+      delay: 2
+      until: result.status == 200
+
+    - name: Get rolled back version
+      command: "{{ node_exporter_bin }} --version"
+      register: rollback_version
+      changed_when: false
+
+    - name: Display rollback result
+      debug:
+        msg: "Rolled back {{ inventory_hostname }} ({{ ansible_host }}) → {{ rollback_version.stderr_lines[0] }}"
+
+    # ------------------------------------------------------------------
+    # 5. Cleanup backup
+    # ------------------------------------------------------------------
+    - name: Remove backup after successful rollback
+      file:
+        path: "{{ node_exporter_bin }}.bak"
+        state: absent

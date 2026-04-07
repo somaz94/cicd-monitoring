@@ -1,0 +1,35 @@
+# =============================================================================
+# prometheus-elasticsearch-exporter Custom Values
+# Monitors: elasticsearch-master in monitoring namespace
+# =============================================================================
+
+# Elasticsearch connection
+# Credentials from existing secret: elasticsearch-credentials (username, password)
+es:
+  uri: "https://$(ES_USERNAME):$(ES_PASSWORD)@elasticsearch-master.monitoring.svc:9200"
+  sslSkipVerify: true
+
+extraEnvSecrets:
+  ES_USERNAME:
+    secret: elasticsearch-credentials
+    key: username
+  ES_PASSWORD:
+    secret: elasticsearch-credentials
+    key: password
+
+# Resources
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# ServiceMonitor for Prometheus auto-discovery
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+  labels:
+    release: kube-prometheus-stack
