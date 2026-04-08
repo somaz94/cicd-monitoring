@@ -9,10 +9,10 @@ Simply configure the Self-hosted server URL.
 
 1. Install [Bitwarden Chrome Extension](https://chromewebstore.google.com/detail/bitwarden-password-manage/nngceckbapebfimnlniiiahkandclblb)
 2. Click Extension icon → Login screen
-3. Select **"Self-hosted"** tab (or region selector at top-left)
-4. **Server URL**: `https://vault.example.com`
-5. Click **Save**
-6. Log in with email + master password or click **"Enterprise single sign-on"**
+3. Click **Settings (gear icon)** on the login screen
+4. **Self-hosted environment** → **Server URL**: `https://vault.example.com`
+5. Click **Save** → returns to login screen
+6. Log in with email + master password or click **"Enterprise single sign-on (SSO)"**
 
 <br/>
 
