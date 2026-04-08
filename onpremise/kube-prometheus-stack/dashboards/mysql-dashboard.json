@@ -159,13 +159,13 @@
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-      "id": 7,
+      "id": 8,
       "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "title": "Connections",
       "type": "timeseries",
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_connected{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Connected", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_aborted_connects{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Aborted", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_running{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Running", "refId": "B" }
       ]
     },
     {
@@ -173,19 +173,21 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
           "custom": { "axisLabel": "", "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "showPoints": "never", "spanNulls": false },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] }
         },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
-      "id": 8,
+      "id": 7,
       "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
-      "title": "Thread Activity",
+      "title": "Connection Usage",
       "type": "timeseries",
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_connected{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Connected", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_running{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Running", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_connected{job=~\"$job\",instance=~\"$instance\"} / mysql_global_variables_max_connections{job=~\"$job\",instance=~\"$instance\"} * 100", "legendFormat": "Usage %", "refId": "A" }
       ]
     },
     {
