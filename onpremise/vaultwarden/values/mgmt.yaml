@@ -6,8 +6,8 @@
 # =============================================================================
 # Domain & Core Settings
 # =============================================================================
-# DOMAIN env var — use http:// prefix for non-TLS deployments
-domain: "http://vault.example.com"
+# DOMAIN env var — use https:// with self-signed certificate
+domain: "https://vault.example.com"
 
 fullnameOverride: "vaultwarden"
 
@@ -60,41 +60,38 @@ service:
   port: 80
 
 # =============================================================================
-# Ingress (HTTP — no TLS)
+# Ingress (HTTPS — self-signed certificate)
+#
+# Self-signed TLS secret must be created before deployment:
+#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+#     -keyout vw-key.pem -out vw-cert.pem -subj "/CN=vault.example.com"
+#   kubectl create secret tls vaultwarden-tls \
+#     --cert=vw-cert.pem --key=vw-key.pem -n vaultwarden
+#   rm vw-key.pem vw-cert.pem
 # =============================================================================
 ingress:
   enabled: true
   class: "nginx"
   nginxIngressAnnotations: true
   additionalAnnotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   hostname: "vault.example.com"
-  tls: false
+  tls: true
+  tlsSecret: "vaultwarden-tls"
   path: /
   pathType: Prefix
 
-# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# ── HTTPS with cert-manager + Let's Encrypt (alternative) ──
 # Prerequisites:
 #   1. Install cert-manager: https://cert-manager.io/docs/installation/
 #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
 # Ref: https://github.com/dani-garcia/vaultwarden/wiki/Enabling-HTTPS
 #
-# domain: "https://vault.example.com"
-#
 # ingress:
-#   enabled: true
-#   class: "nginx"
-#   nginxIngressAnnotations: true
 #   additionalAnnotations:
-#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-#     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-#   hostname: "vault.example.com"
-#   tls: true
 #   tlsSecret: "vaultwarden-tls"
-#   path: /
-#   pathType: Prefix
 
 # =============================================================================
 # Resources
@@ -136,6 +133,20 @@ serviceAccount:
 #   3. kubectl scale deploy vaultwarden --replicas=1 -n vaultwarden
 # =============================================================================
 extraObjects:
+  # Self-signed TLS Secret (valid for 10 years)
+  # Regenerate: openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  #   -keyout vw-key.pem -out vw-cert.pem -subj "/CN=vault.example.com"
+  # Then base64 encode: base64 < vw-cert.pem | tr -d '\n' and base64 < vw-key.pem | tr -d '\n'
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: vaultwarden-tls
+      namespace: vaultwarden
+    type: kubernetes.io/tls
+    data:
+      tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURHVENDQWdHZ0F3SUJBZ0lVU051b0NMbldZeXBYL0h1WmRJTncxQzNFTVkwd0RRWUpLb1pJaHZjTkFRRUwKQlFBd0hERWFNQmdHQTFVRUF3d1JkbUYxYkhRdVpYaGhiWEJzWlM1amIyMHdIaGNOTWpZd05EQTRNRE13TURJMApXaGNOTXpZd05EQTFNRE13TURJMFdqQWNNUm93R0FZRFZRUUREQkYyWVhWc2RDNWxlR0Z0Y0d4bExtTnZiVENDCkFTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBSzBJVlA1M3E2NkR0My8xZWpOWmZwdTIKS0RGY0hlTm5YMG5EdWhudU9rVmZ1akI4bDhuTFJYUkFrcyt0MDFRQXNCU0tyS3ZWdWE1OFI4VFVwdGt6M2s0ZgpOTTY0YlpLNkl6ejRRWHprbzJlMjdURU5vUzVSUS9ZNVVLUWh2Rk00YkpBUExoOGttZk5MV0lUT0svYytBeFlrCmVibllONlFZbWZCNzBUUnpKMGpqZnE1bno0RHE0L0JXbXY1TFJKS2JxaXVKZVZGUGpoMURkVVI1Z0JiRVR0ZVUKOGpUQXdPR0ozNnhPMnBhSmNpM3p1RWVjY3IyTkV3bHNCK2loL3ZoTlBnYURCc05KRHJLSkwzMnpkOW9LUGJNUwpBSmZoWkhRekU4ZkpKQzJnWHFjM3o4dlhGSG5kTUpsd0lMOGlHWlY4YmtIdUd6OGRLNUMwM1hkakFuTkl3RmtDCkF3RUFBYU5UTUZFd0hRWURWUjBPQkJZRUZMNWpkbkZlOXZRbUgxSU9oRERxYUR3d0Q4b0hNQjhHQTFVZEl3UVkKTUJhQUZMNWpkbkZlOXZRbUgxSU9oRERxYUR3d0Q0b0hNQThHQTFVZEV3RUIvd1FGTUFNQkFmOHdEUVlKS29aSQpodmNOQVFFTEJRQURnZ0VCQUpyU29mZ2luMXJUcU5YTThaS3NjY0hOdllseE5SV0xXUklMejdkOUhtRDduQldGClFLU1Y2dUlUOGk0MU53T1djTEcvMk5pSW1MVUZhSms4REdUTUpBTlNDOHZ3SitZM0tpLzhxeXVQVkk2WHBSZC8KSDdFa3ZYU2RjN3E2aTVHQjl2SHp0ckZ5SUszanJVSXdLaUtYNUFhUlBmQko0Q2RPREJFTTA5Rkpxai9IaENaeQpZd09vZnBSZ0ZSbkZXSERjSzBUZnhKZmdTL0dHVGY1TXJpZVQ4eTNhdVIvU2RWQ2pVbUluZ282Qm5OTWd0N2FtCm9wZkw1WkliSWxyTEh0MlIwdHM5U0VzOTlGV21neHUzWnhCYzl4cytQN0RXMHNUUGYrNkQrYjJoSytpY1pRcGMKL3dWSjUvOTFRSFhmYndTNFJ5SW9NT0NRbFpaUkE3eHB6dWpwcUNFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2QUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktZd2dnU2lBZ0VBQW9JQkFRQ3RDRlQrZDZ1dWc3ZC8KOVhveldYNmJ0aWd4WEIzaloxOUp3N29aN2pwRlg3b3dmSmZKeTBWMFFKTFByZE5VQUxBVWlxeXIxYm11ZkVmRQoxS2JaTTk1UEh6VE91RzJTdWlNOCtFRjg1S05udHUweERhRXVVVVAyT1ZDa0lieFRQR3lRRHk0ZkpKbnpTMWlFCnppdjNQZ01XSkhtNTJEZWtHSm53ZTlFMGN5ZEk0MzZ1WjgrQTZ1UHdWcHIrUzBTU202b3JpWGxSVDQ0ZFEzVkUKZVlBV3hFN1hsUEkwd01EaGlkK3NUdHFXaVhJdDg3aEhuSEs5alJNSmJBZm9vZjc0VFQ0R2d3YkRTUTZ5aVM5OQpzM2ZhQ2oyekVnQ1g0V1IwTXhQSHlTUXRvRjZuTjgvTDF4UjUzVENaY0NDL0lobVZmRzVCN2hzL0hTdVF0TjEzCll3SnpTTUJaQWdNQkFBRUNnZ0VBQ25VN2RkblR4WXR1ZHN4bVkxNGdXZGJyblBnZFVsWTRHeVE2UmtEd3dxcWoKZlRTNms5YTJUdTFzTWlNbVo2aFcvQmJaa3RVckVOR3dJTVJkaFRrdVVZZm9VQ296YlMvVTIyV0J4OE9sNEtuYwpzaDlKdzV2anlLajBKOGRtTTMydWJoS016aE1QUHZZcDFuVURrVUR0UE5SZGl3NzNaZkthc3o4NGlMd0EvdFd2CnFPWWxOeHVDUUp0RzFVQnB0TUl1Vkt1NjdENnpHZnorNkVaamVyN1ROcTdIeFhTWjh0dW5Pb2FVVTNvRXBoMTEKMHNueVVpbnN1UDRGVVhkOFNqOVVEcktMeGtDVTlLKzNMbldmOVJySGgwUUVVQXNpTFlLbWN3a3pZemVOdUpuOApNMlpjd3QwbCttUXlZNi9UT3dteUk2NlR2bUpIQXdVeVp3cGM2aVNlZ1FLQmdRRFpodWtXMHIvUUFuL2JUdVZDCnZrOERtbTZveEJkZ1VUR2xKUkcwNGQzOFArUXJqM0dhSENXaVVZNmZPQXZNcW5WZmk5bTFMSXNWMlRLNUsrb2sKUDNteXJOV1BieHMxQk8zTkFsSEFlSGhKR0V1YTFIQjJCZGNFaVdLZUx0dG1FQTJCeHZhbGxtenhLWnpKTjJYRwpLVkFlWXdtd1JEWVlBV01BNmQ5RE45bEJVUUtCZ1FETG90Sm8rWndITUlEREpCckh4OFM2U2VEZUlDWHVTUy92Cjk4U2VXRHVTaXljVm04alM2b1BXbEx5T3ZRVy8zOGRBM21yV0htY1Q4WXlZZzJkbjA2d3FOYU85dVYzcjgzNVAKUm9iYUNsWWh0cWowRXpzRCtkZXpHZmpCQ2tjQ3lzSlQ0Q0ZnUkhSRDNJV3JyNm5JU0Y5c1NKU3pqL0E2Y3F6VgpYUTZqM0dVTWlRS0JnQVVtdkw1ZG4wMDl3ZWxmcE80L3MzOVNXT3lHT0VkL3BMMVVjMmJsTW15VzFzQnhWUzloCkcwTU15MlBaMysybzI3NjNnU0JaUGJIMndzeS96WHV1UlNPR0ZFaWhTUE9vZWprd3BONzUrMTgveEFxV25WTXUKTURsYlI0cVhjWHFwUnFpY0hac3VSTVl4UmhVOXlwczJ2ejc0K1hIREs4VEZ3Nkp4NTJlZ0d2VUJBb0dBSnZZSgpJZktZQ3J3Wjlyd2lyNVNtTENwVWJzdGgxbnlFUW5wNlVQMTZzR2dWVzBvS0cyaXBQdFlJV1pzS3paSklNajRiCjNNbkdXUWQvS2ZNQ1J0ZzErWUYzeWFYOHRWZEtGR3JmQkRxMERoRS90Q3Mxd0dYK0FoTjNCNkFxdy9yOVFVVUIKdmNSN0pqeThDb1E2ak1wa0QzaTNrcjk0YkFaaTBSUFQ2RUFUeVZrQ2dZQlBWbVp2Q2wrWkg0ZTBiQy9EY2N6SQptdWFyWkw0eE9FQng3Q2R1dC9rY3lZS096SFRQNVBrZ05VdHJSaG9JV2IzZCtYT2xwajFuSWpQdVZpOURJYXVMCmVPbUtxUlduanpZekRoc2syWm9TQ05wOWtlWk11U21lYUgvM2VtWlo3WWNoRTc5MVZseEM4elk5WXdwak9tN2gKMkI3VGZRZE8xOXdhaUhsblRudXhSdz09Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
+
   # Backup PVC
   - apiVersion: v1
     kind: PersistentVolumeClaim
