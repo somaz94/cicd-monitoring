@@ -115,22 +115,11 @@ serviceAccount:
 #
 # Backup Strategy:
 #   - CronJob runs daily at KST 03:00 (UTC 18:00)
-#   - Uses skeen/bitwarden_rs_backup image to dump SQLite DB
+#   - Date-stamped files: db-YYYYMMDD.sqlite3, rsa_key-YYYYMMDD.pem
+#   - Retention: 30 days (older backups auto-deleted)
 #   - Data PVC mounted as readOnly, Backup PVC as readWrite
 #
-# Restore Steps:
-#   1. kubectl scale deploy vaultwarden --replicas=0 -n vaultwarden
-#   2. kubectl run restore --rm -it --image=busybox \
-#        --overrides='{"spec":{"containers":[{"name":"restore","image":"busybox",
-#        "command":["sh","-c","cp /backup/db.sqlite3 /data/db.sqlite3"],
-#        "volumeMounts":[
-#          {"name":"data","mountPath":"/data"},
-#          {"name":"backup","mountPath":"/backup"}
-#        ]}],"volumes":[
-#          {"name":"data","persistentVolumeClaim":{"claimName":"vaultwarden-data-vaultwarden-0"}},
-#          {"name":"backup","persistentVolumeClaim":{"claimName":"vaultwarden-backup-data"}}
-#        ]}}' -n vaultwarden
-#   3. kubectl scale deploy vaultwarden --replicas=1 -n vaultwarden
+# Restore: ./scripts/restore.sh [YYYYMMDD|latest]
 # =============================================================================
 extraObjects:
   # Self-signed TLS Secret (valid for 10 years)
@@ -163,7 +152,7 @@ extraObjects:
         requests:
           storage: 25Gi
 
-  # Backup CronJob
+  # Backup CronJob — date-stamped with retention
   - apiVersion: batch/v1
     kind: CronJob
     metadata:
@@ -182,15 +171,33 @@ extraObjects:
               restartPolicy: OnFailure
               containers:
                 - name: backup
-                  image: skeen/bitwarden_rs_backup:latest
-                  imagePullPolicy: Always
-                  env:
-                    - name: TIMESTAMP
-                      value: "false"
-                    - name: BACKUP_DIR
-                      value: "/backup-data"
-                    - name: BACKUP_DIR_PERMISSIONS
-                      value: "-1"
+                  image: busybox:latest
+                  command: ["sh", "-c"]
+                  args:
+                    - |
+                      set -e
+                      DATE=$(date +%Y%m%d)
+                      BACKUP_DIR="/backup-data"
+                      RETENTION_DAYS=30
+
+                      echo "[$(date)] Starting backup..."
+
+                      # Date-stamped backup
+                      cp /data/db.sqlite3 "$BACKUP_DIR/db-${DATE}.sqlite3"
+                      cp /data/rsa_key.pem "$BACKUP_DIR/rsa_key-${DATE}.pem" 2>/dev/null || true
+                      echo "[$(date)] Backup created: db-${DATE}.sqlite3"
+
+                      # Retention: delete backups older than N days
+                      DELETED=$(find "$BACKUP_DIR" -name "db-*.sqlite3" -mtime +${RETENTION_DAYS} -delete -print | wc -l)
+                      find "$BACKUP_DIR" -name "rsa_key-*.pem" -mtime +${RETENTION_DAYS} -delete
+                      echo "[$(date)] Retention: deleted ${DELETED} backups older than ${RETENTION_DAYS} days"
+
+                      # List current backups
+                      echo ""
+                      echo "Available backups:"
+                      ls -lh "$BACKUP_DIR"/db-*.sqlite3 2>/dev/null || echo "  (none)"
+                      echo ""
+                      echo "[$(date)] Backup complete."
                   volumeMounts:
                     - name: data
                       mountPath: /data
