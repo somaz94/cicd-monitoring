@@ -18,10 +18,11 @@ image:
 # =============================================================================
 # Admin Portal
 # =============================================================================
-admin:
-  enabled: true
-  token: "exampleAdminToken"
-  # existingSecret: ""
+# Access: https://vault.example.com/admin
+# Use plain text token below to log in.
+# Vaultwarden also accepts argon2 hashed tokens.
+adminToken:
+  value: "exampleAdminToken"
 
 # =============================================================================
 # Database (SQLite default)
