@@ -266,7 +266,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "redis_keyspace_hits_total{job=~\"$job\",instance=~\"$instance\"} / (redis_keyspace_hits_total{job=~\"$job\",instance=~\"$instance\"} + redis_keyspace_misses_total{job=~\"$job\",instance=~\"$instance\"}) * 100",
+          "expr": "rate(redis_keyspace_hits_total{job=~\"$job\",instance=~\"$instance\"}[5m]) / (rate(redis_keyspace_hits_total{job=~\"$job\",instance=~\"$instance\"}[5m]) + rate(redis_keyspace_misses_total{job=~\"$job\",instance=~\"$instance\"}[5m])) * 100",
           "legendFormat": "__auto",
           "refId": "A"
         }
