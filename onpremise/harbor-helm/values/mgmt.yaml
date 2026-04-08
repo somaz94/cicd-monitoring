@@ -93,9 +93,13 @@ logLevel: info
 enableMigrateHelmHook: false
 
 metrics:
-  enabled: false
+  enabled: true
   serviceMonitor:
-    enabled: false
+    enabled: true
+    namespace: monitoring
+    interval: 30s
+    additionalLabels:
+      release: kube-prometheus-stack
 
 trace:
   enabled: false

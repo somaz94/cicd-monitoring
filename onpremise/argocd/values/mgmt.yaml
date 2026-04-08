@@ -100,6 +100,15 @@ controller:
     requests:
       cpu: 1000m
       memory: 3Gi
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
 
 ## Dex
 dex:
@@ -151,6 +160,15 @@ server:
   #   path: /
   #   pathType: Prefix
   #   tls: true
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
 
 ## Repo Server
 repoServer:
@@ -177,6 +195,15 @@ repoServer:
     requests:
       cpu: 500m
       memory: 1Gi
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
 
 ## ApplicationSet controller
 applicationSet:
