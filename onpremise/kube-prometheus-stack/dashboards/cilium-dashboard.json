@@ -15,7 +15,7 @@
           "type": "prometheus",
           "uid": "prometheus"
         },
-        "query": "label_values(cilium_endpoint_count, instance)",
+        "query": "label_values(cilium_endpoint_state, instance)",
         "multi": true,
         "includeAll": true,
         "current": {
@@ -41,7 +41,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "targets": [
         {
-          "expr": "sum(cilium_endpoint_count{instance=~\"$instance\"})",
+          "expr": "sum(cilium_endpoint{instance=~\"$instance\"})",
           "refId": "A"
         }
       ]
@@ -54,7 +54,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
       "targets": [
         {
-          "expr": "sum(cilium_policy_count{instance=~\"$instance\"})",
+          "expr": "sum(cilium_policy{instance=~\"$instance\"})",
           "refId": "A"
         }
       ]
@@ -90,7 +90,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
       "targets": [
         {
-          "expr": "sum(cilium_identity_count{instance=~\"$instance\"})",
+          "expr": "sum(cilium_identity{instance=~\"$instance\"})",
           "refId": "A"
         }
       ]
@@ -182,7 +182,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "targets": [
         {
-          "expr": "rate(cilium_policy_import_errors_total{instance=~\"$instance\"}[5m])",
+          "expr": "rate(cilium_policy_change_total{instance=~\"$instance\"}[5m])",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }

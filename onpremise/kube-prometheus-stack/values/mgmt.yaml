@@ -434,6 +434,61 @@ additionalPrometheusRulesMap:
               summary: "Disk space critical on {{ $labels.instance }}"
               description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
 
+          # Filesystem inodes > 80% used for 10 minutes (warning)
+          # Many small files can exhaust inodes even with free disk space
+          - alert: NodeFilesystemInodesRunningLow
+            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"})) * 100 > 80
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Filesystem inodes running low on {{ $labels.instance }}"
+              description: "Inode usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+
+          # Filesystem inodes > 95% used for 5 minutes (critical)
+          # Almost no inodes left — new file creation will fail
+          - alert: NodeFilesystemInodesCritical
+            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"})) * 100 > 95
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Filesystem inodes critical on {{ $labels.instance }}"
+              description: "Inode usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+
+          # Network RX/TX errors increasing for 5 minutes
+          # Sustained network errors indicate cable, driver, or NIC problems
+          - alert: NodeNetworkErrors
+            expr: (rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m])) > 10
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Network errors detected on {{ $labels.instance }}"
+              description: "Interface {{ $labels.device }} has {{ $value }} errors/sec (RX+TX combined over 5m)"
+
+          # 5-minute load average exceeds 2x CPU count for 10 minutes
+          # Indicates system is overloaded — processes are waiting for CPU
+          - alert: NodeHighSystemLoad
+            expr: node_load5 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High system load on {{ $labels.instance }}"
+              description: "5-minute load average is {{ $value }}x the number of CPUs"
+
+          # Network interface toggling up/down (carrier changes)
+          # Frequent carrier changes suggest unstable link (bad cable, switch port)
+          - alert: NodeNetworkInterfaceFlapping
+            expr: changes(node_network_carrier{device!~"veth.*|lxc.*|cali.*|flannel.*|cni.*"}[10m]) > 2
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Network interface flapping on {{ $labels.instance }}"
+              description: "Interface {{ $labels.device }} changed carrier state {{ $value }} times in 10 minutes"
+
   # ---------------------------------------------------------------------------
   # Pod Alerts — K8s workload health
   # ---------------------------------------------------------------------------
@@ -461,3 +516,55 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
               description: "Pod has been in not-ready state for 10 minutes"
+
+  # ---------------------------------------------------------------------------
+  # Cilium Alerts — CNI health and network policy enforcement
+  # ---------------------------------------------------------------------------
+  cilium-alerts:
+    groups:
+      - name: cilium-alerts
+        rules:
+
+          # Cilium endpoints not in "ready" state for 10 minutes
+          # Non-ready endpoints cannot send or receive traffic via Cilium
+          - alert: CiliumEndpointNotReady
+            expr: sum by(instance) (cilium_endpoint_state{endpoint_state!="ready"}) > 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cilium endpoints not ready on {{ $labels.instance }}"
+              description: "{{ $value }} endpoints are in non-ready state for 10 minutes"
+
+          # Cilium packet drop rate > 50/sec for 5 minutes
+          # High drop rates may indicate policy misconfiguration or network issues
+          - alert: CiliumDropRateHigh
+            expr: sum by(instance, reason) (rate(cilium_drop_count_total[5m])) > 50
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High Cilium packet drop rate on {{ $labels.instance }}"
+              description: "Cilium is dropping {{ $value }} packets/sec (reason: {{ $labels.reason }})"
+
+          # Cilium agent reports unhealthy status for 5 minutes (critical)
+          # An unhealthy agent cannot enforce network policies
+          - alert: CiliumAgentUnhealthy
+            expr: cilium_agent_unhealthy > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cilium agent unhealthy on {{ $labels.instance }}"
+              description: "Cilium agent has been reporting unhealthy status for 5 minutes"
+
+          # Cilium operator is down — no running operator process detected for 5 minutes
+          # The operator manages CiliumIdentity, CiliumEndpoint CRDs and IP allocation
+          - alert: CiliumOperatorDown
+            expr: absent(cilium_operator_process_start_time_seconds)
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Cilium operator is down"
+              description: "No Cilium operator process detected for 5 minutes — CRD management and IP allocation are halted"
