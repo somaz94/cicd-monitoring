@@ -1,0 +1,195 @@
+# =============================================================================
+# Vaultwarden Custom Values (guerzon/vaultwarden chart)
+# Components: Vaultwarden server, SQLite, Backup CronJob
+# =============================================================================
+
+# =============================================================================
+# Domain & Core Settings
+# =============================================================================
+# DOMAIN env var — use http:// prefix for non-TLS deployments
+domain: "http://vault.example.com"
+
+fullnameOverride: "vaultwarden"
+
+image:
+  tag: "1.35.4-alpine"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# Admin Portal
+# =============================================================================
+admin:
+  enabled: true
+  token: "exampleAdminToken"
+  # existingSecret: ""
+
+# =============================================================================
+# Database (SQLite default)
+# =============================================================================
+database:
+  type: "default"
+
+# =============================================================================
+# Features
+# =============================================================================
+webVaultEnabled: "true"
+allowSignups: true
+signupsVerify: false
+showPassHint: false
+allowInvitation: true
+invitationExpirationHours: "120"
+emergencyAccessAllowed: true
+
+# =============================================================================
+# Storage (Persistent Volume)
+# =============================================================================
+storage:
+  data:
+    name: "vaultwarden-data"
+    size: "25Gi"
+    class: "nfs-client"
+    path: "/data"
+    keepPvc: true
+    accessMode: "ReadWriteOnce"
+
+# =============================================================================
+# Service
+# =============================================================================
+service:
+  type: ClusterIP
+  port: 80
+
+# =============================================================================
+# Ingress (HTTP — no TLS)
+# =============================================================================
+ingress:
+  enabled: true
+  class: "nginx"
+  nginxIngressAnnotations: true
+  additionalAnnotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+  hostname: "vault.example.com"
+  tls: false
+  path: /
+  pathType: Prefix
+
+# ── HTTPS ingress with cert-manager + Let's Encrypt ──
+# Prerequisites:
+#   1. Install cert-manager: https://cert-manager.io/docs/installation/
+#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
+# Ref: https://github.com/dani-garcia/vaultwarden/wiki/Enabling-HTTPS
+#
+# domain: "https://vault.example.com"
+#
+# ingress:
+#   enabled: true
+#   class: "nginx"
+#   nginxIngressAnnotations: true
+#   additionalAnnotations:
+#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
+#   hostname: "vault.example.com"
+#   tls: true
+#   tlsSecret: "vaultwarden-tls"
+#   path: /
+#   pathType: Prefix
+
+# =============================================================================
+# Resources
+# =============================================================================
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# =============================================================================
+# Service Account
+# =============================================================================
+serviceAccount:
+  create: true
+
+# =============================================================================
+# Backup CronJob (via extraObjects)
+#
+# Backup Strategy:
+#   - CronJob runs daily at KST 03:00 (UTC 18:00)
+#   - Uses skeen/bitwarden_rs_backup image to dump SQLite DB
+#   - Data PVC mounted as readOnly, Backup PVC as readWrite
+#
+# Restore Steps:
+#   1. kubectl scale deploy vaultwarden --replicas=0 -n vaultwarden
+#   2. kubectl run restore --rm -it --image=busybox \
+#        --overrides='{"spec":{"containers":[{"name":"restore","image":"busybox",
+#        "command":["sh","-c","cp /backup/db.sqlite3 /data/db.sqlite3"],
+#        "volumeMounts":[
+#          {"name":"data","mountPath":"/data"},
+#          {"name":"backup","mountPath":"/backup"}
+#        ]}],"volumes":[
+#          {"name":"data","persistentVolumeClaim":{"claimName":"vaultwarden-data-vaultwarden-0"}},
+#          {"name":"backup","persistentVolumeClaim":{"claimName":"vaultwarden-backup-data"}}
+#        ]}}' -n vaultwarden
+#   3. kubectl scale deploy vaultwarden --replicas=1 -n vaultwarden
+# =============================================================================
+extraObjects:
+  # Backup PVC
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: vaultwarden-backup-data
+      namespace: vaultwarden
+      annotations:
+        nfs.io/storage-path: "vaultwarden-backup-data"
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: "nfs-client"
+      resources:
+        requests:
+          storage: 25Gi
+
+  # Backup CronJob
+  - apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: vaultwarden-backup
+      namespace: vaultwarden
+    spec:
+      # KST 03:00 = UTC 18:00
+      schedule: "0 18 * * *"
+      concurrencyPolicy: Forbid
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 3
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              restartPolicy: OnFailure
+              containers:
+                - name: backup
+                  image: skeen/bitwarden_rs_backup:latest
+                  imagePullPolicy: Always
+                  env:
+                    - name: TIMESTAMP
+                      value: "false"
+                    - name: BACKUP_DIR
+                      value: "/backup-data"
+                    - name: BACKUP_DIR_PERMISSIONS
+                      value: "-1"
+                  volumeMounts:
+                    - name: data
+                      mountPath: /data
+                      readOnly: true
+                    - name: backup
+                      mountPath: /backup-data
+              volumes:
+                - name: data
+                  persistentVolumeClaim:
+                    claimName: vaultwarden-data-vaultwarden-0
+                - name: backup
+                  persistentVolumeClaim:
+                    claimName: vaultwarden-backup-data

@@ -1,0 +1,25 @@
+repositories:
+  - name: guerzon
+    url: https://guerzon.github.io/vaultwarden
+
+releases:
+  - name: vaultwarden
+    chart: guerzon/vaultwarden
+    namespace: vaultwarden
+    version: 0.35.1
+    values:
+      - values/mgmt.yaml
+
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "vaultwarden"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

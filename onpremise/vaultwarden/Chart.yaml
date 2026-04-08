@@ -1,0 +1,17 @@
+apiVersion: v2
+name: vaultwarden
+version: 0.35.1
+appVersion: 1.35.4
+description: Vaultwarden - unofficial Bitwarden-compatible server written in Rust
+home: https://github.com/dani-garcia/vaultwarden
+sources:
+  - https://github.com/guerzon/vaultwarden
+  - https://github.com/dani-garcia/vaultwarden
+keywords:
+  - vaultwarden
+  - bitwarden
+  - password-manager
+maintainers:
+  - name: guerzon
+    email: guerzon@proton.me
+    url: https://github.com/guerzon
