@@ -50,6 +50,8 @@ adminToken:
 #     value: "<your-gitlab-application-id>"
 #   clientSecret:
 #     value: "<your-gitlab-application-secret>"
+#   # Relaxed master password policy (min 8 chars, no complexity requirements)
+#   masterPasswordPolicy: '{"enforceOnLogin":false,"minComplexity":0,"minLength":8,"requireLower":false,"requireNumbers":false,"requireSpecial":false,"requireUpper":false}'
 
 # =============================================================================
 # Database (SQLite default)
