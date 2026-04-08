@@ -58,15 +58,21 @@ database:
   type: "default"
 
 # =============================================================================
-# Features
+# Features & Convenience Settings
 # =============================================================================
 webVaultEnabled: "true"
 allowSignups: true
-signupsVerify: false
+signupsVerify: "false"
 showPassHint: false
 allowInvitation: true
+invitationsAllowed: true
 invitationExpirationHours: "120"
 emergencyAccessAllowed: true
+requireDeviceEmail: "false"
+orgGroupsEnabled: "true"
+orgEventsEnabled: "true"
+adminRateLimitSeconds: "60"
+adminRateLimitMaxBurst: "10"
 
 # =============================================================================
 # Storage (Persistent Volume)
