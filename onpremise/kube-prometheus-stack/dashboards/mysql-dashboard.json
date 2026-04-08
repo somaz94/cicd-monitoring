@@ -148,7 +148,8 @@
       "type": "timeseries",
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_threads_connected{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Connected", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_variables_max_connections{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Max", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_status_aborted_connects{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Aborted", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "mysql_global_variables_max_connections{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "Max", "refId": "C" }
       ]
     },
     {
