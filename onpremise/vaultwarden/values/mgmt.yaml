@@ -25,6 +25,33 @@ adminToken:
   value: "exampleAdminToken"
 
 # =============================================================================
+# SSO — GitLab OpenID Connect
+# =============================================================================
+# Prerequisites:
+#   1. GitLab Admin → Applications → New Application
+#      - Name: Vaultwarden
+#      - Redirect URI: https://vault.example.com/identity/connect/oidc-signin
+#      - Confidential: Yes
+#      - Scopes: openid, email, profile
+#   2. Copy Application ID → clientId.value
+#   3. Copy Secret → clientSecret.value
+#
+# Note: Vaultwarden SSO does NOT support group-based access control.
+#       All SSO-authenticated users get the same permissions.
+#       Use allowSignups/signupDomains to restrict who can register.
+# =============================================================================
+# sso:
+#   enabled: true
+#   authority: "http://gitlab.example.com"
+#   scopes: "openid email profile"
+#   signupsMatchEmail: true
+#   pkce: true
+#   clientId:
+#     value: "<your-gitlab-application-id>"
+#   clientSecret:
+#     value: "<your-gitlab-application-secret>"
+
+# =============================================================================
 # Database (SQLite default)
 # =============================================================================
 database:
