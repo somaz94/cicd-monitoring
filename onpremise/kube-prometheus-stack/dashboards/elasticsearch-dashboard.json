@@ -148,12 +148,12 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "elasticsearch_filesystem_data_size_bytes",
+          "expr": "elasticsearch_filesystem_data_size_bytes{job=~\"$job\"}",
           "legendFormat": "Total",
           "refId": "A"
         },
         {
-          "expr": "elasticsearch_filesystem_data_available_bytes",
+          "expr": "elasticsearch_filesystem_data_available_bytes{job=~\"$job\"}",
           "legendFormat": "Available",
           "refId": "B"
         }

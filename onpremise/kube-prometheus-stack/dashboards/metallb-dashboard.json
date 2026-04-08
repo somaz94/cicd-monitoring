@@ -99,12 +99,12 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "targets": [
         {
-          "expr": "metallb_allocator_ipv4_addresses_in_use_total",
+          "expr": "metallb_allocator_ipv4_addresses_in_use_total{instance=~\"$instance\"}",
           "legendFormat": "In Use",
           "refId": "A"
         },
         {
-          "expr": "metallb_allocator_ipv4_addresses_total",
+          "expr": "metallb_allocator_ipv4_addresses_total{instance=~\"$instance\"}",
           "legendFormat": "Total",
           "refId": "B"
         }
@@ -118,12 +118,12 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "targets": [
         {
-          "expr": "rate(metallb_layer2_requests_received[5m])",
+          "expr": "rate(metallb_layer2_requests_received{instance=~\"$instance\"}[5m])",
           "legendFormat": "Requests",
           "refId": "A"
         },
         {
-          "expr": "rate(metallb_layer2_responses_sent[5m])",
+          "expr": "rate(metallb_layer2_responses_sent{instance=~\"$instance\"}[5m])",
           "legendFormat": "Responses",
           "refId": "B"
         }

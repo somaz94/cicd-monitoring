@@ -158,11 +158,13 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes",
+          "unit": "percent",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null }
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
             ]
           }
         },
@@ -182,12 +184,12 @@
         },
         "textMode": "auto"
       },
-      "title": "Memory Used",
+      "title": "Memory Usage %",
       "type": "stat",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "redis_memory_used_bytes{job=~\"$job\",instance=~\"$instance\"}",
+          "expr": "redis_memory_used_bytes{job=~\"$job\",instance=~\"$instance\"} / redis_memory_max_bytes{job=~\"$job\",instance=~\"$instance\"} * 100",
           "legendFormat": "__auto",
           "refId": "A"
         }

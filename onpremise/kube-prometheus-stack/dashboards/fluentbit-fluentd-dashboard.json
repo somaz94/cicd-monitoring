@@ -327,7 +327,7 @@
     },
     {
       "type": "stat",
-      "title": "Output Errors Total",
+      "title": "Output Error Rate",
       "id": 4,
       "datasource": {
         "type": "prometheus",
@@ -366,7 +366,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(fluentbit_output_errors_total{job=~\"$fb_job\",instance=~\"$fb_instance\"})",
+          "expr": "sum(rate(fluentbit_output_errors_total{job=~\"$fb_job\",instance=~\"$fb_instance\"}[5m]))",
           "refId": "A",
           "legendFormat": ""
         }
