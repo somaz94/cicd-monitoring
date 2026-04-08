@@ -12,16 +12,7 @@ Self-hosted 서버 URL만 설정하면 됩니다.
 3. 하단의 **"접근 중: bitwarden.com"** 클릭
 4. 드롭다운에서 **"자체 호스팅"** 선택
 5. **Server URL**: `https://vault.example.com` 입력 → **저장**
-6. 이메일 + 마스터 비밀번호로 로그인 또는 **"통합인증(SSO) 사용하기"** 클릭
-
-<br/>
-
-### SSO 로그인 (GitLab)
-
-1. 로그인 화면에서 **"Enterprise single sign-on"** 클릭
-2. **SSO Identifier**: `gitlab` (아무 문자열 가능)
-3. GitLab 로그인 페이지로 리다이렉트
-4. GitLab 인증 완료 → 마스터 비밀번호 설정 (최초 1회, 12자 이상)
+6. GitLab 계정 이메일로 로그인, 마스터 비밀번호 입력
 
 <br/>
 

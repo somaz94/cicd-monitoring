@@ -12,16 +12,7 @@ Simply configure the Self-hosted server URL.
 3. Click **"Logging in on: bitwarden.com"** at the bottom
 4. Select **"Self-hosted"** from the dropdown
 5. **Server URL**: `https://vault.example.com` → **Save**
-6. Log in with email + master password or click **"Enterprise single sign-on (SSO)"**
-
-<br/>
-
-### SSO Login (GitLab)
-
-1. Click **"Enterprise single sign-on"** on login screen
-2. **SSO Identifier**: `gitlab` (any string works)
-3. Redirected to GitLab login page
-4. After GitLab auth → set master password (first time only, min 12 chars)
+6. Log in with your GitLab account email and master password
 
 <br/>
 
