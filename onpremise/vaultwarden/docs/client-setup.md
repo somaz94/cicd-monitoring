@@ -9,9 +9,9 @@ Self-hosted 서버 URL만 설정하면 됩니다.
 
 1. [Bitwarden Chrome Extension](https://chromewebstore.google.com/detail/bitwarden-password-manage/nngceckbapebfimnlniiiahkandclblb) 설치
 2. Extension 아이콘 클릭 → 로그인 화면
-3. 로그인 화면에서 **설정(톱니바퀴) 아이콘** 클릭
-4. **Self-hosted 환경** → **Server URL**: `https://vault.example.com` 입력
-5. **저장** 클릭 → 로그인 화면으로 돌아감
+3. 하단의 **"접근 중: bitwarden.com"** 클릭
+4. 드롭다운에서 **"자체 호스팅"** 선택
+5. **Server URL**: `https://vault.example.com` 입력 → **저장**
 6. 이메일 + 마스터 비밀번호로 로그인 또는 **"통합인증(SSO) 사용하기"** 클릭
 
 <br/>
