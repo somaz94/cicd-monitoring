@@ -60,20 +60,48 @@ configs:
   # RBAC settings
   rbac:
     create: true
+    # Use email + groups for RBAC matching (default uses only 'sub' claim from dex)
+    scopes: '[email, groups]'
     policy.csv: |
-      p, role:org-admin, applications, *, */*, allow
-      p, role:org-admin, clusters, get, *, allow
-      p, role:org-admin, repositories, *, *, allow
-      p, role:org-admin, projects, get, *, allow
-      p, role:org-admin, logs, get, *, allow
-      p, role:org-admin, exec, create, */*, allow
-      # Settings permission (required for viewing known_hosts, certificates, GPG keys)
-      p, role:org-admin, certificates, *, *, allow
-      p, role:org-admin, accounts, *, *, allow
-      p, role:org-admin, gpgkeys, *, *, allow
+      # ── Global Admin ──
+      # Full access to all resources across all projects
+      p, role:global-admin, applications, *, */*, allow
+      p, role:global-admin, clusters, *, *, allow
+      p, role:global-admin, repositories, *, *, allow
+      p, role:global-admin, projects, *, *, allow
+      p, role:global-admin, logs, get, *, allow
+      p, role:global-admin, exec, create, */*, allow
+      p, role:global-admin, certificates, *, *, allow
+      p, role:global-admin, accounts, *, *, allow
+      p, role:global-admin, gpgkeys, *, *, allow
+      g, admin@example.com, role:global-admin
 
-      # Map GitLab group to admin role
-      g, server, role:org-admin
+      # ── Server Group ──
+      # Common permissions for server group
+      p, role:server-admin, clusters, get, *, allow
+      p, role:server-admin, repositories, get, *, allow
+      p, role:server-admin, certificates, get, *, allow
+      p, role:server-admin, gpgkeys, get, *, allow
+
+      # ProjectM — full access
+      p, role:server-admin, applications, *, projectm/*, allow
+      p, role:server-admin, projects, get, projectm, allow
+      p, role:server-admin, logs, get, projectm/*, allow
+      p, role:server-admin, exec, create, projectm/*, allow
+
+      # Souls — full access
+      p, role:server-admin, applications, *, souls/*, allow
+      p, role:server-admin, projects, get, souls, allow
+      p, role:server-admin, logs, get, souls/*, allow
+      p, role:server-admin, exec, create, souls/*, allow
+
+      # ── Add new projects below ──
+      # p, role:server-admin, applications, *, <project>/*, allow
+      # p, role:server-admin, projects, get, <project>, allow
+      # p, role:server-admin, logs, get, <project>/*, allow
+      # p, role:server-admin, exec, create, <project>/*, allow
+
+      g, server, role:server-admin
 
   secrets:
     # GitLab SSO Configuration
