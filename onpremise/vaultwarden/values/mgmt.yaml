@@ -196,8 +196,8 @@ extraObjects:
       # KST 03:00 = UTC 18:00
       schedule: "0 18 * * *"
       concurrencyPolicy: Forbid
-      successfulJobsHistoryLimit: 3
-      failedJobsHistoryLimit: 3
+      successfulJobsHistoryLimit: 3   # Keep last 3 successful Jobs for backup history verification
+      failedJobsHistoryLimit: 3      # Keep last 3 failed Jobs for debugging
       jobTemplate:
         spec:
           template:
