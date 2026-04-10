@@ -1,4 +1,5 @@
 #!/bin/bash
+# upgrade-template: external-standard
 set -euo pipefail
 
 # ============================================================
@@ -34,7 +35,8 @@ Checks for new versions, backs up current files, and applies the upgrade.
 Commands:
   (default)           Check latest version and upgrade
   --version <VER>     Upgrade to a specific chart version
-  --exclude <PATTERN> Exclude values files matching pattern from comparison (comma-separated)
+  --exclude <PATTERN> Exclude values files whose name contains PATTERN (substring match,
+                      comma-separated; also skipped from backup copy)
   --dry-run           Preview changes only (no files will be modified)
   --rollback          Restore from a previous backup
   --list-backups      List available backups
@@ -45,7 +47,7 @@ Examples:
   $(basename "$0")                                # Upgrade to latest
   $(basename "$0") --dry-run                      # Preview upgrade without changes
   $(basename "$0") --version 1.0.0                # Upgrade to specific version
-  $(basename "$0") --exclude old-release,test     # Exclude patterns from comparison
+  $(basename "$0") --exclude old-release,test     # Skip files with 'old-release' or 'test' in name
   $(basename "$0") --dry-run --version 1.0.0      # Combine flags
   $(basename "$0") --rollback                     # Restore from backup
   $(basename "$0") --list-backups                 # Show available backups
@@ -418,10 +420,12 @@ if [ -f "$TEMP_DIR/values.schema.json" ]; then
   echo "  Updated values.schema.json"
 fi
 
-# Update helmfile.yaml version
+# Update helmfile.yaml version (portable sed: works on macOS BSD sed and GNU sed)
 if [ -f "$CHART_DIR/helmfile.yaml" ]; then
   UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
-  sed -i '' "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml"
+  HELMFILE_TMP=$(mktemp)
+  sed "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml" > "$HELMFILE_TMP"
+  mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
   echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi
 

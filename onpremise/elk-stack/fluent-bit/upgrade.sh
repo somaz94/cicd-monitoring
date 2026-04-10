@@ -1,4 +1,5 @@
 #!/bin/bash
+# upgrade-template: local-with-templates
 set -euo pipefail
 
 # ============================================================
@@ -50,7 +51,8 @@ custom templates (pv.yaml, pvc.yaml) and _pod.tpl patches.
 Commands:
   (default)           Check latest version and upgrade
   --version <VER>     Upgrade to a specific chart version
-  --exclude <PATTERN> Exclude values files matching pattern from comparison (comma-separated)
+  --exclude <PATTERN> Exclude values files whose name contains PATTERN (substring match,
+                      comma-separated; also skipped from backup copy)
   --dry-run           Preview changes only (no files will be modified)
   --rollback          Restore from a previous backup
   --list-backups      List available backups
@@ -61,7 +63,7 @@ Examples:
   $(basename "$0")                                # Upgrade to latest
   $(basename "$0") --dry-run                      # Preview upgrade without changes
   $(basename "$0") --version 0.49.0               # Upgrade to specific version
-  $(basename "$0") --exclude old-release,test     # Exclude patterns from comparison
+  $(basename "$0") --exclude old-release,test     # Skip files with 'old-release' or 'test' in name
   $(basename "$0") --dry-run --version 0.49.0     # Combine flags
   $(basename "$0") --rollback                     # Restore from backup
   $(basename "$0") --list-backups                 # Show available backups
@@ -298,14 +300,25 @@ if [ -f "$CHART_DIR/helmfile.yaml" ]; then
   '
 fi
 
-# Step 2: Fetch latest version from helm repo
+# Step 2: Fetch latest version (from helm repo or git tags)
 echo ""
 echo "[Step 2/8] Checking latest version..."
 
-helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" > /dev/null 2>&1 || true
-helm repo update > /dev/null 2>&1 || true
+if [ -n "${CHART_GIT_REPO:-}" ]; then
+  # Git source mode: use latest semver-looking tag
+  LATEST_VERSION_FOUND=$(git ls-remote --tags --refs --sort='-v:refname' "$CHART_GIT_REPO" 2>/dev/null \
+    | awk '{print $2}' | sed 's|refs/tags/||' \
+    | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//')
+  LATEST_APP_VERSION="(from-git)"
+  if [ -z "$LATEST_VERSION_FOUND" ]; then
+    echo "  ERROR: Failed to list tags from $CHART_GIT_REPO"
+    exit 1
+  fi
+else
+  helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" > /dev/null 2>&1 || true
+  helm repo update > /dev/null 2>&1 || true
 
-LATEST_INFO=$(helm search repo "$HELM_CHART" --output json 2>/dev/null | python3 -c "
+  LATEST_INFO=$(helm search repo "$HELM_CHART" --output json 2>/dev/null | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 if data:
@@ -313,13 +326,14 @@ if data:
     print(data[0].get('app_version', ''))
 " 2>/dev/null || true)
 
-LATEST_VERSION_FOUND=$(echo "$LATEST_INFO" | head -1)
-LATEST_APP_VERSION=$(echo "$LATEST_INFO" | tail -1)
+  LATEST_VERSION_FOUND=$(echo "$LATEST_INFO" | head -1)
+  LATEST_APP_VERSION=$(echo "$LATEST_INFO" | tail -1)
 
-if [ -z "$LATEST_VERSION_FOUND" ]; then
-  echo "  ERROR: Failed to fetch latest version."
-  echo "  Try: helm repo add $HELM_REPO_NAME $HELM_REPO_URL && helm repo update"
-  exit 1
+  if [ -z "$LATEST_VERSION_FOUND" ]; then
+    echo "  ERROR: Failed to fetch latest version."
+    echo "  Try: helm repo add $HELM_REPO_NAME $HELM_REPO_URL && helm repo update"
+    exit 1
+  fi
 fi
 
 if [ -n "$TARGET_VERSION" ]; then
@@ -341,14 +355,26 @@ echo ""
 echo "  Upgrade: $CURRENT_VERSION -> $LATEST_VERSION"
 echo "  Changelog: $CHANGELOG_URL"
 
-# Step 3: Download upstream chart
+# Step 3: Download upstream chart (helm pull or git clone)
 echo ""
 echo "[Step 3/8] Downloading upstream chart v$LATEST_VERSION..."
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-helm pull "$HELM_CHART" --version "$LATEST_VERSION" --untar --untardir "$TEMP_DIR" 2>/dev/null
-UPSTREAM_DIR="$TEMP_DIR/fluent-bit"
+if [ -n "${CHART_GIT_REPO:-}" ]; then
+  # Git source mode
+  GIT_TAG="v$LATEST_VERSION"
+  if ! git ls-remote --tags --refs "$CHART_GIT_REPO" "$GIT_TAG" 2>/dev/null | grep -q .; then
+    GIT_TAG="$LATEST_VERSION"  # try without v prefix
+  fi
+  git clone --depth 1 --branch "$GIT_TAG" "$CHART_GIT_REPO" "$TEMP_DIR/git-src" > /dev/null 2>&1
+  UPSTREAM_DIR="$TEMP_DIR/git-src/${CHART_GIT_PATH:-}"
+else
+  # Helm repo mode
+  helm pull "$HELM_CHART" --version "$LATEST_VERSION" --untar --untardir "$TEMP_DIR" 2>/dev/null
+  # Auto-detect the unpacked chart directory (chart-name agnostic)
+  UPSTREAM_DIR=$(find "$TEMP_DIR" -maxdepth 1 -mindepth 1 -type d | head -1)
+fi
 
 if [ ! -d "$UPSTREAM_DIR/templates" ]; then
   echo "  ERROR: Failed to download chart for version $LATEST_VERSION"
@@ -432,10 +458,12 @@ done
 echo "  Summary: $CHANGED modified, $ADDED new, $REMOVED removed"
 echo "  Custom templates preserved: ${CUSTOM_TEMPLATES[*]}"
 
-# Step 6: Show _pod.tpl patch diff
+# Step 6: Show _pod.tpl patch diff (only if this chart uses _pod.tpl patching)
 echo ""
 echo "[Step 6/8] Custom _pod.tpl patch check..."
-if grep -q "persistentVolumeClaims.enabled" "$UPSTREAM_DIR/templates/_pod.tpl" 2>/dev/null; then
+if [ -z "${CUSTOM_POD_PATCH:-}" ] || [ ! -f "$UPSTREAM_DIR/templates/_pod.tpl" ]; then
+  echo "  Skipped (this chart does not use _pod.tpl patching)."
+elif grep -q "persistentVolumeClaims.enabled" "$UPSTREAM_DIR/templates/_pod.tpl" 2>/dev/null; then
   echo "  Upstream _pod.tpl already includes PVC support! No patching needed."
 else
   echo "  Upstream _pod.tpl does NOT include PVC support."
@@ -515,6 +543,9 @@ echo "[Step 8/8] Applying upgrade..."
 mkdir -p "$BACKUP_DIR/$TIMESTAMP/templates"
 cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
 cp "$CHART_DIR/values.yaml" "$BACKUP_DIR/$TIMESTAMP/values.yaml"
+if [ -f "$CHART_DIR/values.schema.json" ]; then
+  cp "$CHART_DIR/values.schema.json" "$BACKUP_DIR/$TIMESTAMP/values.schema.json"
+fi
 [ -f "$CHART_DIR/helmfile.yaml" ] && cp "$CHART_DIR/helmfile.yaml" "$BACKUP_DIR/$TIMESTAMP/helmfile.yaml"
 
 # Backup all templates (including subdirectories)
@@ -566,9 +597,11 @@ for ct in "${CUSTOM_TEMPLATES[@]}"; do
   fi
 done
 
-# Patch _pod.tpl
-if ! grep -q "persistentVolumeClaims.enabled" "$TEMPLATES_DIR/_pod.tpl" 2>/dev/null; then
-  patch_pod_tpl "$TEMPLATES_DIR/_pod.tpl"
+# Patch _pod.tpl (only if this chart uses _pod.tpl patching)
+if [ -z "${CUSTOM_POD_PATCH:-}" ] || [ ! -f "$TEMPLATES_DIR/_pod.tpl" ]; then
+  echo "  _pod.tpl: skipped (this chart does not use _pod.tpl patching)"
+elif ! grep -q "persistentVolumeClaims.enabled" "$TEMPLATES_DIR/_pod.tpl" 2>/dev/null; then
+  patch_pod_tpl "$TEMPLATES_DIR/_pod.tpl" || true
 else
   echo "  _pod.tpl: PVC support already in upstream, no patch needed"
 fi
@@ -590,10 +623,18 @@ echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_A
 cp "$UPSTREAM_DIR/values.yaml" "$CHART_DIR/values.yaml"
 echo "  Updated values.yaml"
 
-# Update helmfile.yaml version
+# Update values.schema.json (if upstream chart includes one)
+if [ -f "$UPSTREAM_DIR/values.schema.json" ]; then
+  cp "$UPSTREAM_DIR/values.schema.json" "$CHART_DIR/values.schema.json"
+  echo "  Updated values.schema.json"
+fi
+
+# Update helmfile.yaml version (portable sed: works on macOS BSD sed and GNU sed)
 if [ -f "$CHART_DIR/helmfile.yaml" ]; then
   UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
-  sed -i '' "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml"
+  HELMFILE_TMP=$(mktemp)
+  sed "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml" > "$HELMFILE_TMP"
+  mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
   echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi
 

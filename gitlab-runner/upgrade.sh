@@ -1,4 +1,5 @@
 #!/bin/bash
+# NOTE: Intentionally excluded from helm-upgrade sync (chart_type mismatch).
 set -euo pipefail
 
 # ============================================================

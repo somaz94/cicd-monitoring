@@ -1,4 +1,5 @@
 #!/bin/bash
+# upgrade-template: external-with-image-tag
 set -euo pipefail
 
 # ============================================================
@@ -34,7 +35,8 @@ Checks for new versions, backs up current files, and applies the upgrade.
 Commands:
   (default)           Check latest version and upgrade
   --version <VER>     Upgrade to a specific chart version
-  --exclude <PATTERN> Exclude values files matching pattern from comparison (comma-separated)
+  --exclude <PATTERN> Exclude values files whose name contains PATTERN (substring match,
+                      comma-separated; also skipped from backup copy)
   --dry-run           Preview changes only (no files will be modified)
   --rollback          Restore from a previous backup
   --list-backups      List available backups
@@ -45,7 +47,7 @@ Examples:
   $(basename "$0")                                # Upgrade to latest
   $(basename "$0") --dry-run                      # Preview upgrade without changes
   $(basename "$0") --version 1.18.0               # Upgrade to specific version
-  $(basename "$0") --exclude old-release,test     # Exclude patterns from comparison
+  $(basename "$0") --exclude old-release,test     # Skip files with 'old-release' or 'test' in name
   $(basename "$0") --dry-run --version 1.18.0     # Combine flags
   $(basename "$0") --rollback                     # Restore from backup
   $(basename "$0") --list-backups                 # Show available backups
@@ -276,6 +278,13 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 helm show chart "$HELM_CHART" --version "$LATEST_VERSION" > "$TEMP_DIR/Chart.yaml" 2>/dev/null
 helm show values "$HELM_CHART" --version "$LATEST_VERSION" > "$TEMP_DIR/values-new.yaml" 2>/dev/null
 
+# Fetch values.schema.json if the chart includes one
+helm pull "$HELM_CHART" --version "$LATEST_VERSION" --untar --untardir "$TEMP_DIR/pulled" 2>/dev/null || true
+PULLED_CHART_DIR=$(find "$TEMP_DIR/pulled" -maxdepth 1 -mindepth 1 -type d | head -1)
+if [ -n "$PULLED_CHART_DIR" ] && [ -f "$PULLED_CHART_DIR/values.schema.json" ]; then
+  cp "$PULLED_CHART_DIR/values.schema.json" "$TEMP_DIR/values.schema.json"
+fi
+
 if [ "$CHART_TYPE" = "local" ]; then
   cp "$CHART_DIR/values.yaml" "$TEMP_DIR/values-old.yaml"
 else
@@ -385,6 +394,9 @@ cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
 if [ -f "$CHART_DIR/values.yaml" ]; then
   cp "$CHART_DIR/values.yaml" "$BACKUP_DIR/$TIMESTAMP/values.yaml"
 fi
+if [ -f "$CHART_DIR/values.schema.json" ]; then
+  cp "$CHART_DIR/values.schema.json" "$BACKUP_DIR/$TIMESTAMP/values.schema.json"
+fi
 for values_file in "$VALUES_DIR"/*.yaml; do
   [ -f "$values_file" ] || continue
   is_excluded "$(basename "$values_file")" && continue
@@ -402,10 +414,18 @@ echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_A
 cp "$TEMP_DIR/values-new.yaml" "$CHART_DIR/values.yaml"
 echo "  Updated values.yaml"
 
-# Update helmfile.yaml version
+# Update values.schema.json (if upstream chart includes one)
+if [ -f "$TEMP_DIR/values.schema.json" ]; then
+  cp "$TEMP_DIR/values.schema.json" "$CHART_DIR/values.schema.json"
+  echo "  Updated values.schema.json"
+fi
+
+# Update helmfile.yaml version (portable sed: works on macOS BSD sed and GNU sed)
 if [ -f "$CHART_DIR/helmfile.yaml" ]; then
   UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
-  sed -i '' "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml"
+  HELMFILE_TMP=$(mktemp)
+  sed "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml" > "$HELMFILE_TMP"
+  mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
   echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi
 
@@ -419,7 +439,9 @@ if [ -n "$LATEST_APP_VERSION" ]; then
     VALUES_TAG=$(grep -oE 'tag: v[0-9]+\.[0-9]+\.[0-9]+' "$values_file" 2>/dev/null | head -1 | awk '{print $2}' | sed 's/^v//')
     if [ -n "$VALUES_TAG" ] && [ "$VALUES_TAG" != "$LATEST_APP_VERSION" ]; then
       TAG_COUNT=$(grep -c "tag: v$VALUES_TAG" "$values_file" || true)
-      sed -i '' "s/tag: v$VALUES_TAG/tag: v$LATEST_APP_VERSION/g" "$values_file"
+      VALUES_TMP=$(mktemp)
+      sed "s/tag: v$VALUES_TAG/tag: v$LATEST_APP_VERSION/g" "$values_file" > "$VALUES_TMP"
+      mv "$VALUES_TMP" "$values_file"
       echo "  Updated values/$(basename "$values_file") ($TAG_COUNT image tag(s): v$VALUES_TAG -> v$LATEST_APP_VERSION)"
     fi
   done
