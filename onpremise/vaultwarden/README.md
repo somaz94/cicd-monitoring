@@ -119,10 +119,10 @@ ingress:
 
 | Document | Description |
 |----------|-------------|
-| [Client Setup](docs/client-setup.md) | Chrome Extension, app setup |
-| [Account Management](docs/account-management.md) | User/org/permission management |
-| [Backup/Restore](docs/backup-restore.md) | Backup strategy and restore guide |
-| [TLS Setup](docs/tls-setup.md) | Self-signed certificate management |
+| [Client Setup](docs/client-setup-en.md) | Chrome Extension, app setup |
+| [Account Management](docs/account-management-en.md) | User/org/permission management |
+| [Backup/Restore](docs/backup-restore-en.md) | Backup strategy and restore guide |
+| [TLS Setup](docs/tls-setup-en.md) | Self-signed certificate management |
 
 <br/>
 

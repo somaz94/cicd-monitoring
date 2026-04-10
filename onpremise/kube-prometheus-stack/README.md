@@ -1,6 +1,16 @@
-# Kube Prometheus Stack On-Premise Helm Chart
+# kube-prometheus-stack
 
-Manages kube-prometheus-stack on an on-premise Kubernetes cluster using Helmfile. Includes Prometheus, Grafana, Alertmanager, Prometheus Operator, node-exporter, and kube-state-metrics with nginx Ingress, Slack alerting, and Thanos sidecar for long-term metrics storage.
+Manages the Kubernetes cluster monitoring stack using Helmfile.
+
+<br/>
+
+## Included Components
+
+- **Prometheus** — Metrics collection and storage
+- **Grafana** — Dashboard visualization
+- **Alertmanager** — Alert routing (Slack integration)
+- **node-exporter** — Node metrics (CPU, memory, disk)
+- **kube-state-metrics** — K8s object metrics (Pod, Deployment status)
 
 <br/>
 
@@ -8,13 +18,15 @@ Manages kube-prometheus-stack on an on-premise Kubernetes cluster using Helmfile
 
 ```
 kube-prometheus-stack/
-├── Chart.yaml              # Version tracking (no local templates)
-├── helmfile.yaml           # Helmfile release definition (uses remote chart)
-├── values.yaml             # Upstream default values (auto-managed by upgrade.sh)
+├── Chart.yaml              # Version tracking
+├── helmfile.yaml           # Helmfile release definition
 ├── values/
-│   └── mgmt.yaml           # Management environment configuration
+│   └── mgmt.yaml           # Custom values (Grafana, Alertmanager, Scrape configs)
 ├── dashboards/             # Custom Grafana dashboard JSON files
-├── docs/                   # Documentation (dashboards, alerts, troubleshooting)
+├── docs/                   # Detailed guides
+│   ├── dashboards-en.md
+│   ├── slack-alert-format-en.md
+│   └── troubleshooting-en.md
 ├── upgrade.sh              # Version upgrade script
 ├── backup/                 # Auto backup on upgrade
 └── README.md
@@ -24,31 +36,10 @@ kube-prometheus-stack/
 
 ## Prerequisites
 
-- On-premise Kubernetes cluster (>=1.25)
+- Kubernetes cluster
 - Helm 3
 - Helmfile
-- ingress-nginx controller
-- `local-path` StorageClass (or equivalent)
-- Thanos object storage secret (if using Thanos sidecar)
-
-<br/>
-
-## Included Components
-
-| Component | Enabled | Description |
-|-----------|---------|-------------|
-| Prometheus | Yes | Metrics collection and storage |
-| Grafana | Yes | Dashboard visualization |
-| Alertmanager | Yes | Alert routing (Slack integration) |
-| Prometheus Operator | Yes | Manages Prometheus lifecycle via CRDs |
-| kube-state-metrics | Yes | Kubernetes object metrics (Pod, Deployment status) |
-| node-exporter | Yes | Node-level metrics (CPU, memory, disk) |
-| kube-controller-manager | Yes | Control plane metrics (accessible on-premise) |
-| kube-scheduler | Yes | Scheduler metrics |
-| kube-etcd | Yes | etcd metrics |
-| kube-proxy | Yes | kube-proxy metrics (disable if using Cilium) |
-
-> Unlike AWS/GCP managed clusters, all control plane components are accessible on-premise.
+- StorageClass (e.g., `nfs-client`)
 
 <br/>
 
@@ -93,15 +84,36 @@ Set Slack webhook URL in `values/mgmt.yaml`:
 alertmanager:
   config:
     receivers:
-      - name: 'slack-alerts'
+      - name: 'slack-infra-alerts'
         slack_configs:
-          - api_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-            channel: "#alerts"
+          - api_url: "https://hooks.slack.com/services/YOUR_WEBHOOK_URL"
+            channel: "#infra-alerts"
 ```
 
-Alert message format details: [Slack Alert Format Guide](docs/slack-alert-format.md)
+Alert message format details: [Slack Alert Format Guide](docs/slack-alert-format-en.md)
 
 ### Slack Alert Test
+
+```bash
+# Send test alert
+amtool alert add test-alert severity=warning \
+  --annotation=summary="Test alert" \
+  --annotation=description="Testing Slack integration" \
+  --alertmanager.url=http://alertmanager.example.com
+
+# Expire test alert
+amtool alert expire test-alert \
+  --alertmanager.url=http://alertmanager.example.com
+```
+
+Install `amtool`:
+```bash
+go install github.com/prometheus/alertmanager/cmd/amtool@latest
+echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+Or use curl directly:
 
 ```bash
 # Send test alert
@@ -109,21 +121,23 @@ curl -X POST http://alertmanager.example.com/api/v2/alerts \
   -H "Content-Type: application/json" \
   -d '[{"labels":{"alertname":"test-alert","severity":"warning"},"annotations":{"summary":"Test alert","description":"Testing Slack integration"}}]'
 
-# Expire test alert
+# Expire test alert (set endsAt to past time)
 curl -X POST http://alertmanager.example.com/api/v2/alerts \
   -H "Content-Type: application/json" \
   -d '[{"labels":{"alertname":"test-alert","severity":"warning"},"annotations":{"summary":"Test alert","description":"Testing Slack integration"},"endsAt":"2024-01-01T00:00:00Z"}]'
 ```
 
+If `#infra-alerts` channel receives the alert, the full pipeline (Prometheus → Alertmanager → Slack) is working.
+
 <br/>
 
 ### Physical Server Monitoring
 
-Install node-exporter on target servers (see [../node-exporter/](../node-exporter/)), then add IPs to `values/mgmt.yaml` `additionalScrapeConfigs`:
+Install node-exporter on target servers, then add IPs to `values/mgmt.yaml` `additionalScrapeConfigs`:
 
 ```yaml
 - targets:
-    - "10.0.0.1:9100"
+    - "192.0.2.10:9100"
 ```
 
 Verify: `http://prometheus.example.com/targets` → `physical-servers` group
@@ -143,7 +157,7 @@ Import: Grafana → **Dashboards** → **New** → **Import** → Enter ID → D
 ### Import All Custom Dashboards
 
 ```bash
-cd kube-prometheus-stack
+cd observability/monitoring/kube-prometheus-stack
 for f in dashboards/*.json; do
   echo "Importing: $(basename $f)"
   cat "$f" | \
@@ -156,116 +170,12 @@ done
 
 > Dashboards with same uid are overwritten. No duplicates.
 
-Custom dashboard details: [Dashboard Guide](docs/dashboards.md)
+Custom dashboard details: [Dashboard Guide](docs/dashboards-en.md)
 
 <br/>
 
-### Ingress
-
-HTTP ingress is active by default:
-
-```yaml
-prometheus:
-  ingress:
-    enabled: true
-    ingressClassName: nginx
-    hosts:
-      - prometheus.example.com
-```
-
-To enable HTTPS with cert-manager:
-
-```yaml
-prometheus:
-  ingress:
-    enabled: true
-    ingressClassName: nginx
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-      cert-manager.io/cluster-issuer: "cloudflare-issuer"
-    hosts:
-      - prometheus.example.com
-    tls:
-      - secretName: prometheus-tls
-        hosts:
-          - prometheus.example.com
-```
-
-<br/>
-
-## Storage
-
-Prometheus uses `local-path` StorageClass with a 100Gi PVC:
-
-```yaml
-prometheusSpec:
-  storageSpec:
-    volumeClaimTemplate:
-      spec:
-        storageClassName: local-path
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 100Gi
-```
-
-<br/>
-
-## Thanos Sidecar
-
-Prometheus is configured with a Thanos sidecar for long-term metrics storage.
-
-### Create object storage secret
-
-```bash
-kubectl create secret generic thanos-objstore \
-  --from-file=objstore.yml=./objstore.yml \
-  -n monitoring
-```
-
-Example `objstore.yml` (S3-compatible):
-
-```yaml
-type: S3
-config:
-  bucket: your-thanos-bucket
-  endpoint: s3.example.com
-  access_key: YOUR_ACCESS_KEY
-  secret_key: YOUR_SECRET_KEY
-```
-
-### Thanos services
-
-| Service | Type | Description |
-|---------|------|-------------|
-| `thanosService` | ClusterIP | Internal gRPC for Thanos Query |
-| `thanosServiceMonitor` | ServiceMonitor | Scrape sidecar metrics |
-| `thanosServiceExternal` | NodePort | External access for Thanos Query |
-
-See [../thanos/](../thanos/) for the Thanos Query/Store deployment.
-
-<br/>
-
-## Connecting Grafana
-
-Add Prometheus as a data source in Grafana:
-
-- **URL**: `http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090`
-- **Type**: Prometheus
-
-<br/>
-
-## Documentation
-
-- [Dashboard Guide](docs/dashboards.md) — Custom dashboard import and management
-- [Slack Alert Format](docs/slack-alert-format.md) — Alert message format reference
-- [Troubleshooting](docs/troubleshooting.md) — Known issues and solutions
-
-<br/>
-
-## References
+## Reference
 
 - [kube-prometheus-stack Chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
 - [Prometheus Operator](https://github.com/prometheus-operator/kube-prometheus)
 - [Grafana Dashboards](https://grafana.com/grafana/dashboards/)
-- [Thanos](https://github.com/thanos-io/thanos)

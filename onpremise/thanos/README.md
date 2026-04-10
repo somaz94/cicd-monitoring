@@ -1,113 +1,51 @@
-# Thanos Helm Chart
+# Thanos
 
-Manages Thanos highly available metrics system using Helmfile.
+Manages [Thanos](https://thanos.io/) using Helmfile. Provides long-term storage and multi-cluster unified query for Prometheus.
+
+> Currently **optional** — single cluster with 15-day retention is sufficient.
 
 <br/>
 
-## Directory Structure
+## When to Use
 
-```
-thanos/
-├── Chart.yaml          # Version tracking (no local templates)
-├── helmfile.yaml       # Helmfile release definition (uses remote chart)
-├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
-├── values/
-│   ├── mgmt.yaml               # Single-cluster mode (default)
-│   ├── mgmt-multicluster.yaml  # Multi-cluster federation mode
-│   └── objstore.yml            # Object store secret template
-├── upgrade.sh          # Version upgrade script
-├── backup/             # Auto backup on upgrade
-├── _backup/            # Old local chart files
-└── README.md
-```
+| Scenario | Needed |
+|----------|--------|
+| Single cluster, 15-day retention | No (current) |
+| Months/years of metric retention | Yes |
+| 2+ clusters unified monitoring | Yes |
+| Prometheus HA (deduplication) | Yes |
+
+<br/>
+
+## Two Release Structure
+
+| Release | Values | Components |
+|---------|--------|-----------|
+| `thanos` | `mgmt.yaml` | Compactor, Store Gateway, Object Storage |
+| `thanos-query` | `mgmt-query.yaml` | Query, Query Frontend |
 
 <br/>
 
 ## Prerequisites
 
-- Kubernetes cluster
-- Helm 3
-- Helmfile
-- Ingress controller (nginx)
-- StorageClass (e.g., `local-path`)
-- Object store secret (`thanos-objstore`) for cross-cluster metrics
+- kube-prometheus-stack installed with thanos sidecar enabled
+- Object Storage (MinIO, S3, GCS)
 
 <br/>
 
-## Values Files
-
-| File | Description |
-|------|-------------|
-| `values/mgmt.yaml` | Single-cluster mode with query, queryFrontend, compactor, storegateway |
-| `values/mgmt-multicluster.yaml` | Multi-cluster federation via gRPC TLS (queries dev/qa clusters) |
-| `values/objstore.yml` | Template for creating `thanos-objstore` secret |
-
-<br/>
-
-## Quick Start
-
-### Single-Cluster Mode (default)
+## Installation
 
 ```bash
-# Validate configuration
-helmfile lint
+# First install
+helmfile sync
 
-# Preview changes
-helmfile diff
-
-# Deploy
+# Subsequent updates
 helmfile apply
-
-# Delete
-helmfile destroy
 ```
 
 <br/>
 
-### Multi-Cluster Federation Mode
+## Reference
 
-To deploy the multicluster query federation, uncomment the `thanos-multicluster` release in `helmfile.yaml`, or use helmfile selectors:
-
-```bash
-# Deploy with multicluster values
-helmfile -l name=thanos-multicluster apply
-```
-
-<br/>
-
-### Object Store Secret
-
-Create the object store secret before deploying:
-
-```bash
-# Edit values/objstore.yml with your S3-compatible endpoint credentials
-kubectl create secret generic thanos-objstore \
-  --from-file=objstore.yml=values/objstore.yml \
-  -n monitoring
-```
-
-<br/>
-
-## Upgrade
-
-```bash
-# Check latest version and upgrade
-./upgrade.sh
-
-# Preview changes only
-./upgrade.sh --dry-run
-
-# Upgrade to a specific version
-./upgrade.sh --version 16.0.0
-
-# Rollback from backup
-./upgrade.sh --rollback
-```
-
-<br/>
-
-## References
-
-- https://github.com/bitnami/charts/tree/main/bitnami/thanos
-- https://thanos.io/
-- https://thanos.io/tip/operating/cross-cluster-tls-communication.md/
+- [Thanos](https://thanos.io/)
+- [Bitnami Thanos Chart](https://github.com/bitnami/charts/tree/main/bitnami/thanos)

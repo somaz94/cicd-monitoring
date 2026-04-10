@@ -1,6 +1,6 @@
 # prometheus-redis-exporter
 
-Exports Redis instance metrics to Prometheus.
+Exports Redis/Valkey instance (valkey-redis) metrics to Prometheus.
 
 <br/>
 
@@ -21,8 +21,8 @@ prometheus-redis-exporter/
 ├── Chart.yaml
 ├── helmfile.yaml
 ├── values/
-│   └── example-project.yaml   # Project Redis connection info, ServiceMonitor settings
-│   # └── another-project.yaml # Add new project values file here
+│   └── projectm.yaml       # ProjectM Redis connection info, ServiceMonitor settings
+│   # └── projectb.yaml     # Add new project values file here
 ├── upgrade.sh
 ├── backup/
 └── README.md
@@ -54,15 +54,13 @@ helmfile apply
 2. Dashboard ID: `11835` (Redis Dashboard for Prometheus — redis_exporter)
 3. Data source: **Prometheus** → Import
 
-Or use the custom dashboard in `../kube-prometheus-stack/dashboards/redis-dashboard.json`
-
 <br/>
 
 ## Adding New Projects
 
 To monitor Redis for a new project:
 
-1. Create a new values file in `values/` (e.g., `another-project.yaml`)
+1. Create a new values file in `values/` (e.g., `projectb.yaml`)
 2. Add a new release entry in `helmfile.yaml`
 3. Run `helmfile apply`
 
