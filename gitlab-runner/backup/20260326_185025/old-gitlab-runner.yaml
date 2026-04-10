@@ -25,7 +25,7 @@ revisionHistoryLimit: 5
 ## ref: https://docs.gitlab.com/runner/commands/index.html#gitlab-runner-register
 ##
 gitlabUrl: http://gitlab.example.com/
-# gitlabUrl: http://10.10.10.7/
+# gitlabUrl: http://192.0.2.7/
 
 ## DEPRECATED: The Registration Token for adding new Runners to the GitLab Server.
 ##

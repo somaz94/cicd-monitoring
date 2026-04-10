@@ -587,7 +587,7 @@ query:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param query.service.externalTrafficPolicy Thanos Query service externalTrafficPolicy
@@ -650,7 +650,7 @@ query:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param query.serviceGrpc.externalTrafficPolicy Thanos Query service externalTrafficPolicy
@@ -1318,7 +1318,7 @@ queryFrontend:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param queryFrontend.service.externalTrafficPolicy Thanos Query Frontend service externalTrafficPolicy
@@ -1866,7 +1866,7 @@ bucketweb:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ##
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param bucketweb.service.externalTrafficPolicy Thanos Bucket Web service externalTrafficPolicy
@@ -2423,7 +2423,7 @@ compactor:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param compactor.service.externalTrafficPolicy Thanos Compactor service externalTrafficPolicy
@@ -3009,7 +3009,7 @@ storegateway:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param storegateway.service.externalTrafficPolicy Thanos Store Gateway service externalTrafficPolicy
@@ -3791,7 +3791,7 @@ ruler:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param ruler.service.externalTrafficPolicy Thanos Ruler service externalTrafficPolicy
@@ -4448,7 +4448,7 @@ receive:
     ## https://kubernetes.io/docs/tasks/access-application-cluster/configure-cloud-provider-firewall/#restrict-access-for-loadbalancer-service
     ## e.g:
     ## loadBalancerSourceRanges:
-    ## - 10.10.10.0/24
+    ## - 192.0.2.0/24
     ##
     loadBalancerSourceRanges: []
     ## @param receive.service.externalTrafficPolicy Thanos Receive service externalTrafficPolicy
