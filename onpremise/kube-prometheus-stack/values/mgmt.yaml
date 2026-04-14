@@ -129,11 +129,18 @@ alertmanager:
             color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
             title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
             text: |-
-              {{ range .Alerts }}
+              {{ range .Alerts -}}
+              {{- if .Labels.namespace }}
               *Namespace:* `{{ .Labels.namespace }}`
+              {{- end -}}
+              {{- if .Labels.instance }}
+              *Instance:* `{{ .Labels.instance }}`
+              {{- end }}
               *Severity:* `{{ .Labels.severity }}`
               *Description:* {{ .Annotations.description }}
-              {{ if .GeneratorURL }}*Source:* <{{ .GeneratorURL }}|Prometheus>{{ end }}
+              {{- if .GeneratorURL }}
+              *Source:* <{{ .GeneratorURL }}|Prometheus>
+              {{- end }}
               {{ end }}
     templates:
       - '/etc/alertmanager/config/*.tmpl'
