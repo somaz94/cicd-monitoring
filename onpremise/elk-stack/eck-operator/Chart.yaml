@@ -1,0 +1,14 @@
+apiVersion: v2
+description: Elastic Cloud on Kubernetes (ECK) operator Helm chart
+home: https://github.com/elastic/cloud-on-k8s
+icon: https://helm.elastic.co/icons/eck.png
+kubeVersion: '>=1.21.0-0'
+maintainers:
+  - email: eck@elastic.co
+    name: Elastic
+name: eck-operator
+version: 3.3.2
+appVersion: 3.3.2
+sources:
+  - https://github.com/elastic/cloud-on-k8s
+type: application

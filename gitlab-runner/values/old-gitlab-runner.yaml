@@ -24,14 +24,14 @@ revisionHistoryLimit: 5
 ## The GitLab Server URL (with protocol) that want to register the runner against
 ## ref: https://docs.gitlab.com/runner/commands/index.html#gitlab-runner-register
 ##
-gitlabUrl: http://gitlab.example.com/
-# gitlabUrl: http://192.0.2.7/
+gitlabUrl: http://external.example.com:31080/
+# gitlabUrl: http://192.168.1.7/
 
 ## DEPRECATED: The Registration Token for adding new Runners to the GitLab Server.
 ##
 ## ref: https://docs.gitlab.com/ee/ci/runners/new_creation_workflow.html
 ##
-runnerRegistrationToken: "xxxxxxxxxxxxx"
+runnerRegistrationToken: "yzwVGjfMspzAVWquN7eM"
 
 ## The Runner Token for adding new Runners to the GitLab Server. This must
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
@@ -146,12 +146,12 @@ runners:
 ## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 ##
 securityContext:
-  allowPrivilegeEscalation: true  # Allow privilege escalation
-  readOnlyRootFilesystem: false   # Allow writes to root filesystem
-  runAsNonRoot: false             # Allow running as root
-  privileged: true               # Allow privileged mode execution
+  allowPrivilegeEscalation: true  # 권한 확대를 허용합니다.
+  readOnlyRootFilesystem: false   # 루트 파일 시스템에 쓸 수 있게 합니다.
+  runAsNonRoot: false             # 루트로 실행할 수 있게 합니다.
+  privileged: true               # 권한이 부여된 모드로 실행을 허용합니다.
   capabilities:
-    drop: []                      # Keep all Linux capabilities
+    drop: []                      # 모든 리눅스 캡 능성을 유지합니다.
   
 persistentVolumes:
   enabled: false

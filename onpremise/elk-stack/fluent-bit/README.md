@@ -78,6 +78,10 @@ upgrade.sh automatically performs the following:
 5. Detects custom templates (CUSTOM_TEMPLATES)
 6. Creates backup then updates files
 
+### Image tag policy
+
+Do not set `image.tag` in `values/mgmt.yaml`. The chart default renders the tag from `Chart.AppVersion`, so running `./upgrade.sh` bumps the chart and the container image in lockstep. Unlike fluentd, the upstream fluent-bit image has no ES-specific variant that requires pinning. Override `image.tag` in values only when a variant other than the chart default is required.
+
 ### Rollback
 
 ```bash
@@ -101,7 +105,7 @@ helmfile diff
 helmfile apply
 
 # Check Pod status
-kubectl get pods -n monitoring -l app.kubernetes.io/name=fluent-bit
+kubectl get pods -n logging -l app.kubernetes.io/name=fluent-bit
 ```
 
 <br/>
@@ -155,7 +159,7 @@ helmfile status         # Check status
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
 | Elasticsearch connection failure | Check host/port/credentials in `values/mgmt.yaml` |
-| Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n monitoring -l app.kubernetes.io/name=fluent-bit` |
+| Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluent-bit` |
 
 <br/>
 

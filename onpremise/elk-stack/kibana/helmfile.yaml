@@ -1,16 +1,12 @@
-repositories:
-  - name: elastic
-    url: https://helm.elastic.co
-
 releases:
   - name: kibana
-    namespace: monitoring
+    namespace: logging
     chart: .
-    version: 8.5.1
+    # Run `helmfile sync` in `../elasticsearch` first; elasticsearchRef then resolves.
+    # (`needs:` cannot span separate helmfile state files.)
     values:
       - values/mgmt.yaml
 
-# Hooks to ensure proper installation and upgrades
 hooks:
   - events: ["presync"]
     showlogs: true
@@ -18,7 +14,7 @@ hooks:
     args:
       - "create"
       - "namespace"
-      - "monitoring"
+      - "logging"
       - "--dry-run=client"
       - "-o"
       - "yaml"

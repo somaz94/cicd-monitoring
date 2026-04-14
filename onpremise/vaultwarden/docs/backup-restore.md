@@ -1,74 +1,74 @@
-# 백업 & 복원 가이드
+# Backup & Restore Guide
 
-## 백업 전략
+## Backup Strategy
 
-- **스케줄**: 매일 KST 03:00 (UTC 18:00)
-- **파일 형식**: `db-YYYYMMDD.sqlite3`, `rsa_key-YYYYMMDD.pem`
-- **보관 기간**: 30일 (초과 시 자동 삭제)
-- **저장소**: `vaultwarden-backup-data` PVC (25Gi, NFS)
-
-<br/>
-
-## 백업 파일
-
-| 파일 | 설명 |
-|------|------|
-| `db-YYYYMMDD.sqlite3` | SQLite 데이터베이스 (모든 vault 데이터, 사용자, 조직) |
-| `rsa_key-YYYYMMDD.pem` | JWT 토큰 서명용 RSA 개인키 |
-
-> **중요**: `rsa_key.pem`은 필수 파일입니다. 분실 시 기존 세션이 모두 무효화되며
-> 사용자는 재인증해야 합니다.
+- **Schedule**: Daily at KST 03:00 (UTC 18:00)
+- **File format**: `db-YYYYMMDD.sqlite3`, `rsa_key-YYYYMMDD.pem`
+- **Retention**: 30 days (older backups auto-deleted)
+- **Storage**: `vaultwarden-backup-data` PVC (25Gi, NFS)
 
 <br/>
 
-## 수동 백업
+## Backup Files
+
+| File | Description |
+|------|-------------|
+| `db-YYYYMMDD.sqlite3` | SQLite database (all vault data, users, orgs) |
+| `rsa_key-YYYYMMDD.pem` | RSA private key for JWT token signing |
+
+> **Important**: `rsa_key.pem` is critical. If lost, all existing sessions become invalid
+> and users must re-authenticate.
+
+<br/>
+
+## Manual Backup
 
 ```bash
-# 즉시 백업 실행
+# Trigger backup immediately
 kubectl create job --from=cronjob/vaultwarden-backup manual-backup -n vaultwarden
 
-# Job 상태 확인
+# Check job status
 kubectl get jobs -n vaultwarden
 
-# 백업 로그 확인
+# View backup logs
 kubectl logs job/manual-backup -n vaultwarden
 
-# 백업 목록 확인
+# List available backups
 ./scripts/restore.sh
 ```
 
 <br/>
 
-## 복원
+## Restore
 
-### restore.sh 사용 (권장)
+### Using restore.sh (Recommended)
 
 ```bash
-# 백업 목록 확인
+# List available backups
 ./scripts/restore.sh
 
-# 특정 날짜로 복원
+# Restore from specific date
 ./scripts/restore.sh 20260408
 
-# 가장 최근 백업으로 복원
+# Restore from most recent backup
 ./scripts/restore.sh latest
 ```
 
-스크립트가 자동으로 수행하는 작업:
-1. Vaultwarden 중지 (replicas=0)
-2. 백업 파일을 데이터 PVC로 복사
-3. Vaultwarden 재시작 (replicas=1)
-4. Pod ready 대기
+The script automatically:
+1. Stops Vaultwarden (scale to 0)
+2. Copies backup files to data PVC
+3. Restarts Vaultwarden (scale to 1)
+4. Waits for pod ready
 
 <br/>
 
-### 수동 복원
+### Manual Restore
 
 ```bash
-# 1. Vaultwarden 중지
+# 1. Stop Vaultwarden
 kubectl scale statefulset vaultwarden --replicas=0 -n vaultwarden
 
-# 2. 복원 Pod 실행
+# 2. Run restore pod
 kubectl run restore --rm -it --image=busybox -n vaultwarden \
   --overrides='{
     "spec": {
@@ -89,38 +89,39 @@ kubectl run restore --rm -it --image=busybox -n vaultwarden \
     }
   }'
 
-# 3. Vaultwarden 재시작
+# 3. Restart Vaultwarden
 kubectl scale statefulset vaultwarden --replicas=1 -n vaultwarden
 ```
 
 <br/>
 
-## 보관 기간 변경
+## Changing Retention
 
-`values/mgmt.yaml`의 CronJob args에서 `RETENTION_DAYS`를 수정합니다:
+Edit `values/mgmt.yaml` and change `RETENTION_DAYS` in the CronJob args:
 
 ```yaml
-# 현재: 30일
+# Current: 30 days
 RETENTION_DAYS=30
 
-# 예시: 90일로 변경
+# Example: keep 90 days
 RETENTION_DAYS=90
 ```
 
-적용: `helmfile apply`
+Then apply: `helmfile apply`
 
 <br/>
 
-## 모니터링
+## Monitoring
 
 ```bash
-# CronJob 스케줄 확인
+# Check CronJob schedule
 kubectl get cronjobs -n vaultwarden
 
-# 최근 백업 Job 확인
+# Check recent backup jobs
 kubectl get jobs -n vaultwarden --sort-by=.metadata.creationTimestamp
 
-# 백업 PVC 용량 확인
-kubectl run check-size --rm -it --restart=Never --image=busybox -n vaultwarden \
-  --overrides='{"spec":{"containers":[{"name":"check","image":"busybox","command":["du","-sh","/backup"],"volumeMounts":[{"name":"b","mountPath":"/backup"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"vaultwarden-backup-data"}}]}}'
+# Check backup PVC usage
+kubectl exec -n vaultwarden vaultwarden-0 -- du -sh /backup-data/ 2>/dev/null || \
+  kubectl run check-size --rm -it --restart=Never --image=busybox -n vaultwarden \
+    --overrides='{"spec":{"containers":[{"name":"check","image":"busybox","command":["du","-sh","/backup"],"volumeMounts":[{"name":"b","mountPath":"/backup"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"vaultwarden-backup-data"}}]}}'
 ```

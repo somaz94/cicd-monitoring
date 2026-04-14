@@ -1,42 +1,42 @@
-# 클라이언트 설정 가이드
+# Client Setup Guide
 
-Vaultwarden은 모든 Bitwarden 공식 클라이언트와 호환됩니다.
-Self-hosted 서버 URL만 설정하면 됩니다.
+Vaultwarden is compatible with all official Bitwarden clients.
+Simply configure the Self-hosted server URL.
 
 <br/>
 
 ## Chrome Extension
 
-1. [Bitwarden Chrome Extension](https://chromewebstore.google.com/detail/bitwarden-password-manage/nngceckbapebfimnlniiiahkandclblb) 설치
-2. Extension 아이콘 클릭 → 로그인 화면
-3. 하단의 **"접근 중: bitwarden.com"** 클릭
-4. 드롭다운에서 **"자체 호스팅"** 선택
-5. **Server URL**: `https://vault.example.com` 입력 → **저장**
-6. GitLab 계정 이메일로 로그인, 마스터 비밀번호 입력
+1. Install [Bitwarden Chrome Extension](https://chromewebstore.google.com/detail/bitwarden-password-manage/nngceckbapebfimnlniiiahkandclblb)
+2. Click Extension icon → Login screen
+3. Click **"Logging in on: bitwarden.com"** at the bottom
+4. Select **"Self-hosted"** from the dropdown
+5. **Server URL**: `https://vault.example.com` → **Save**
+6. Log in with your GitLab account email and master password
 
 <br/>
 
-## 기타 클라이언트
+## Other Clients
 
-모든 클라이언트에서 동일하게 **Self-hosted URL**만 설정하면 됩니다.
+All clients require the same **Self-hosted URL** configuration.
 
-| 클라이언트 | 다운로드 |
-|-----------|---------|
+| Client | Download |
+|--------|----------|
 | Desktop (Windows/Mac/Linux) | https://bitwarden.com/download/#downloads-desktop |
-| Mobile (iOS/Android) | App Store / Google Play에서 "Bitwarden" 검색 |
+| Mobile (iOS/Android) | Search "Bitwarden" on App Store / Google Play |
 | Firefox Extension | https://addons.mozilla.org/firefox/addon/bitwarden-password-manager/ |
 | CLI | https://bitwarden.com/download/#downloads-command-line-interface |
 
-설정 방법:
-1. 앱 실행 → 로그인 화면
-2. Self-hosted 선택
+Setup:
+1. Open app → Login screen
+2. Select Self-hosted
 3. Server URL: `https://vault.example.com`
-4. 저장 후 로그인
+4. Save and log in
 
 <br/>
 
-## 네트워크 요구사항
+## Network Requirements
 
-- `vault.example.com`는 내부 DNS로 `10.0.0.55`에 매핑
-- **같은 네트워크**: 직접 접속 가능
-- **외부**: VPN 연결 필요
+- `vault.example.com` resolves to `192.168.1.55` via internal DNS
+- **Same network**: Direct access
+- **External**: VPN required

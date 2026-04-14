@@ -1,242 +1,87 @@
-global:
-  defaultStorageClass: "local-path"
+# =============================================================================
+# Thanos (Sidecar Mode) Custom Values
+#
+# This release handles: Compactor, Store Gateway, Object Storage
+# Prometheus sidecar is configured in kube-prometheus-stack values.
+#
+# Prerequisites:
+# - kube-prometheus-stack with thanos sidecar enabled
+# - Object storage (MinIO, S3, GCS)
+# =============================================================================
 
-fullnameOverride: "thanos"
-clusterDomain: cluster.local
-
-existingObjstoreSecret: "thanos-objstore"
-
+# Disable query in this release (handled by thanos-query release)
 query:
-  enabled: true
-  logLevel: debug
-  # resources:
-  #   requests:
-  #     cpu: 200m
-  #     memory: 4Gi
-  #   limits:
-  #     cpu: 400m
-  #     memory: 8Gi
-  replicaLabel:
-    - prometheus_replica
-  dnsDiscovery:
-    enabled: false
-  stores:
-    # - kube-prometheus-stack-thanos-discovery:10901
-    - dnssrv+_grpc._tcp.kube-prometheus-stack-thanos-discovery.monitoring.svc.cluster.local
-    # - dnssrv+_grpc._tcp.thanos-multicluster-query-grpc.monitoring.svc.svc.cluster.local
-  replicaCount: 1
-  startupProbe:
-    enabled: true
-  # -- Schedule query on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
-
-  # ── HTTP ingress (active) ──
-  ingress:
-    enabled: true
-    hostname: thanos-query.example.com
-    ingressClassName: nginx
-    pathType: ImplementationSpecific
-    path: /
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    grpc:
-      enabled: false
-
-  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
-  # Prerequisites:
-  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
-  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/example-user/certmanager-letsencrypt
-  #
-  # ingress:
-  #   enabled: true
-  #   hostname: thanos-query.example.com
-  #   ingressClassName: nginx
-  #   pathType: ImplementationSpecific
-  #   path: /
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   tls: true
-  #   grpc:
-  #     enabled: false
-
-queryFrontend:
-  enabled: true
-  # resources:
-  #   requests:
-  #     cpu: 100m
-  #     memory: 1Gi
-  #   limits:
-  #     cpu: 200m
-  #     memory: 2Gi
-  rbac:
-    create: true
-  # -- Schedule queryFrontend on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
-
-  # ── HTTP ingress (active) ──
-  ingress:
-    enabled: true
-    hostname: thanos.example.com
-    ingressClassName: nginx
-    pathType: ImplementationSpecific
-    path: /
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-
-  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
-  # Prerequisites:
-  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
-  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/example-user/certmanager-letsencrypt
-  #
-  # ingress:
-  #   enabled: true
-  #   hostname: thanos.example.com
-  #   ingressClassName: nginx
-  #   pathType: ImplementationSpecific
-  #   path: /
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   tls: true
-
-bucketweb:
   enabled: false
 
+queryFrontend:
+  enabled: false
+
+# =============================================================================
+# Compactor (compacts and downsamples long-term storage)
+# =============================================================================
 compactor:
   enabled: true
-  retentionResolutionRaw: 60d      # Retain raw data (10-second resolution) for 60 days
-  retentionResolution5m: 60d       # Retain 5-minute downsampled data for 60 days
-  retentionResolution1h: 1y        # Retain 1-hour downsampled data for 1 year
-  consistencyDelay: 1h
-  # -- Schedule compactor on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
+
   resources:
     requests:
       cpu: 100m
-      memory: 400Mi
+      memory: 256Mi
     limits:
-      cpu: 200m
-      memory: 800Mi
-
-  # ── HTTP ingress (active) ──
-  ingress:
-    enabled: true
-    hostname: thanos-compactor.example.com
-    ingressClassName: nginx
-    pathType: ImplementationSpecific
-    path: /
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-
-  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
-  # Prerequisites:
-  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
-  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/example-user/certmanager-letsencrypt
-  #
-  # ingress:
-  #   enabled: true
-  #   hostname: thanos-compactor.example.com
-  #   ingressClassName: nginx
-  #   pathType: ImplementationSpecific
-  #   path: /
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   tls: true
+      cpu: 500m
+      memory: 1Gi
 
   persistence:
     enabled: true
-    storageClass: "local-path"
-    accessModes:
-      - ReadWriteOnce
-    size: 10Gi
+    size: 20Gi
+    storageClassName: nfs-client-server
 
+  retentionResolutionRaw: 30d    # Keep raw data for 30 days
+  retentionResolution5m: 180d    # Keep 5m downsampled for 6 months
+  retentionResolution1h: 365d    # Keep 1h downsampled for 1 year
+
+# =============================================================================
+# Store Gateway (serves data from object storage)
+# =============================================================================
 storegateway:
   enabled: true
-  logLevel: warn
-  # resources:
-  #   requests:
-  #     cpu: 400m
-  #     memory: 3Gi
-  #   limits:
-  #     cpu: 800m
-  #     memory: 6Gi
-  # -- Schedule storegateway on specific nodes using tolerations and nodeSelector.
-  # Use when dedicated monitoring nodes have taints (e.g., key=monitoring:NoSchedule)
-  # and labels (e.g., local-path=enabled) to isolate monitoring workloads.
-  # tolerations:
-  #   - key: "monitoring"
-  #     operator: "Equal"
-  #     effect: "NoSchedule"
-  # nodeSelector:
-  #   local-path: enabled
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
   persistence:
     enabled: true
-    storageClass: "local-path"
-    accessModes:
-      - ReadWriteOnce
     size: 10Gi
-  sharded:
-    enabled: false
-  pdb:
-    create: true
-    minAvailable: ""
-    maxUnavailable: ""
-  ingress:
-    enabled: false
+    storageClassName: nfs-client-server
 
+# =============================================================================
+# Ruler (not needed if using Prometheus rules)
+# =============================================================================
 ruler:
   enabled: false
 
+# =============================================================================
+# Receive (not needed for sidecar mode)
+# =============================================================================
 receive:
   enabled: false
 
-receiveDistributor:
-  enabled: false
+# =============================================================================
+# Object Storage Configuration
+# TODO: Configure your object storage (MinIO, S3, GCS)
+# =============================================================================
+objstoreConfig: |-
+  type: S3
+  config:
+    bucket: "thanos-metrics"
+    endpoint: "minio.monitoring.svc.example-cluster.local:9000"
+    access_key: "CHANGE_ME"
+    secret_key: "CHANGE_ME"
+    insecure: true
 
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-  prometheusRule:
-    enabled: false
-
-volumePermissions:
-  enabled: false
-
-minio:
-  enabled: false
+# Alternative: Use existing secret
+# existingObjstoreSecret: thanos-objstore-secret

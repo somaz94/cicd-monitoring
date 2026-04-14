@@ -24,7 +24,7 @@ Ubuntu 20.04 ships with Python 3.8 by default.
 **Option 1: deadsnakes PPA (recommended)**
 
 ```bash
-ssh deploy@<SERVER_IP>
+ssh example@<SERVER_IP>
 sudo apt update
 sudo apt install -y software-properties-common
 sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA6932366A755776
@@ -38,7 +38,7 @@ sudo apt install -y python3.10
 **Option 2: Source build (when PPA is unreachable)**
 
 ```bash
-ssh deploy@<SERVER_IP>
+ssh example@<SERVER_IP>
 sudo apt update
 sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
   libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev wget
@@ -58,7 +58,7 @@ python3.10 --version
 **Specify Python path in inventory.ini:**
 
 ```ini
-server1 ansible_host=10.0.0.1 ansible_python_interpreter=/usr/bin/python3.10
+server1 ansible_host=192.168.1.10 ansible_python_interpreter=/usr/bin/python3.10
 ```
 
 <br/>
@@ -98,7 +98,7 @@ FAILED! => {
 ### Solution
 
 ```bash
-ssh deploy@<SERVER_IP>
+ssh example@<SERVER_IP>
 sudo ss -tlnp | grep 9100
 
 # Use alternative port:
@@ -112,9 +112,9 @@ ansible-playbook -i inventory.ini playbook.yml -e "node_exporter_port=9101"
 ### Solution
 
 ```bash
-ssh -i ~/.ssh/id_rsa deploy@10.0.0.1     # Test directly
-chmod 600 ~/.ssh/id_rsa                    # Fix key permissions
-ssh-keygen -R 10.0.0.1                     # Reset host key
+ssh -i ~/.ssh/id_rsa_example example@192.168.1.10  # Test directly
+chmod 600 ~/.ssh/id_rsa_example                     # Fix key permissions
+ssh-keygen -R 192.168.1.10                           # Reset host key
 ```
 
 <br/>
@@ -124,5 +124,5 @@ ssh-keygen -R 10.0.0.1                     # Reset host key
 Warning only, no functional impact. Suppress by specifying in inventory:
 
 ```ini
-server1 ansible_host=10.0.0.1 ansible_python_interpreter=/usr/bin/python3.10
+server1 ansible_host=192.168.1.10 ansible_python_interpreter=/usr/bin/python3.10
 ```

@@ -5,7 +5,7 @@ repositories:
 releases:
   - name: prometheus-elasticsearch-exporter
     chart: prometheus-community/prometheus-elasticsearch-exporter
-    namespace: monitoring
+    namespace: logging
     version: 7.2.1
     values:
       - values/mgmt.yaml

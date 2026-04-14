@@ -1,28 +1,30 @@
 # DaemonSet, Deployment or StatefulSet
 kind: "StatefulSet"
-variant: elasticsearch7
+# variant aligns with fluent-plugin-elasticsearch supported builds.
+# No elasticsearch9 variant is published upstream; elasticsearch8 variant is
+# confirmed compatible with ES 9.0 bulk API (Phase 0 validation, 2026-04-14).
+variant: elasticsearch8
 replicaCount: 1
 
 image:
   repository: "fluent/fluentd-kubernetes-daemonset"
-  tag: "v1.16-debian-elasticsearch7-1"
+  tag: "v1.19.2-debian-elasticsearch8-1.4"
 
 
 env:
   - name: FLUENT_ELASTICSEARCH_HOST
-    value: "elasticsearch-master"
+    value: "elasticsearch-es-http"
   - name: FLUENT_ELASTICSEARCH_PORT
     value: "9200"
+  # ECK-managed elastic-user secret stores the password under a key named
+  # after the user (no username key). Inline the username.
   - name: FLUENT_ELASTICSEARCH_USER
-    valueFrom:
-      secretKeyRef:
-        name: elasticsearch-master-credentials
-        key: username
+    value: "elastic"
   - name: FLUENT_ELASTICSEARCH_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: elasticsearch-master-credentials
-        key: password
+        name: elasticsearch-es-elastic-user
+        key: elastic
   - name: FLUENT_ELASTICSEARCH_SCHEME
     value: "https"
   - name: FLUENT_ELASTICSEARCH_SSL_VERIFY
@@ -30,14 +32,11 @@ env:
 
 envFrom: []
 
-volumes:
-  - name: elastic-certs
-    secret:
-      secretName: elasticsearch-master-certs
+# TLS CA mount removed — ssl_verify is false against the ECK-managed
+# self-signed cert (internal cluster traffic).
+volumes: []
 
-volumeMounts:
-  - name: elastic-certs
-    mountPath: /certs
+volumeMounts: []
 
 persistence:
   enabled: true
@@ -49,14 +48,20 @@ service:
   enabled: true
   type: "ClusterIP"
   annotations: {}
-  ports:
+  # loadBalancerIP:
+  # externalTrafficPolicy: Local
+  ports: 
   - name: "forwarder"
     protocol: TCP
     containerPort: 24224
 
+# ServiceMonitor (Prometheus metrics for Fluentd)
 metrics:
   serviceMonitor:
-    enabled: false
+    enabled: true
+    namespace: logging
+    additionalLabels:
+      release: kube-prometheus-stack
 
   prometheusRule:
     enabled: false
@@ -64,18 +69,46 @@ metrics:
 dashboards:
   enabled: "false"
 
+# configMapConfigs:
+#   - fluentd-template-config
+
+# extraConfigMaps:
+#   - name: fluentd-template-config
+#     data:
+#       template.json: |
+#         {
+#           "index_patterns": ["*"],
+#           "template": {
+#             "settings": {
+#               "number_of_shards": 1
+#             },
+#             "mappings": {
+#               "properties": {
+#                 "data": {
+#                   "properties": {
+#                     "requestBody": { "type": "text" },
+#                     "responseBody": { "type": "text" }
+#                   }
+#                 }
+#               }
+#             }
+#           },
+#           "priority": 500,
+#           "version": 1
+#         }
+
 fileConfigs:
   01_sources.conf: |-
     <system>
       log_level info
     </system>
-
+    
     # Input from Fluent Bit
     <source>
       @type forward
       port 24224
       bind 0.0.0.0
-      tag app.*
+      tag example-project.*
     </source>
 
     # Prometheus metrics
@@ -102,8 +135,8 @@ fileConfigs:
 
   02_filters.conf: |-
     # Step 1: Fallback JSON parsing
-    # In case fluent-bit's app_json parser failed
-    <filter app.**>
+    # fluent-bit의 example-project_json 파서가 실패한 경우 대비
+    <filter example-project.**>
       @type parser
       key_name log
       reserve_data true
@@ -114,9 +147,9 @@ fileConfigs:
       emit_invalid_record_to_error false
     </filter>
 
-    # Step 2: Pino -> Winston normalization
-    # Convert Pino format (numeric level, time, msg) to Winston format (string level, timestamp, message)
-    <filter app.**>
+    # Step 2: Pino → Winston 정규화
+    # Pino 포맷(숫자 level, time, msg)을 Winston 포맷(문자열 level, timestamp, message)으로 변환
+    <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -126,9 +159,9 @@ fileConfigs:
       </record>
     </filter>
 
-    # Step 3: Timestamp normalization + cleanup
-    # Pino time(Unix ms) / Winston timestamp(ISO8601) -> @timestamp (Asia/Seoul)
-    <filter app.**>
+    # Step 3: 타임스탬프 정규화 + 불필요 필드 정리
+    # Pino time(Unix ms) / Winston timestamp(ISO8601) → @timestamp (Asia/Seoul)
+    <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -137,9 +170,9 @@ fileConfigs:
       remove_keys time,msg,filepath,req,log
     </filter>
 
-    # Step 4: Nested JSON handling in data field
-    # Convert requestBody, responseBody, requestHeader to JSON strings (ES text mapping compatible)
-    <filter app.**>
+    # Step 4: data 필드 내 nested JSON 처리
+    # requestBody, responseBody, requestHeader를 JSON 문자열로 변환 (ES text 매핑 호환)
+    <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -147,8 +180,8 @@ fileConfigs:
       </record>
     </filter>
 
-    # Step 5: Stack array newline unescape
-    <filter app.**>
+    # Step 5: stack 배열 \n unescape 처리
+    <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -158,22 +191,21 @@ fileConfigs:
 
   03_outputs.conf: |-
     # Output to Elasticsearch with dynamic index based on log_source
-    <match app.**>
+    <match example-project.**>
       @type elasticsearch
       host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
-      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}" 
       user "#{ENV['FLUENT_ELASTICSEARCH_USER']}"
       password "#{ENV['FLUENT_ELASTICSEARCH_PASSWORD']}"
       scheme "#{ENV['FLUENT_ELASTICSEARCH_SCHEME']}"
       ssl_verify "#{ENV['FLUENT_ELASTICSEARCH_SSL_VERIFY']}"
-      ca_file /certs/ca.crt
       ssl_version TLSv1_2
-
+      
       # Dynamic index name based on log_source field
       index_name ${log_source}
       type_name _doc
       suppress_type_name true
-
+      
       # Buffer settings for performance
       <buffer tag,log_source>
         @type file
@@ -188,11 +220,11 @@ fileConfigs:
         retry_max_times 10
         overflow_action block
         total_limit_size 2GB
+        flush_at_shutdown true
       </buffer>
 
       # Performance settings
       bulk_message_request_threshold 1024
-      flush_at_shutdown true
 
       # Error handling - send failed records to file
       <secondary>
@@ -215,3 +247,4 @@ resources:
 
 rbac:
   create: true
+

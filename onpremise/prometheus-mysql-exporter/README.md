@@ -1,6 +1,6 @@
 # prometheus-mysql-exporter
 
-Exports MySQL instance (projectm-db) metrics to Prometheus.
+Exports MySQL instance (example-project-db) metrics to Prometheus.
 
 <br/>
 
@@ -21,7 +21,7 @@ prometheus-mysql-exporter/
 ├── Chart.yaml
 ├── helmfile.yaml
 ├── values/
-│   └── projectm.yaml       # ProjectM DB connection info, ServiceMonitor settings
+│   └── example-project.yaml       # ExampleProject DB connection info, ServiceMonitor settings
 │   # └── projectb.yaml     # Add new project values file here
 ├── upgrade.sh
 ├── backup/

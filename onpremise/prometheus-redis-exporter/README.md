@@ -21,7 +21,7 @@ prometheus-redis-exporter/
 ├── Chart.yaml
 ├── helmfile.yaml
 ├── values/
-│   └── projectm.yaml       # ProjectM Redis connection info, ServiceMonitor settings
+│   └── example-project.yaml       # ExampleProject Redis connection info, ServiceMonitor settings
 │   # └── projectb.yaml     # Add new project values file here
 ├── upgrade.sh
 ├── backup/

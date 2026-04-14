@@ -13,13 +13,9 @@ Managed as JSON files in `dashboards/` directory.
 | `mysql-dashboard.json` | MySQL (Connections, QPS, InnoDB, Slow Query) |
 | `redis-dashboard.json` | Redis (Memory, Commands, Keys, Hit Rate) |
 | `fluentbit-fluentd-dashboard.json` | Fluent Bit + Fluentd logging pipeline |
-| `ingress-nginx-dashboard.json` | Ingress-Nginx controllers |
+| `ingress-nginx-dashboard.json` | Ingress-Nginx controllers (mgmt + public-a~j) |
 | `argocd-dashboard.json` | ArgoCD (App sync, Git requests, Cluster status) |
 | `harbor-dashboard.json` | Harbor (Projects, Storage, HTTP requests) |
-| `gitlab-runner-dashboard.json` | GitLab Runner (Jobs, Queue, Failures) |
-| `metallb-dashboard.json` | MetalLB (Address Pool, BGP) |
-| `elasticsearch-dashboard.json` | Elasticsearch (Cluster health, Indices, JVM) |
-| `cilium-dashboard.json` | Cilium CNI (Policy, Endpoint, Network) |
 
 ### Import Methods
 
@@ -33,9 +29,9 @@ Managed as JSON files in `dashboards/` directory.
 **Method 2: Grafana API**
 
 ```bash
-cd kube-prometheus-stack
+cd observability/monitoring/kube-prometheus-stack
 
-# Import single dashboard
+# Fluent Bit + Fluentd
 cat dashboards/fluentbit-fluentd-dashboard.json | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps({'dashboard':d,'overwrite':True}))" | \
   curl -X POST http://grafana.example.com/api/dashboards/db \
@@ -84,10 +80,6 @@ Each dashboard has a unique `uid`. Re-importing with `overwrite: true` updates e
 | Ingress-Nginx | `ingress-nginx-controller` | `controller`, `namespace`, `ingress` |
 | ArgoCD Overview | `argocd-overview` | `job`, `namespace` |
 | Harbor Registry | `harbor-registry` | `job`, `instance` |
-| GitLab Runner | `gitlab-runner` | `job`, `instance` |
-| MetalLB | `metallb` | `namespace` |
-| Elasticsearch | `elasticsearch-overview` | `cluster`, `name` |
-| Cilium CNI | `cilium-cni` | `namespace`, `pod` |
 
 > UID visible in Grafana URL: `http://grafana.example.com/d/<UID>/...`
 

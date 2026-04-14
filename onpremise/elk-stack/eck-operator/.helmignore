@@ -1,0 +1,4 @@
+# Backups and transient files
+backup/
+values/
+!values/mgmt.yaml

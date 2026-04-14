@@ -1,0 +1,83 @@
+# =============================================================================
+# Thanos Query Custom Values
+#
+# Separate Thanos Query instance for unified query interface.
+# Connects to Prometheus sidecar(s) and Store Gateway.
+#
+# Reference: sia-kubernetes-infra thanos-query pattern
+# =============================================================================
+
+# =============================================================================
+# Query (unified query across Prometheus instances)
+# =============================================================================
+query:
+  enabled: true
+
+  replicaLabel:
+    - prometheus_replica
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Connect to Prometheus sidecar + Store Gateway
+  stores:
+    - "dns+kube-prometheus-stack-thanos-discovery.monitoring.svc.example-cluster.local:10901"
+    - "dns+thanos-storegateway.monitoring.svc.example-cluster.local:10901"
+    # Add more clusters:
+    # - "dns+<remote-cluster>-thanos-sidecar.<namespace>.svc:10901"
+
+  ingress:
+    enabled: true
+    hostname: thanos-query.example.com  # TODO: Set your domain
+    ingressClassName: nginx
+
+  # Autoscaling (enable for high query volume)
+  # autoscaling:
+  #   enabled: true
+  #   minReplicas: 2
+  #   maxReplicas: 5
+  #   targetCPU: 75
+  #   targetMemory: 75
+
+# =============================================================================
+# Query Frontend (caching layer — enable for high query volume)
+# =============================================================================
+queryFrontend:
+  enabled: false
+  # resources:
+  #   requests:
+  #     cpu: 100m
+  #     memory: 256Mi
+  #   limits:
+  #     cpu: 500m
+  #     memory: 512Mi
+
+# =============================================================================
+# Disable all other components (handled by thanos release)
+# =============================================================================
+compactor:
+  enabled: false
+
+storegateway:
+  enabled: false
+
+ruler:
+  enabled: false
+
+receive:
+  enabled: false
+
+# Object storage config (needed for query to read store gateway data)
+objstoreConfig: |-
+  type: S3
+  config:
+    bucket: "thanos-metrics"
+    endpoint: "minio.monitoring.svc.example-cluster.local:9000"
+    access_key: "CHANGE_ME"
+    secret_key: "CHANGE_ME"
+    insecure: true

@@ -7,7 +7,7 @@ set -euo pipefail
 # To reuse this script for other Helm charts, copy this file
 # and modify ONLY the variables below.
 # ============================================================
-SCRIPT_NAME="Kube Prometheus Stack Helm Chart Upgrade Script"
+SCRIPT_NAME="kube-prometheus-stack Helm Chart Upgrade Script"
 HELM_REPO_NAME="prometheus-community"
 HELM_REPO_URL="https://prometheus-community.github.io/helm-charts"
 HELM_CHART="prometheus-community/kube-prometheus-stack"

@@ -151,6 +151,13 @@ volumes:
 {{- if eq .Values.kind "DaemonSet" }}
   {{- toYaml .Values.daemonSetVolumes | nindent 2 }}
 {{- end }}
+{{- if and .Values.persistentVolumeClaims.enabled .Values.persistentVolumeClaims.items }}
+{{- range $persistentVolumeClaim := .Values.persistentVolumeClaims.items }}
+  - name: {{ $persistentVolumeClaim.name }}
+    persistentVolumeClaim:
+      claimName: {{ $persistentVolumeClaim.name }}
+{{- end }}
+{{- end }}
 {{- if .Values.extraVolumes }}
   {{- toYaml .Values.extraVolumes | nindent 2 }}
 {{- end }}

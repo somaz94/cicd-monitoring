@@ -13,3 +13,4 @@ sources:
 - https://github.com/fluent/fluentd/
 - https://github.com/fluent/fluentd-kubernetes-daemonset
 version: 0.5.3
+

@@ -1,6 +1,16 @@
-# Kibana Helm Chart
+# Kibana (ECK CR)
 
-Manages [Kibana](https://www.elastic.co/kibana/) on a Kubernetes cluster using Helmfile.
+Manages an ECK-backed Kibana CR wrapped as a Helmfile-deployed local Helm chart.
+
+Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace lets ECK auto-inject the connection settings (hosts, credentials, CA certificate).
+
+<br/>
+
+## Prerequisites
+
+- [eck-operator](../eck-operator/) installed.
+- [elasticsearch](../elasticsearch/) CR deployed and HEALTH=green.
+- `logging` namespace.
 
 <br/>
 
@@ -8,137 +18,104 @@ Manages [Kibana](https://www.elastic.co/kibana/) on a Kubernetes cluster using H
 
 ```
 kibana/
-├── .helmignore                         # Files excluded from Helm packaging
-├── Chart.yaml                          # Local chart definition
-├── helmfile.yaml                       # Helmfile release definition (uses local chart)
-├── values.yaml                         # Upstream default values
+├── .helmignore
+├── Chart.yaml                  # local dummy chart metadata (appVersion = Stack version)
+├── helmfile.yaml               # needs: logging/elasticsearch
 ├── values/
-│   └── mgmt.yaml                       # Custom values (manually managed)
-├── templates/                          # Local Helm templates
-│   ├── NOTES.txt
-│   ├── _helpers.tpl
-│   ├── configmap-helm-scripts.yaml
-│   ├── configmap.yaml
-│   ├── deployment.yaml
-│   ├── ingress.yaml
-│   ├── post-delete-job.yaml
-│   ├── post-delete-role.yaml
-│   ├── post-delete-rolebinding.yaml
-│   ├── post-delete-serviceaccount.yaml
-│   ├── pre-install-job.yaml
-│   ├── pre-install-role.yaml
-│   ├── pre-install-rolebinding.yaml
-│   ├── pre-install-serviceaccount.yaml
-│   └── service.yaml
+│   └── mgmt.yaml               # values rendered into the Kibana CR (`version` is Stack version)
+├── templates/
+│   ├── kibana.yaml             # Kibana CR
+│   └── ingress.yaml            # Ingress (temporary / production host)
+├── upgrade.sh                  # local-cr-version based version tracker
 ├── README.md
 └── README-en.md
 ```
 
 <br/>
 
-## Prerequisites
+## Version Upgrades
 
-- Kubernetes cluster
-- Helm 3
-- Helmfile
-- Elasticsearch (required - installed in the same namespace)
+`upgrade.sh` uses the same [local-cr-version](../../../scripts/helm-upgrade/templates/local-cr-version.sh) canonical template as Elasticsearch: queries the Elastic artifacts API for the latest GA, then updates `values/mgmt.yaml` `version` and `Chart.yaml` `appVersion` (9.x major line pinned).
+
+```bash
+./upgrade.sh --dry-run              # show latest only
+./upgrade.sh                         # bump to latest 9.x GA
+./upgrade.sh --version 9.1.2        # pin to a specific version
+./upgrade.sh --rollback              # restore from a previous backup
+```
+
+**Rule**: keep Kibana on the same Stack version as Elasticsearch. Upgrade order: **Elasticsearch first, Kibana second**. (Kibana against a newer ES is OK; the reverse breaks compatibility.)
+
+Apply the change:
+```bash
+helmfile diff && helmfile apply
+```
+
+<br/>
+
+## Auto-generated Resources (owned by ECK)
+
+With CR name `kibana`:
+
+| Kind | Name |
+|------|------|
+| Service | `kibana-kb-http` (port 5601) |
+| Secret (HTTP certs) | `kibana-kb-http-certs-public` |
+| Deployment | `kibana-kb` |
+| ConfigMap | `kibana-kb-config` |
+
+`elasticsearchRef` makes ECK auto-inject `elasticsearch.hosts`, `elasticsearch.username/password`, and the CA — you should not set those manually in `values/mgmt.yaml`.
 
 <br/>
 
 ## Quick Start
 
 ```bash
-# Validate configuration
 helmfile lint
-
-# Preview changes
 helmfile diff
-
-# Deploy
+helmfile sync
 helmfile apply
-
-# Destroy
 helmfile destroy
 ```
 
 <br/>
 
-## Access
-
-- URL: http://kibana.example.com
-- Username: `elastic`
-- Password: Use the Elasticsearch password
+## Verification
 
 ```bash
-# Check Elasticsearch password
-kubectl get secrets --namespace=monitoring elasticsearch-master-credentials -ojsonpath='{.data.password}' | base64 -d
+# CR status
+kubectl -n logging get kibana
+
+# Pod status
+kubectl -n logging get pods -l common.k8s.elastic.co/type=kibana
+
+# Ingress access (temporary host)
+open https://kibana-eck.example.com
 ```
 
-<br/>
-
-## Initial Setup
-
-1. **Index Patterns**: Stack Management > Index Patterns > Create `filebeat-*`, etc.
-2. **Security**: Stack Management > Security > Configure roles/users
-3. **Visualizations**: Visualize > Create data-driven visualizations
-4. **Dashboards**: Dashboard > Create dashboards combining visualizations
+Initial login: user `elastic`, password from the `elastic` key in the `elasticsearch-es-elastic-user` secret.
 
 <br/>
 
-## Configuration
+## Cutover (Temporary → Production host)
 
-Custom settings are managed in `values/mgmt.yaml`. Key settings:
+Change `ingress.host` in `values/mgmt.yaml` from `kibana-eck.example.com` to `kibana.example.com` and run `helmfile apply`.
 
-- Elasticsearch connection settings
-- Ingress configuration
-- Resource limits/requests
-
-<br/>
-
-## Helmfile Commands Reference
-
-```bash
-helmfile lint           # Validate configuration
-helmfile diff           # Preview changes
-helmfile apply          # Apply
-helmfile destroy        # Destroy
-helmfile status         # Check status
-```
+If the legacy Helm-based Kibana still owns the domain, remove it first.
 
 <br/>
 
 ## Troubleshooting
 
-| Symptom | Solution |
-|---------|----------|
-| Elasticsearch connection failure | Check `kubectl get configmap -n monitoring kibana-kibana-config -o yaml` |
-| UI not accessible | Check `kubectl get svc,ingress -n monitoring` |
-| Pod not starting | Check `kubectl logs -n monitoring -l app=kibana` |
-
-<br/>
-
-<details>
-<summary>Install with Helm Directly</summary>
-
-```bash
-# Clone & prepare
-git clone https://github.com/elastic/helm-charts.git
-helm repo add elastic https://helm.elastic.co
-helm repo update
-helm dependency update .
-
-# Install
-helm install kibana . -n monitoring -f ./values/mgmt.yaml
-
-# Upgrade
-helm upgrade kibana . -n monitoring -f ./values/mgmt.yaml
-```
-
-</details>
+| Symptom | Cause / Action |
+|---------|----------------|
+| Kibana starts but can't reach ES | Check `kubectl -n logging describe kibana kibana` → `Associations` status. The ES CR name in the same ns must match `elasticsearchRef.name` |
+| 403 / CORS errors | Verify the Ingress backend-protocol is set to HTTPS |
+| NODE_OPTIONS not applied | Confirm env injection: `kubectl -n logging get pod kibana-kb-... -o yaml | grep NODE_OPTIONS` |
 
 <br/>
 
 ## References
 
-- https://github.com/elastic/helm-charts
-- https://www.elastic.co/guide/en/kibana/current/index.html
+- https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-kibana.html
+- https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-connect-es.html

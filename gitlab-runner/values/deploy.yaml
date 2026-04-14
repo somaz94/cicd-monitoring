@@ -30,7 +30,7 @@ gitlabUrl: http://gitlab.example.com/
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
 ## ref: (we don't have docs for that yet, but we want to use an existing token)
 ##
-runnerToken: "glrt-xxxxxxxxxxxx"
+runnerToken: "glrt-BFaFLSO8Ji3g0CwkSsHQxHQ6MQp1OjMH.01.0w1wpfpnp"
 
 ## Configure the maximum number of concurrent jobs
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
@@ -139,15 +139,25 @@ runners:
 ## ref: https://kubernetes.io/docs/concepts/security/pod-security-standards/
 ##
 securityContext:
-  allowPrivilegeEscalation: true  # Allow privilege escalation
-  readOnlyRootFilesystem: false   # Allow writes to root filesystem
-  runAsNonRoot: false             # Allow running as root
-  privileged: true               # Allow privileged mode execution
+  allowPrivilegeEscalation: true  # 권한 확대를 허용합니다.
+  readOnlyRootFilesystem: false   # 루트 파일 시스템에 쓸 수 있게 합니다.
+  runAsNonRoot: false             # 루트로 실행할 수 있게 합니다.
+  privileged: true               # 권한이 부여된 모드로 실행을 허용합니다.
   capabilities:
-    drop: []                      # Keep all Linux capabilities
+    drop: []                      # 모든 리눅스 캡 능성을 유지합니다.
 
 persistentVolumes:
   enabled: false
 
 persistentVolumeClaims:
   enabled: false
+# =============================================================================
+# Prometheus Metrics
+# =============================================================================
+metrics:
+  enabled: true
+  podMonitor:
+    enabled: true
+    namespace: monitoring
+    labels:
+      release: kube-prometheus-stack

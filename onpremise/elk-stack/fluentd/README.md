@@ -74,6 +74,25 @@ upgrade.sh automatically performs the following:
 3. Inspects `values/*.yaml` for breaking changes (removed/new top-level keys)
 4. Creates backup then updates files (Chart.yaml, values.yaml, helmfile.yaml)
 
+### Two-track version management (chart vs image.tag)
+
+This chart manages the **chart version** and the **container image tag** separately.
+
+| Target | Managed by | Reason |
+|---|---|---|
+| Helm chart version (`fluent/fluentd`) | `./upgrade.sh` (automated) | Standard flow |
+| Container image (`fluent/fluentd-kubernetes-daemonset:<tag>`) | `image.tag` in `values/mgmt.yaml` (manual) | Upstream chart's default image uses `-elasticsearch7-*` / `-elasticsearch8-*` variants; ES 9 operation requires a specific compatible image. `-elasticsearch9-*` variant is not yet published upstream. |
+
+**image.tag upgrade procedure** (manual):
+1. Check new tag — [Docker Hub tags](https://hub.docker.com/r/fluent/fluentd-kubernetes-daemonset/tags) or [GitHub releases](https://github.com/fluent/fluentd-kubernetes-daemonset/releases).
+2. Edit `image.tag` (and `variant` if applicable) in `values/mgmt.yaml`.
+3. `helmfile diff` → `helmfile apply`.
+
+**When to bump**:
+- Upgrade variant + tag once fluentd publishes an official `-elasticsearch9-*` variant.
+- Bump tag for security/patch-level releases (e.g., `...-elasticsearch8-1.5`).
+- `./upgrade.sh` chart upgrade and image upgrade can be performed **independently**.
+
 ### Rollback
 
 ```bash
@@ -97,7 +116,7 @@ helmfile diff
 helmfile apply
 
 # Check Pod status
-kubectl get pods -n monitoring -l app.kubernetes.io/name=fluentd
+kubectl get pods -n logging -l app.kubernetes.io/name=fluentd
 ```
 
 <br/>
@@ -137,7 +156,7 @@ helmfile status         # Check status
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
 | Elasticsearch connection failure | Check host/port/credentials in `values/mgmt.yaml` |
-| Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n monitoring -l app.kubernetes.io/name=fluentd` |
+| Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluentd` |
 
 <br/>
 

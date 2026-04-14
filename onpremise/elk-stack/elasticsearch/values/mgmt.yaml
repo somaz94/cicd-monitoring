@@ -1,14 +1,28 @@
 ---
-clusterName: "elasticsearch"
-nodeGroup: "master"
+# Elasticsearch CR values — rendered by templates/elasticsearch.yaml
+# The ECK operator watches this CR and reconciles a StatefulSet.
 
-# The service that non master groups will try to connect to when joining the cluster
-# This should be set to clusterName + "-" + nodeGroup for your master group
-masterService: ""
+# CR name determines all downstream resource names:
+#   - Service: <name>-es-http, <name>-es-internal-http, <name>-es-transport
+#   - Secrets: <name>-es-elastic-user, <name>-es-http-certs-public, <name>-es-http-certs-internal
+#   - StatefulSet pods: <name>-es-<nodeSet>-<idx>
+name: elasticsearch
 
-# Elasticsearch roles that will be applied to this nodeGroup
-# These will be set as environment variables. E.g. node.roles=master
-# https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-node.html#node-roles
+# Elastic Stack version. Bump and run `helmfile apply` for rolling upgrade.
+# Compatibility check required before bumping major versions.
+version: "9.0.0"
+
+# Password for the built-in `elastic` superuser.
+# Rendered into Secret `<name>-es-elastic-user` (key: elastic) which ECK picks up.
+# Leave empty ("") to let ECK auto-generate a random password; retrieve it via:
+#   kubectl -n logging get secret elasticsearch-es-elastic-user \
+#     -o jsonpath='{.data.elastic}' | base64 -d
+elasticPassword: "exampleAdminPassword"
+
+# Single node cluster on NFS (no HA). Increase for production HA.
+replicas: 1
+
+# Node roles applied uniformly to the single nodeSet.
 roles:
   - master
   - data
@@ -21,28 +35,11 @@ roles:
   - remote_cluster_client
   - transform
 
-replicas: 1
-minimumMasterNodes: 1
+# Storage — NFS backed, single PVC per pod.
+storageClass: nfs-client
+storageSize: 30Gi
 
-esMajorVersion: ""
-
-# Allows you to add any config files in /usr/share/elasticsearch/config/
-# such as elasticsearch.yml and log4j2.properties
-esConfig: {}
-  # elasticsearch.yml: |
-  #   xpack.security.enabled: false
-  #   xpack.security.transport.ssl.enabled: false
-  #   xpack.security.http.ssl.enabled: false
-
-# Disable it to use your own elastic-credential Secret.
-secret:
-  enabled: true
-  password: "examplePassword123!" # generated randomly if not defined
-
-image: "docker.elastic.co/elasticsearch/elasticsearch"
-imageTag: "8.5.1"
-imagePullPolicy: "IfNotPresent"
-
+# Resources — matches the legacy 8.5.1 chart baseline.
 resources:
   requests:
     cpu: "100m"
@@ -51,137 +48,20 @@ resources:
     cpu: "1000m"
     memory: "2Gi"
 
-networkHost: "0.0.0.0"
-
-volumeClaimTemplate:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: nfs-client
-  resources:
-    requests:
-      storage: 30Gi
-
-rbac:
-  create: true
-  serviceAccountAnnotations: {}
-  serviceAccountName: ""
-  automountToken: true
-
-podSecurityPolicy:
-  create: false
-  name: ""
-  spec:
-    privileged: true
-    fsGroup:
-      rule: RunAsAny
-    runAsUser:
-      rule: RunAsAny
-    seLinux:
-      rule: RunAsAny
-    supplementalGroups:
-      rule: RunAsAny
-    volumes:
-      - secret
-      - configMap
-      - persistentVolumeClaim
-      - emptyDir
-
-persistence:
-  enabled: true
-  labels:
-    # Add default labels for the volumeClaimTemplate of the StatefulSet
-    enabled: false
-  annotations:
-    nfs.io/storage-path: "elasticsearch"
-
-protocol: https
-httpPort: 9200
-transportPort: 9300
-
-service:
-  enabled: true
-  labels: {}
-  labelsHeadless: {}
-  type: ClusterIP
-  # Consider that all endpoints are considered "ready" even if the Pods themselves are not
-  # https://kubernetes.io/docs/reference/kubernetes-api/service-resources/service-v1/#ServiceSpec
-  publishNotReadyAddresses: false
-  nodePort: ""
-  annotations: {}
-  httpPortName: http
-  transportPortName: transport
-  loadBalancerIP: ""
-  loadBalancerSourceRanges: []
-  externalTrafficPolicy: ""
-
-updateStrategy: RollingUpdate
-
-# https://www.elastic.co/guide/en/elasticsearch/reference/current/cluster-health.html#request-params wait_for_status
-# multiple node cluster will be green
-clusterHealthCheckParams: "wait_for_status=green&timeout=1s"
-# # single node cluster will be yellow
-# clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
-
-# Enabling this will publicly expose your Elasticsearch instance.
-# Only enable this if you have security enabled on your cluster
-# ── HTTP ingress (active) ──
-ingress:
-  enabled: true
-  annotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "false"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-  className: "nginx"
-  pathtype: ImplementationSpecific
-  hosts:
-    - host: elasticsearch.example.com
-      paths:
-        - path: /
-
-# ── HTTPS ingress with cert-manager + Let's Encrypt ──
-# Prerequisites:
-#   1. Install cert-manager: https://cert-manager.io/docs/installation/
-#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/example-user/certmanager-letsencrypt
-#
-# ingress:
-#   enabled: true
-#   annotations:
-#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-#     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-#     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-#   className: "nginx"
-#   pathtype: ImplementationSpecific
-#   hosts:
-#     - host: elasticsearch.example.com
-#       paths:
-#         - path: /
-#   tls:
-#     - secretName: elasticsearch-tls
-#       hosts:
-#         - elasticsearch.example.com
+# NFS + hugepages support: disable mmap (uses niofs instead).
+# Keeps the sysctl init container as a belt-and-braces measure.
+nodeStore:
+  allowMmap: false
 
 sysctlInitContainer:
   enabled: true
 
-keystore: []
-
-networkPolicy:
-  ## Enable creation of NetworkPolicy resources. Only Ingress traffic is filtered for now.
-  ## In order for a Pod to access Elasticsearch, it needs to have the following label:
-  ## {{ template "uname" . }}-client: "true"
-  ## Example for default configuration to access HTTP port:
-  ## elasticsearch-master-http-client: "true"
-  ## Example for default configuration to access transport port:
-  ## elasticsearch-master-transport-client: "true"
-
-  http:
-    enabled: false
-
-  transport:
-    ## Note that all Elasticsearch Pods can talk to themselves using transport port even if enabled.
-    enabled: false
-
-tests:
+# Ingress — primary host after Phase 4 cutover (2026-04-14).
+ingress:
   enabled: true
+  className: nginx
+  host: elasticsearch.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "false"

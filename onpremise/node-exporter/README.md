@@ -28,8 +28,10 @@ node-exporter/
 │   └── templates/
 │       └── node_exporter.service.j2     # systemd unit template
 ├── docs/
-│   └── troubleshooting.md              # Troubleshooting guide
-└── README.md
+│   ├── troubleshooting.md              # Troubleshooting guide (KR)
+│   └── troubleshooting-en.md           # Troubleshooting guide (EN)
+├── README.md
+└── README-en.md
 ```
 
 <br/>
@@ -50,6 +52,12 @@ brew install ansible
 sudo apt update && sudo apt install -y ansible
 ```
 
+**RHEL/Rocky Linux:**
+
+```bash
+sudo dnf install -y epel-release && sudo dnf install -y ansible
+```
+
 **pip (all OS):**
 
 ```bash
@@ -62,7 +70,7 @@ pip install ansible
 
 ```bash
 # Test SSH connection
-ssh -i ~/.ssh/id_rsa deploy@10.0.0.1
+ssh -i ~/.ssh/id_rsa_example example@192.168.1.10
 
 # Test Ansible connectivity
 cd ansible
@@ -77,10 +85,10 @@ Edit `ansible/inventory.ini`:
 
 ```ini
 [physical_servers]
-server5 ansible_host=10.0.0.5
+server5 ansible_host=192.168.1.30
 
 [virtual_machines]
-vm1 ansible_host=10.0.0.100
+vm1 ansible_host=192.168.1.100
 ```
 
 <br/>
@@ -135,12 +143,11 @@ ansible-playbook -i inventory.ini upgrade.yml --check
 Previous binary is backed up to `/usr/local/bin/node_exporter.bak`.
 
 ```bash
-cd ansible
-ansible-playbook -i inventory.ini rollback.yml                    # Rollback all
-ansible-playbook -i inventory.ini rollback.yml --limit server1    # Single server
+ssh example@192.168.1.10
+sudo systemctl stop node_exporter
+sudo mv /usr/local/bin/node_exporter.bak /usr/local/bin/node_exporter
+sudo systemctl start node_exporter
 ```
-
-> `.bak` file is automatically removed after successful rollback.
 
 ### Version Management
 
@@ -154,7 +161,7 @@ Check latest version: [GitHub Releases](https://github.com/prometheus/node_expor
 
 ```bash
 # Check metrics endpoint
-curl http://10.0.0.1:9100/metrics | head
+curl http://192.168.1.10:9100/metrics | head
 
 # Check service status (on server)
 systemctl status node_exporter
@@ -162,6 +169,39 @@ systemctl status node_exporter
 # Check logs
 journalctl -u node_exporter -f
 ```
+
+<br/>
+
+## Prometheus Integration
+
+Add server IPs to `kube-prometheus-stack/values/mgmt.yaml`:
+
+```yaml
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: "physical-servers"
+        static_configs:
+          - targets:
+              - "192.168.1.10:9100"
+              - "192.168.1.12:9100"
+```
+
+Both `inventory.ini` and `mgmt.yaml` must be updated when adding new servers.
+
+<br/>
+
+## Rollback
+
+Restore previous version from `.bak` backup after a failed upgrade.
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini rollback.yml                    # Rollback all
+ansible-playbook -i inventory.ini rollback.yml --limit server1    # Single server
+```
+
+> `.bak` file is automatically removed after successful rollback.
 
 <br/>
 
@@ -178,25 +218,6 @@ ansible-playbook -i inventory.ini uninstall.yml --check            # Dry-run
 
 <br/>
 
-## Prometheus Integration
-
-Add server IPs to `kube-prometheus-stack/values/mgmt.yaml`:
-
-```yaml
-prometheus:
-  prometheusSpec:
-    additionalScrapeConfigs:
-      - job_name: "physical-servers"
-        static_configs:
-          - targets:
-              - "10.0.0.1:9100"
-              - "10.0.0.2:9100"
-```
-
-Both `inventory.ini` and `mgmt.yaml` must be updated when adding new servers.
-
-<br/>
-
 ## Grafana Dashboard
 
 Grafana → **Dashboards** → **New** → **Import** → ID: `1860` → Data source: **Prometheus** → Import
@@ -210,7 +231,7 @@ Grafana → **Dashboards** → **New** → **Import** → ID: `1860` → Data so
 
 ## Troubleshooting
 
-See [Troubleshooting Guide](docs/troubleshooting.md) for common issues:
+See [Troubleshooting Guide](docs/troubleshooting-en.md) for common issues:
 
 - Python version compatibility (Ubuntu 20.04 Python 3.8)
 - Port 9100 already in use

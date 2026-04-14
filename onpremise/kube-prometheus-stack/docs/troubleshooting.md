@@ -11,8 +11,8 @@ Known issues and solutions for kube-prometheus-stack operations.
 kube-apiserver logs show the following Warning every 30 seconds:
 
 ```
-grpc: addrConn.createTransport failed to connect to {Addr: "10.0.0.1:2379", ...}.
-Err: connection error: desc = "transport: Error while dialing: dial tcp 10.0.0.1:2379: operation was canceled"
+grpc: addrConn.createTransport failed to connect to {Addr: "192.168.1.17:2379", ...}.
+Err: connection error: desc = "transport: Error while dialing: dial tcp 192.168.1.17:2379: operation was canceled"
 ```
 
 `KubeAPIErrorBudgetBurn` alert may fire.
@@ -41,10 +41,10 @@ kubectl get pods -A | head -10
 
 # etcd health check
 sudo ETCDCTL_API=3 etcdctl endpoint health \
-  --endpoints=https://10.0.0.1:2379 \
+  --endpoints=https://192.168.1.17:2379 \
   --cacert=/etc/ssl/etcd/ssl/ca.pem \
-  --cert=/etc/ssl/etcd/ssl/node-control-01.pem \
-  --key=/etc/ssl/etcd/ssl/node-control-01-key.pem
+  --cert=/etc/ssl/etcd/ssl/node-k8s-control-01.pem \
+  --key=/etc/ssl/etcd/ssl/node-k8s-control-01-key.pem
 
 # Check API server -> etcd connections (should show many ESTABLISHED)
 ss -tnp | grep 2379 | wc -l
@@ -106,10 +106,10 @@ Virtual disk (vda) I/O latency causes etcd responses to exceed the 100ms thresho
 ```bash
 # 1. etcd defrag (cleans DB fragmentation, no service impact)
 sudo ETCDCTL_API=3 etcdctl defrag \
-  --endpoints=https://10.0.0.1:2379 \
+  --endpoints=https://192.168.1.17:2379 \
   --cacert=/etc/ssl/etcd/ssl/ca.pem \
-  --cert=/etc/ssl/etcd/ssl/node-control-01.pem \
-  --key=/etc/ssl/etcd/ssl/node-control-01-key.pem
+  --cert=/etc/ssl/etcd/ssl/node-k8s-control-01.pem \
+  --key=/etc/ssl/etcd/ssl/node-k8s-control-01-key.pem
 
 # 2. Raise etcd I/O priority (resets on restart)
 sudo ionice -c 1 -n 0 -p $(pgrep etcd)
@@ -136,10 +136,10 @@ etcd does not reclaim disk space immediately when keys are deleted or updated, c
 
 ```bash
 sudo ETCDCTL_API=3 etcdctl endpoint status \
-  --endpoints=https://10.0.0.1:2379 \
+  --endpoints=https://192.168.1.17:2379 \
   --cacert=/etc/ssl/etcd/ssl/ca.pem \
-  --cert=/etc/ssl/etcd/ssl/node-control-01.pem \
-  --key=/etc/ssl/etcd/ssl/node-control-01-key.pem \
+  --cert=/etc/ssl/etcd/ssl/node-k8s-control-01.pem \
+  --key=/etc/ssl/etcd/ssl/node-k8s-control-01-key.pem \
   --write-out=table
 ```
 
@@ -175,7 +175,7 @@ helmfile apply
 
 ### Symptoms
 
-Slack `#alerts` channel receives repeated `Watchdog` and `InfoInhibitor` alerts.
+Slack `#infra-alerts` channel receives repeated `Watchdog` and `InfoInhibitor` alerts.
 
 ### Cause
 

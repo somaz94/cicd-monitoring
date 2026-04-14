@@ -1,21 +1,19 @@
 # =============================================================================
 # prometheus-elasticsearch-exporter Custom Values
-# Monitors: elasticsearch-master in monitoring namespace
+# Monitors: ECK-managed Elasticsearch in logging namespace
 # =============================================================================
 
 # Elasticsearch connection
-# Credentials from existing secret: elasticsearch-credentials (username, password)
+# Username is fixed to "elastic" (ECK superuser).
+# Password from ECK-managed secret: elasticsearch-es-elastic-user (key: elastic).
 es:
-  uri: "https://$(ES_USERNAME):$(ES_PASSWORD)@elasticsearch-master.monitoring.svc:9200"
+  uri: "https://elastic:$(ES_PASSWORD)@elasticsearch-es-http:9200"
   sslSkipVerify: true
 
 extraEnvSecrets:
-  ES_USERNAME:
-    secret: elasticsearch-credentials
-    key: username
   ES_PASSWORD:
-    secret: elasticsearch-credentials
-    key: password
+    secret: elasticsearch-es-elastic-user
+    key: elastic
 
 # Resources
 resources:
@@ -29,7 +27,7 @@ resources:
 # ServiceMonitor for Prometheus auto-discovery
 serviceMonitor:
   enabled: true
-  namespace: monitoring
+  namespace: logging
   interval: 30s
   labels:
     release: kube-prometheus-stack

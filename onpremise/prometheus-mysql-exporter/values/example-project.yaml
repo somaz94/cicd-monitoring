@@ -12,7 +12,7 @@ mysql:
   # Dedicated read-only exporter user (minimal permissions: PROCESS, REPLICATION CLIENT, SELECT)
   # How to create:
   #   kubectl exec -it -n example-project-db-redis <mysql-pod> -- mysql -u root -p
-  #   CREATE USER 'exporter'@'%' IDENTIFIED BY 'password';
+  #   CREATE USER 'exporter'@'%' IDENTIFIED BY 'exampleExporterPassword';
   #   GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
   #   FLUSH PRIVILEGES;
 

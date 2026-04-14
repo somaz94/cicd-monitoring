@@ -1,0 +1,50 @@
+---
+# ECK Operator is set to watch ALL namespaces (empty list) as a workaround for
+# an ECK 3.3.x bug: the stackconfigpolicy-controller emits a "Reconciler error:
+# unable to get: / because of unknown namespace for the cache" message every
+# ~17 minutes when managedNamespaces is narrowed to a subset. The controller
+# tries to resolve resources outside the cache scope; widening the cache to
+# all namespaces eliminates the spam at its root.
+#
+# Scope impact is minimal: cluster-scoped RBAC is already created via
+# createClusterScopedResources: true below, and no Elastic CR is deployed
+# outside 'logging' today. Revisit once ECK is upgraded past the 3.3.x fix.
+installCRDs: true
+managedNamespaces: []
+
+# Cluster-scoped resources are still required so the operator can watch CRDs
+# and manage the webhook/ValidatingWebhookConfiguration.
+createClusterScopedResources: true
+
+# Resource limits follow upstream defaults (1 CPU, 1Gi memory).
+# Operator may spike during reconcile; do NOT lower memory below 1Gi unless
+# you have confirmed low-memory behavior in your environment.
+resources:
+  requests:
+    cpu: "100m"
+    memory: "150Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+# ServiceMonitor for kube-prometheus-stack. Created in the operator's release
+# namespace (elastic-system); discovered automatically because Prometheus has
+# serviceMonitorNamespaceSelector: {} and serviceMonitorSelector: {}.
+serviceMonitor:
+  enabled: true
+  insecureSkipVerify: true
+
+# Keep operator logs at info; bump to "1" or higher for debug output.
+# Valid values: -2 (errors), -1 (errors+warn), 0 (info, default), >0 (debug).
+#
+# Metrics: secureMode (TLS + RBAC) is enabled so the chart's ServiceMonitor is
+# wired correctly. The operator auto-issues a self-signed cert for :8080, and
+# kube-prometheus-stack scrapes it with insecureSkipVerify=true (cluster-local
+# traffic). Requires createClusterScopedResources: true (already set below) for
+# the /metrics nonResourceURL ClusterRole.
+config:
+  logVerbosity: "0"
+  metrics:
+    port: "8080"
+    secureMode:
+      enabled: true

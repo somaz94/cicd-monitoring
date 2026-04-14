@@ -4,8 +4,8 @@ repositories:
 
 releases:
   - name: fluent-bit
-    namespace: monitoring
+    namespace: logging
     chart: .
-    version: 0.56.0
+    version: 0.57.2
     values:
       - values/mgmt.yaml

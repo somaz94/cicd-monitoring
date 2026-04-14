@@ -1,6 +1,16 @@
-# Elasticsearch Helm Chart
+# Elasticsearch (ECK CR)
 
-Manages [Elasticsearch](https://www.elastic.co/elasticsearch/) on a Kubernetes cluster using Helmfile.
+Manages an ECK-backed Elasticsearch CR wrapped as a Helmfile-deployed local Helm chart.
+
+The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secret resources.
+
+<br/>
+
+## Prerequisites
+
+- [eck-operator](../eck-operator/) must be installed first and include `logging` in `managedNamespaces`.
+- Permission to create the `logging` namespace.
+- An NFS StorageClass (`nfs-client`) available.
 
 <br/>
 
@@ -8,143 +18,150 @@ Manages [Elasticsearch](https://www.elastic.co/elasticsearch/) on a Kubernetes c
 
 ```
 elasticsearch/
-├── .helmignore                 # Files excluded from Helm packaging
-├── Chart.yaml                  # Local chart definition
-├── helmfile.yaml               # Helmfile release definition (uses local chart)
-├── values.yaml                 # Upstream default values
+├── .helmignore
+├── Chart.yaml                  # local dummy chart metadata (appVersion = Stack version)
+├── helmfile.yaml               # Helmfile release definition (namespace: logging)
 ├── values/
-│   └── mgmt.yaml               # Custom values (manually managed)
-├── templates/                  # Local Helm templates
-│   ├── NOTES.txt
-│   ├── _helpers.tpl
-│   ├── configmap.yaml
-│   ├── ingress.yaml
-│   ├── networkpolicy.yaml
-│   ├── poddisruptionbudget.yaml
-│   ├── podsecuritypolicy.yaml
-│   ├── role.yaml
-│   ├── rolebinding.yaml
-│   ├── secret-cert.yaml
-│   ├── secret.yaml
-│   ├── service.yaml
-│   ├── serviceaccount.yaml
-│   ├── statefulset.yaml
-│   └── test/
-│       └── test-elasticsearch-health.yaml
+│   └── mgmt.yaml               # values rendered into the Elasticsearch CR (`version` is Stack version)
+├── templates/
+│   ├── elasticsearch.yaml      # Elasticsearch CR
+│   ├── elastic-user-secret.yaml # elastic account secret (rendered when values sets a password)
+│   └── ingress.yaml            # Ingress (temporary / production host)
+├── upgrade.sh                  # local-cr-version based version tracker
 ├── README.md
 └── README-en.md
 ```
 
 <br/>
 
-## Prerequisites
+## Auto-generated Resources (owned by ECK)
 
-- Kubernetes cluster
-- Helm 3
-- Helmfile
-- StorageClass (for PVC usage)
+With CR name `elasticsearch`, ECK creates:
+
+| Kind | Name |
+|------|------|
+| Service (HTTP) | `elasticsearch-es-http` |
+| Service (internal) | `elasticsearch-es-internal-http` |
+| Service (transport) | `elasticsearch-es-transport` |
+| Secret (HTTP certs) | `elasticsearch-es-http-certs-public` (key: `tls.crt`, `ca.crt`) |
+| Secret (internal CA) | `elasticsearch-es-http-certs-internal` |
+| Secret (credentials) | `elasticsearch-es-elastic-user` (key: `elastic`) |
+| StatefulSet | `elasticsearch-es-default` |
+
+<br/>
+
+## Setting the elastic Password
+
+The `elasticPassword` field in `values/mgmt.yaml` is rendered into the `{{ .Values.name }}-es-elastic-user` secret, which ECK consumes directly — no manual `kubectl` step required.
+
+```yaml
+# values/mgmt.yaml
+elasticPassword: "exampleAdminPassword"
+```
+
+To rotate, edit `values/mgmt.yaml` and run `helmfile apply`. ECK detects the secret change and updates the `elastic` user on its next reconcile.
+
+**Random password mode**: Set `elasticPassword: ""` to skip rendering the secret; ECK will then auto-generate one. Retrieve with:
+
+```bash
+kubectl -n logging get secret elasticsearch-es-elastic-user \
+  -o jsonpath='{.data.elastic}' | base64 -d
+```
 
 <br/>
 
 ## Quick Start
 
 ```bash
-# Validate configuration
+# Validate
 helmfile lint
 
 # Preview changes
 helmfile diff
 
 # Deploy
+helmfile sync
+
+# Update (version bump, etc.)
 helmfile apply
 
-# Destroy
+# Uninstall
 helmfile destroy
 ```
 
 <br/>
 
+## Version Upgrades
+
+`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/mgmt.yaml` and the `appVersion` in `Chart.yaml`. It is based on the `local-cr-version` canonical template (see [scripts/helm-upgrade/README-en.md](../../../scripts/helm-upgrade/README-en.md)).
+
+**Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.sh` when ready to track 10.x.
+
+```bash
+# Check the latest 9.x GA and apply
+./upgrade.sh
+
+# Dry-run (no file changes, only show the latest)
+./upgrade.sh --dry-run
+
+# Pin to a specific version
+./upgrade.sh --version 9.1.2
+
+# Roll back using a previous backup
+./upgrade.sh --rollback
+```
+
+After the bump, run `helmfile apply` to propagate to the cluster. ECK performs a rolling StatefulSet upgrade.
+
+**Always verify ECK Operator compatibility first** — the installed `eck-operator` must support the target Stack version. Consult the compatibility matrix:
+- https://www.elastic.co/support/matrix
+
+Keep Kibana on the **same Stack version** (bump `kibana/values/mgmt.yaml` `version` together).
+
+<br/>
+
 ## Verification
 
-### Check Password
-
 ```bash
-kubectl get secrets --namespace=monitoring elasticsearch-master-credentials -ojsonpath='{.data.password}' | base64 -d
-```
+# CR status (HEALTH must be green)
+kubectl -n logging get elasticsearch
 
-### Health Check
+# Pod status
+kubectl -n logging get pods -l common.k8s.elastic.co/type=elasticsearch
 
-```bash
-# Cluster status
-curl -k -u "elastic:${PASSWORD}" "http://elasticsearch.example.com/_cluster/health"
+# Read the elastic password
+kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d
+
+# Cluster health
+PASSWORD=$(kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
+curl -k -u "elastic:${PASSWORD}" "https://elasticsearch-eck.example.com/_cluster/health"
 
 # Index list
-curl -k -u "elastic:${PASSWORD}" "http://elasticsearch.example.com/_cat/indices"
-
-# Node list
-curl -k -u "elastic:${PASSWORD}" "http://elasticsearch.example.com/_cat/nodes"
-
-# Shard status
-curl -k -u "elastic:${PASSWORD}" "http://elasticsearch.example.com/_cat/shards"
+curl -k -u "elastic:${PASSWORD}" "https://elasticsearch-eck.example.com/_cat/indices?v"
 ```
 
 <br/>
 
-## Configuration
+## Cutover (Temporary → Production host)
 
-Custom settings are managed in `values/mgmt.yaml`. Key settings:
+Change `ingress.host` in `values/mgmt.yaml` from `elasticsearch-eck.example.com` to `elasticsearch.example.com` and run `helmfile apply`.
 
-- Ingress configuration
-- Resource limits/requests
-- PVC StorageClass and size
-- Replicas
-
-<br/>
-
-## Helmfile Commands Reference
-
-```bash
-helmfile lint           # Validate configuration
-helmfile diff           # Preview changes
-helmfile apply          # Apply
-helmfile destroy        # Destroy
-helmfile status         # Check status
-```
+If the legacy Helm-based Elasticsearch (in the `monitoring` namespace) still owns the domain, remove it or delete its Ingress first.
 
 <br/>
 
 ## Troubleshooting
 
-| Error | Solution |
-|-------|----------|
-| PVC not bound | Check StorageClass with `kubectl get sc` |
-| Pod CrashLoopBackOff | Check `kubectl logs -n monitoring elasticsearch-master-0` |
-| Secret checksum changed | Normal behavior, regenerated during Helm rendering |
-
-<br/>
-
-<details>
-<summary>Install with Helm Directly</summary>
-
-```bash
-# Clone & prepare
-git clone https://github.com/elastic/helm-charts.git
-helm repo add elastic https://helm.elastic.co
-helm repo update
-helm dependency update .
-
-# Install
-helm install elasticsearch . -n monitoring -f ./values/mgmt.yaml --create-namespace
-
-# Upgrade
-helm upgrade elasticsearch . -n monitoring -f ./values/mgmt.yaml
-```
-
-</details>
+| Symptom | Cause / Action |
+|---------|----------------|
+| CR stays HEALTH=unknown | Check that ECK Operator watches `logging` ns (`kubectl -n elastic-system logs -l control-plane=elastic-operator`) |
+| Pod Pending (PVC) | Check `kubectl get sc nfs-client`, confirm NFS reachability |
+| mmap-related errors | Verify `nodeStore.allowMmap: false` is reflected in the rendered CR |
+| Reset elastic password | Delete `elasticsearch-es-elastic-user` secret; ECK recreates it |
 
 <br/>
 
 ## References
 
-- https://github.com/elastic/helm-charts
-- https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html
+- https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-elasticsearch-specification.html
+- https://www.elastic.co/guide/en/cloud-on-k8s/current/k8s-deploy-elasticsearch.html

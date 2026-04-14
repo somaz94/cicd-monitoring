@@ -1,88 +1,88 @@
-# 계정 관리 가이드
+# Account Management Guide
 
-## Admin 페이지 사용자 관리
+## Admin Page User Management
 
-**접속**: `https://vault.example.com/admin` → Admin Token 입력
-
-<br/>
-
-### 사용자 목록
-
-**Users** 탭에서 모든 등록 사용자를 확인할 수 있습니다.
-
-| Actions | 설명 |
-|---------|------|
-| Deauthorize sessions | 해당 사용자의 모든 세션 강제 만료 |
-| Delete User | 사용자 삭제 |
-| Delete SSO Association | SSO 연결 해제 |
-| Disable User | 사용자 비활성화 (로그인 차단) |
+**Access**: `https://vault.example.com/admin` → Enter Admin Token
 
 <br/>
 
-### 사용자 초대 (Admin)
+### User List
 
-Admin 페이지 → Users 탭 하단 **Invite User** → 이메일 입력 → **Invite**
+View all registered users in the **Users** tab.
 
-> Admin 페이지에서 초대하면 **이메일 확인 없이** 즉시 계정이 생성됩니다.
-
-<br/>
-
-## 조직 구성원 관리
-
-### 구성원 초대
-
-1. Web Vault (`https://vault.example.com`) 로그인
-2. 좌측 하단 **Admin Console** 클릭
-3. **구성원** → **+ 구성원 초대** → 이메일 입력 → 역할/컬렉션 설정 → 초대
+| Actions | Description |
+|---------|-------------|
+| Deauthorize sessions | Force expire all sessions for the user |
+| Delete User | Delete user account |
+| Delete SSO Association | Remove SSO link |
+| Disable User | Deactivate user (block login) |
 
 <br/>
 
-### 초대 확인 (중요!)
+### Invite User (Admin)
 
-> **구성원을 초대한 후, 반드시 해당 구성원 옆의 ⋮ (점 세 개) → "확인(Confirm)" 을 클릭해야 합니다.**
-> 확인하지 않으면 초대 상태로 남아있고, 해당 사용자는 조직 데이터에 접근할 수 없습니다.
+Admin page → Users tab → **Invite User** at bottom → Enter email → **Invite**
 
-절차:
-1. 구성원 초대 완료
-2. 초대받은 사용자가 로그인하여 초대 수락
-3. **관리자가 구성원 목록에서 해당 사용자 옆 ⋮ → "확인(Confirm)" 클릭**
-4. 확인 완료 후 조직 데이터 접근 가능
+> Invitations from the Admin page create accounts **without email verification**.
 
 <br/>
 
-### 역할
+## Organization Member Management
 
-| 역할 | 권한 |
-|------|------|
-| **소유자 (Owner)** | 조직 전체 관리, 멤버 관리, 모든 컬렉션 접근, 조직 삭제 |
-| **관리자 (Admin)** | 컬렉션 관리, 멤버 초대, 대부분 설정 변경 |
-| **관리자 (Manager)** | 할당된 컬렉션 관리 + 멤버 관리 |
-| **사용자 (User)** | 할당된 컬렉션만 접근 (읽기/쓰기 설정 가능) |
+### Invite Members
 
-<br/>
-
-### 컬렉션 권한 관리
-
-컬렉션은 비밀번호를 그룹으로 묶어 공유하는 단위입니다.
-
-1. Admin Console → **컬렉션** → 컬렉션 생성
-2. 구성원 초대 시 또는 이후에 컬렉션별 접근 권한 설정:
-   - **읽기 전용**: 비밀번호 조회만 가능
-   - **읽기/쓰기**: 비밀번호 추가/수정/삭제 가능
-   - **비밀번호 숨기기**: 비밀번호 자동 입력만 가능, 평문 조회 불가
-
-예시 구성:
-- **내부 계정** 컬렉션 → 전체 팀 접근 (읽기 전용)
-- **외부 계정** 컬렉션 → 관리자만 접근 (읽기/쓰기)
-- **개발 계정** 컬렉션 → 개발팀만 접근 (읽기/쓰기)
+1. Log in to Web Vault (`https://vault.example.com`)
+2. Click **Admin Console** at bottom-left
+3. **Members** → **+ Invite member** → Enter email → Set role/collections → Invite
 
 <br/>
 
-## SSO 로그인 흐름
+### Confirm Invitation (Important!)
 
-1. 사용자가 `https://vault.example.com` 접속
-2. **"통합인증(SSO) 사용하기"** 클릭 → SSO Identifier 입력 (아무 값, 예: `gitlab`)
-3. GitLab 로그인 페이지로 리다이렉트
-4. GitLab 인증 완료
-5. **최초 1회**: 마스터 비밀번호 설정 (12자 이상)
-6. 이후: 마스터 비밀번호 입력으로 vault 복호화
+> **After inviting a member, you MUST click ⋮ (three dots) → "Confirm" next to the member.**
+> Without confirmation, the user remains in invited status and cannot access organization data.
+
+Steps:
+1. Send invitation
+2. Invited user logs in and accepts invitation
+3. **Admin clicks ⋮ → "Confirm" next to the member in the members list**
+4. After confirmation, user can access organization data
+
+<br/>
+
+### Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Owner** | Full org management, member management, all collections, delete org |
+| **Admin** | Collection management, invite members, most settings |
+| **Manager** | Manage assigned collections + member management |
+| **User** | Access assigned collections only (read/write configurable) |
+
+<br/>
+
+### Collection Access Control
+
+Collections group passwords for sharing.
+
+1. Admin Console → **Collections** → Create collection
+2. Set per-member access when inviting or afterwards:
+   - **Read only**: View passwords only
+   - **Read/Write**: Add, edit, delete passwords
+   - **Hide passwords**: Auto-fill only, no plaintext view
+
+Example setup:
+- **Internal accounts** collection → All team (read only)
+- **External accounts** collection → Admins only (read/write)
+- **Dev accounts** collection → Dev team only (read/write)
+
+<br/>
+
+## SSO Login Flow
+
+1. User visits `https://vault.example.com`
+2. Click **"Enterprise single sign-on (SSO)"** → Enter SSO Identifier (any value, e.g. `gitlab`)
+3. Redirected to GitLab login page
+4. Complete GitLab authentication
+5. **First time**: Set master password (min 12 characters)
+6. After: Enter master password to decrypt vault

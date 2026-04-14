@@ -3,34 +3,18 @@ repositories:
     url: https://charts.bitnami.com/bitnami
 
 releases:
+  # Thanos Sidecar components (compactor, store gateway, object storage)
   - name: thanos
-    namespace: monitoring
-    createNamespace: true
     chart: bitnami/thanos
+    namespace: monitoring
     version: 17.3.1
     values:
       - values/mgmt.yaml
 
-  # Uncomment to deploy multicluster query federation
-  # - name: thanos-multicluster
-  #   namespace: monitoring
-  #   createNamespace: true
-  #   chart: bitnami/thanos
-  #   version: 17.3.1
-  #   values:
-  #     - values/mgmt-multicluster.yaml
-
-# Hooks to ensure proper installation and upgrades
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "kubectl"
-    args:
-      - "create"
-      - "namespace"
-      - "monitoring"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+  # Thanos Query (separate instance for unified query across clusters)
+  - name: thanos-query
+    chart: bitnami/thanos
+    namespace: monitoring
+    version: 17.3.1
+    values:
+      - values/mgmt-query.yaml

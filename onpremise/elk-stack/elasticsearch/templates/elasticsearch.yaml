@@ -1,0 +1,43 @@
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  version: {{ .Values.version | quote }}
+  http:
+    tls:
+      selfSignedCertificate: {}
+  nodeSets:
+    - name: default
+      count: {{ .Values.replicas }}
+      config:
+        node.roles: {{ .Values.roles | toJson }}
+        node.store.allow_mmap: {{ .Values.nodeStore.allowMmap }}
+      podTemplate:
+        spec:
+          {{- if .Values.sysctlInitContainer.enabled }}
+          initContainers:
+            - name: sysctl
+              securityContext:
+                privileged: true
+                runAsUser: 0
+              command:
+                - sh
+                - -c
+                - sysctl -w vm.max_map_count=262144
+          {{- end }}
+          containers:
+            - name: elasticsearch
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: {{ .Values.storageClass }}
+            resources:
+              requests:
+                storage: {{ .Values.storageSize }}

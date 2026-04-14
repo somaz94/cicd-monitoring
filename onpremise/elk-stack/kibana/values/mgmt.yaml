@@ -1,14 +1,29 @@
 ---
-elasticsearchHosts: "https://elasticsearch-master:9200"
-elasticsearchCertificateSecret: elasticsearch-master-certs
-elasticsearchCertificateAuthoritiesFile: ca.crt
-elasticsearchCredentialSecret: elasticsearch-master-credentials
+# Kibana CR values — rendered by templates/kibana.yaml
+# The ECK operator watches this CR and reconciles a Deployment/Service.
+
+# CR name determines all downstream resource names:
+#   - Service: <name>-kb-http (port 5601)
+#   - Secret (HTTP certs): <name>-kb-http-certs-public
+#   - Deployment: <name>-kb
+name: kibana
+
+# Elastic Stack version — must match (or be compatible with) the linked Elasticsearch CR.
+version: "9.0.0"
 
 replicas: 1
 
-image: "docker.elastic.co/kibana/kibana"
-imageTag: "8.5.1"
-imagePullPolicy: "IfNotPresent"
+# Elasticsearch CR to connect to. ECK auto-injects:
+#   - elasticsearch.hosts
+#   - elasticsearch.username / password
+#   - elasticsearch.ssl.certificateAuthorities
+elasticsearchRef:
+  name: elasticsearch
+
+# Node.js runtime flags passed via NODE_OPTIONS. Rendered as space-joined
+# string at deploy time — add additional flags as separate list entries.
+nodeOptions:
+  - "--max-old-space-size=1800"
 
 resources:
   requests:
@@ -18,57 +33,24 @@ resources:
     cpu: "1000m"
     memory: "2Gi"
 
-protocol: http
+# TLS on the Kibana pod's http endpoint (the 5601 port the ingress backends to).
+#   tls.enabled: false → ECK self-signed cert disabled, pod serves plain HTTP.
+#     publicBaseUrl becomes http://..., session cookies non-Secure → HTTP login
+#     works against the ingress. Ingress annotation `backend-protocol` must be
+#     HTTP in this mode.
+#   tls.enabled: true  → pod serves HTTPS (ECK self-signed by default),
+#     publicBaseUrl https://..., Secure cookies. Ingress `backend-protocol`
+#     must be HTTPS. Intended for cert-manager wired deployments (option C).
+tls:
+  enabled: false
 
-serverHost: "0.0.0.0"
-
-healthCheckPath: "/app/kibana"
-
-updateStrategy:
-  type: "Recreate"
-
-service:
-  type: ClusterIP
-  loadBalancerIP: ""
-  port: 5601
-  nodePort: ""
-  labels: {}
-  annotations: {}
-  loadBalancerSourceRanges: []
-  httpPortName: http
-
-# ── HTTP ingress (active) ──
+# Ingress — primary host after Phase 4 cutover (2026-04-14).
+# Keep `backend-protocol` in sync with the `tls.enabled` switch above.
 ingress:
   enabled: true
-  className: "nginx"
-  pathtype: ImplementationSpecific
+  className: nginx
+  host: kibana.example.com
   annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
-  hosts:
-    - host: kibana.example.com
-      paths:
-        - path: /
-
-# ── HTTPS ingress with cert-manager + Let's Encrypt ──
-# Prerequisites:
-#   1. Install cert-manager: https://cert-manager.io/docs/installation/
-#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/example-user/certmanager-letsencrypt
-#
-# ingress:
-#   enabled: true
-#   className: "nginx"
-#   pathtype: ImplementationSpecific
-#   annotations:
-#     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-#   hosts:
-#     - host: kibana.example.com
-#       paths:
-#         - path: /
-#   tls:
-#     - secretName: kibana-tls
-#       hosts:
-#         - kibana.example.com

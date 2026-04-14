@@ -5,39 +5,29 @@ repositories:
 releases:
   - name: build-image
     namespace: gitlab-runner
-    createNamespace: true
     chart: gitlab/gitlab-runner
-    version: 0.87.0
+    version: 0.87.1
     values:
       - values/build.yaml
 
   - name: deploy-image
     namespace: gitlab-runner
-    createNamespace: true
     chart: gitlab/gitlab-runner
-    version: 0.87.0
+    version: 0.87.1
     values:
       - values/deploy.yaml
 
   - name: old-build-deploy-image
     namespace: gitlab-runner
-    createNamespace: true
     chart: gitlab/gitlab-runner
     version: 0.70.3
     values:
-      - values/old-gitlab-runner.yaml
+      - values/old-gitlab-runner.yaml 
 
-# Hooks to ensure proper installation and upgrades
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "kubectl"
-    args:
-      - "create"
-      - "namespace"
-      - "gitlab-runner"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+  # # test
+  # - name: example-project-client-build-image
+  #   namespace: gitlab-runner
+  #   chart: . # Use local Chart directory
+  #   version: 0.71.0
+  #   values:
+  #     - values/example-project-client-build.yaml

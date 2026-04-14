@@ -5,13 +5,13 @@ global:
 
 configs:
   cm:
-    # Reconciliation timeout setting (default: 180s)
-    # Prevents reconciliation loop resets when many apps can't complete sync within timeout
+    # Reconciliation timeout setting (default: 180s) / 재조정(reconciliation) 타임아웃 설정 (기본: 180초)
+    # Prevents reconciliation loop resets when many apps can't complete sync within timeout / 애플리케이션 수가 많을 경우 타임아웃 내 동기화 완료를 못하면 재조정이 반복 리셋되는 문제 방지
     timeout.reconciliation: 600s
-    # Hard reconciliation timeout (default: 0s, disabled)
-    # Setting to 0 prevents forced termination of reconciliation operations
+    # Hard reconciliation timeout (default: 0s, disabled) / 하드 재조정 타임아웃 (기본: 0s, 비활성화)
+    # Setting to 0 prevents forced termination of reconciliation operations / 0으로 설정하면 재조정 작업이 중간에 강제 종료되지 않음
     timeout.hard.reconciliation: 0s
-    # Dex SSO configuration (GitLab example)
+    # Add account settings
     dex.config: |
       connectors:
         - type: gitlab
@@ -19,51 +19,50 @@ configs:
           name: GitLab
           config:
             baseURL: http://gitlab.example.com
-            clientID: your-gitlab-application-client-id
-            clientSecret: your-gitlab-application-client-secret
+            clientID: <GITLAB_CLIENT_ID>
+            clientSecret: <GITLAB_CLIENT_SECRET>
             redirectURI: https://argocd.example.com/api/dex/callback
             groups:
               - server
   params:
     create: true
     server.insecure: true
-    # Repo server timeout (default: 60s)
-    # Increased timeout needed for large repository synchronization
+    # Repo server timeout (default: 60s) / Repo 서버 타임아웃 (기본: 60초)
+    # Increased timeout needed for large repository synchronization / 대규모 저장소 동기화 시 타임아웃 증가 필요
     server.repo.server.timeout.seconds: "180"
-    # Controller timeout for fetching manifests from repo server (default: 60s)
-    # Increase this value when "Context deadline exceeded" errors occur
+    # Controller timeout for fetching manifests from repo server (default: 60s) / Controller에서 repo 서버로부터 매니페스트 가져올 때 타임아웃 (기본: 60초)
+    # Increase this value when "Context deadline exceeded" errors occur / "Context deadline exceeded" 에러 발생 시 이 값 증가 필요
     controller.repo.server.timeout.seconds: "180"
-    # Number of status reconciliation processors (default: 20)
-    # Improves app status checking speed (Synced, Health, OutOfSync, etc.)
+    # Number of status reconciliation processors (default: 20) / 상태 재조정 작업 프로세서 수 (기본: 20)
+    # Improves app status checking speed (Synced, Health, OutOfSync, etc.) / 애플리케이션 상태 확인 속도 향상 (Synced, Health, OutOfSync 등)
     controller.status.processors: "600"
-    # Number of operation processors (default: 10)
-    # Improves parallel processing of sync operations
+    # Number of operation processors (default: 10) / 동기화 작업 프로세서 수 (기본: 10)
+    # Improves parallel processing of sync operations / 동기화 작업 병렬 처리 향상
     controller.operation.processors: "300"
-    # Kubectl parallel execution limit (default: 20)
-    # Increases concurrent kubectl apply operations for faster deployments
+    # Kubectl parallel execution limit (default: 20) / Kubectl 병렬 실행 제한 (기본: 20)
+    # Increases concurrent kubectl apply operations for faster deployments / 동시 kubectl apply 작업 수 증가로 배포 속도 향상
     controller.kubectl.parallelism.limit: "100"
-    # Controller sharding algorithm (default: legacy)
-    # Round-robin provides balanced workload distribution across replicas
+    # Controller sharding algorithm (default: legacy) / Controller 샤딩 알고리즘 (기본: legacy)
+    # Round-robin provides balanced workload distribution across replicas / round-robin으로 설정하여 replica 간 작업 분배를 균형있게 처리
     controller.sharding.algorithm: "round-robin"
-    # Repo server parallelism limit (default: 0, unlimited)
-    # Unlimited can cause OOMKilled or slow manifest generation
+    # Repo server parallelism limit (default: 0, unlimited) / Repo 서버 병렬 처리 제한 (기본: 0, 무제한)
+    # Unlimited can cause OOMKilled or slow manifest generation / 무제한일 경우 OOMKilled 또는 매니페스트 생성 속도 저하 발생 가능
     reposerver.parallelism.limit: "100"
   # SSH known hosts for Git repositories
   ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
   ssh:
     # -- Additional known hosts for private repositories
-    # Generate with: ssh-keyscan gitlab.example.com
     extraHosts: |
-      gitlab.example.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ...your-ssh-rsa-key...
-      gitlab.example.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY...your-ecdsa-key...
-      gitlab.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...your-ed25519-key...
-  # RBAC settings
+      gitlab.example.com ssh-rsa <GITLAB_SSH_RSA_PUBLIC_KEY>
+      gitlab.example.com ecdsa-sha2-nistp256 <GITLAB_SSH_ECDSA_PUBLIC_KEY>
+      gitlab.example.com ssh-ed25519 <GITLAB_SSH_ED25519_PUBLIC_KEY>
+  # Add RBAC settings
   rbac:
     create: true
     # Use email + groups for RBAC matching (default uses only 'sub' claim from dex)
     scopes: '[email, groups]'
     policy.csv: |
-      # ── Global Admin ──
+      # ── Global Admin  ──
       # Full access to all resources across all projects
       p, role:global-admin, applications, *, */*, allow
       p, role:global-admin, clusters, *, *, allow
@@ -83,17 +82,17 @@ configs:
       p, role:server-admin, certificates, get, *, allow
       p, role:server-admin, gpgkeys, get, *, allow
 
-      # ProjectM — full access
-      p, role:server-admin, applications, *, projectm/*, allow
-      p, role:server-admin, projects, get, projectm, allow
-      p, role:server-admin, logs, get, projectm/*, allow
-      p, role:server-admin, exec, create, projectm/*, allow
+      # ExampleProject — full access
+      p, role:server-admin, applications, *, example-project/*, allow
+      p, role:server-admin, projects, get, example-project, allow
+      p, role:server-admin, logs, get, example-project/*, allow
+      p, role:server-admin, exec, create, example-project/*, allow
 
-      # Souls — full access
-      p, role:server-admin, applications, *, souls/*, allow
-      p, role:server-admin, projects, get, souls, allow
-      p, role:server-admin, logs, get, souls/*, allow
-      p, role:server-admin, exec, create, souls/*, allow
+      # SecondaryProject — full access
+      p, role:server-admin, applications, *, secondary-project/*, allow
+      p, role:server-admin, projects, get, secondary-project, allow
+      p, role:server-admin, logs, get, secondary-project/*, allow
+      p, role:server-admin, exec, create, secondary-project/*, allow
 
       # ── Add new projects below ──
       # p, role:server-admin, applications, *, <project>/*, allow
@@ -102,23 +101,23 @@ configs:
       # p, role:server-admin, exec, create, <project>/*, allow
 
       g, server, role:server-admin
-
+  
   secrets:
     # GitLab SSO Configuration
-    dex.gitlab.clientId: "your-gitlab-application-client-id"
-    dex.gitlab.clientSecret: "your-gitlab-application-client-secret"
+    dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
+    dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
 
 ## Application controller
 controller:
   replicas: 1
-  # Controller environment variable optimization
+  # Controller environment variable optimization / Controller 환경 변수 최적화
   env:
-    # Kubernetes API request QPS limit (default: 50)
-    # Reduces bottlenecks during large-scale app synchronization
+    # Kubernetes API request QPS limit (default: 50) / Kubernetes API 요청 QPS 제한 (기본: 50)
+    # Reduces bottlenecks during large-scale app synchronization / 대규모 애플리케이션 동기화 시 병목 현상 감소
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "150"
-    # Kubernetes API burst request limit (default: 100)
-    # Improves sync speed during traffic spikes
+    # Kubernetes API burst request limit (default: 100) / Kubernetes API 버스트 요청 제한 (기본: 100)
+    # Improves sync speed during traffic spikes / 스파이크 상황에서 동기화 속도 향상
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "300"
   resources:
@@ -161,33 +160,25 @@ redisSecretInit:
 ## Server
 server:
   replicas: 1
-  # ── HTTP ingress (active) ──
+  # Argo CD server ingress configuration
   ingress:
+    # -- Enable an ingress resource for the Argo CD server
     enabled: true
+    ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#option-1-ssl-passthrough
     annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"
-    ingressClassName: "nginx"
-    path: /
-    pathType: Prefix
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
+      # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      # nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 
-  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
-  # Prerequisites:
-  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
-  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-  # Ref: https://github.com/example-user/certmanager-letsencrypt
-  #
-  # ingress:
-  #   enabled: true
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  #     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   ingressClassName: "nginx"
-  #   path: /
-  #   pathType: Prefix
-  #   tls: true
+    # -- Defines which ingress controller will implement the resource
+    ingressClassName: "nginx"
+
+    # -- The path to Argo CD server
+    path: /
+
+    # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
+    pathType: Prefix
   # ServiceMonitor (Prometheus metrics)
   metrics:
     enabled: true
@@ -201,19 +192,19 @@ server:
 ## Repo Server
 repoServer:
   replicas: 1
-  # Repo server environment variable optimization
+  # Repo server environment variable optimization / Repo 서버 환경 변수 최적화
   env:
-    # Command execution timeout (default: 90s)
-    # Increased timeout needed for large Helm chart manifest generation
+    # Command execution timeout (default: 90s) / 명령어 실행 타임아웃 (기본: 90초)
+    # Increased timeout needed for large Helm chart manifest generation / 대규모 Helm 차트 매니페스트 생성 시 타임아웃 증가 필요
     - name: ARGOCD_EXEC_TIMEOUT
       value: "180"
-    # Git operation retry count (default: 1)
-    # Improves stability through retries on git ls-remote failures
+    # Git operation retry count (default: 1) / Git 작업 재시도 횟수 (기본: 1)
+    # Improves stability through retries on git ls-remote failures / Git ls-remote 실패 시 재시도를 통해 안정성 향상
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
       value: "3"
-    # Allow Helm concurrent execution (default: false)
-    # Improves performance when syncing multiple Helm-based apps simultaneously
-    # Warning: Verify no interdependencies between templates
+    # Allow Helm concurrent execution (default: false) / Helm 동시 실행 허용 (기본: false)
+    # Improves performance when syncing multiple Helm-based apps simultaneously / 여러 Helm 기반 애플리케이션 동시 동기화 시 성능 개선
+    # Warning: Verify no interdependencies between templates / 주의: 템플릿 간 종속성 없는지 확인 필요
     - name: ARGOCD_HELM_ALLOW_CONCURRENCY
       value: "true"
   resources:
@@ -236,7 +227,6 @@ repoServer:
 ## ApplicationSet controller
 applicationSet:
   replicas: 1
-
 ## Notifications controller
 notifications:
   # -- Enable notifications controller
@@ -246,90 +236,90 @@ notifications:
     create: true
     items:
       slack-token: "xoxb-your-slack-bot-token"
-
+  
   notifiers:
     service.slack: |
       token: $slack-token
       username: ArgoCD
       icon: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
       channel: "#argocd-alarm"
-
+  
   templates:
     template.app-deployed: |
       message: |
-        :white_check_mark: Application {{.app.metadata.name}} has been successfully deployed.
+        :white_check_mark: 애플리케이션 {{.app.metadata.name}}이(가) 성공적으로 배포되었습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Deploy Succeeded",
+            "title": "{{ .app.metadata.name}} - 배포 성공",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
             "color": "#18be52",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Deploy Time",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "title": "배포 시간",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
           }]
-
+    
     template.app-health-degraded: |
       message: |
-        :red_circle: Application {{.app.metadata.name}} has degraded.
+        :red_circle: 애플리케이션 {{.app.metadata.name}}의 상태가 저하되었습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Health Degraded",
+            "title": "{{ .app.metadata.name}} - 상태 저하",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
             "color": "#E96D76",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Occurred At",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "title": "발생 시간",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             }
@@ -341,64 +331,64 @@ notifications:
             }
             {{end}}
             ,{
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
           }]
-
+    
     template.app-sync-failed: |
       message: |
-        :x: Application {{.app.metadata.name}} sync has failed.
+        :x: 애플리케이션 {{.app.metadata.name}}의 동기화가 실패했습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Sync Failed",
+            "title": "{{ .app.metadata.name}} - 동기화 실패",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true",
             "color": "#E96D76",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Failed At",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "title": "실패 시간",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Error",
+              "title": "오류 메시지",
               "value": "{{.app.status.operationState.message}}",
               "short": false
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
           }]
-
+    
     template.app-sync-status-out-of-sync: |
       message: |
-        :warning: Application {{.app.metadata.name}} is OutOfSync.
+        :warning: 애플리케이션 {{.app.metadata.name}}이(가) OutOfSync 상태입니다.
       slack:
         attachments: |
           [{
@@ -407,71 +397,71 @@ notifications:
             "color": "#f4c030",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Detected At",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "title": "감지 시간",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
           }]
-
+    
     template.app-health-missing: |
       message: |
-        :question: Application {{.app.metadata.name}} health status is missing.
+        :question: 애플리케이션 {{.app.metadata.name}}의 상태 정보가 없습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Health Missing",
+            "title": "{{ .app.metadata.name}} - 앱 상태 정보 없음",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
             "color": "#808080",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Detected At",
+              "title": "감지 시간",
               "value": "{{.app.status.operationState.finishedAt}}",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
@@ -479,42 +469,42 @@ notifications:
 
     template.app-restarted: |
       message: |
-        :arrows_counterclockwise: Application {{.app.metadata.name}} has been restarted.
+        :arrows_counterclockwise: 애플리케이션 {{.app.metadata.name}}이(가) 재시작되었습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Restarted",
+            "title": "{{ .app.metadata.name}} - 재시작됨",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
             "color": "#3D85C6",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Restarted At",
-              "value": "{{.app.status.operationState.startedAt}}",
+              "title": "재시작 시간",
+              "value": "{{.app.status.operationState.startedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
@@ -522,55 +512,88 @@ notifications:
 
     template.app-health-unknown: |
       message: |
-        :grey_question: Application {{.app.metadata.name}} health status is unknown.
+        :grey_question: 애플리케이션 {{.app.metadata.name}}의 상태를 알 수 없습니다.
       slack:
         attachments: |
           [{
-            "title": "{{ .app.metadata.name}} - Health Unknown",
+            "title": "{{ .app.metadata.name}} - 상태 알 수 없음",
             "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
             "color": "#808080",
             "fields": [
             {
-              "title": "Sync Status",
+              "title": "동기화 상태",
               "value": "{{.app.status.sync.status}}",
               "short": true
             },
             {
-              "title": "Health Status",
+              "title": "앱 상태",
               "value": "{{.app.status.health.status}}",
               "short": true
             },
             {
-              "title": "Namespace",
+              "title": "네임스페이스",
               "value": "{{.app.spec.destination.namespace}}",
               "short": true
             },
             {
-              "title": "Detected At",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "title": "감지 시간",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
               "short": true
             },
             {
-              "title": "Destination",
+              "title": "대상 서버",
               "value": "{{.app.spec.destination.server}}",
               "short": true
             },
             {
-              "title": "Details",
-              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "title": "자세한 정보",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|Argo CD에서 보기>",
               "short": false
             }
             ]
           }]
 
+    # template.app-healthy: |
+    #   message: |
+    #     :white_check_mark: 애플리케이션 {{.app.metadata.name}}이(가) 정상 상태입니다.
+    #   slack:
+    #     attachments: |
+    #       [{
+    #         "title": "{{ .app.metadata.name}} - 정상 상태",
+    #         "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+    #         "color": "#18be52",
+    #         "fields": [
+    #         {
+    #           "title": "동기화 상태",
+    #           "value": "{{.app.status.sync.status}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "앱 상태",
+    #           "value": "{{.app.status.health.status}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "네임스페이스",
+    #           "value": "{{.app.spec.destination.namespace}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "리비전",
+    #           "value": "{{.app.status.sync.revision}}",
+    #           "short": true
+    #         }
+    #         ]
+    #       }]
+    
   triggers:
     trigger.on-deployed: |
       - description: Application is synced and healthy after any operation.
         send:
         - app-deployed
         when: |
-          app.status.operationState.phase == 'Succeeded' and
-          app.status.health.status == 'Healthy' and
+          app.status.operationState.phase == 'Succeeded' and 
+          app.status.health.status == 'Healthy' and 
           app.status.operationState != null
         oncePer: app.status.summary.images[0]
 
@@ -591,13 +614,13 @@ notifications:
         send:
         - app-sync-status-out-of-sync
         when: |
-          app.status.sync.status == 'OutOfSync' and
-          app.status.health.status not in ['Progressing', 'Healthy'] and
-          (app.metadata.creationTimestamp == null or
+          app.status.sync.status == 'OutOfSync' and 
+          app.status.health.status not in ['Progressing', 'Healthy'] and 
+          (app.metadata.creationTimestamp == null or 
             time.Now().Sub(time.Parse(app.metadata.creationTimestamp)).Minutes() > 5) and
-          ((app.status.operationState == null) or
-          (app.status.operationState != null and
-            app.status.operationState.phase != 'Running' and
+          ((app.status.operationState == null) or 
+          (app.status.operationState != null and 
+            app.status.operationState.phase != 'Running' and 
             app.status.operationState.finishedAt != null and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60))
 
@@ -606,7 +629,7 @@ notifications:
         send:
         - app-health-missing
         when: app.status.health.status == 'Missing'
-
+        
     trigger.on-restarted: |
       - description: Application has been restarted
         send:
@@ -619,6 +642,12 @@ notifications:
         - app-health-unknown
         when: app.status.health.status == 'Unknown'
 
+    # trigger.test-notification: |
+    #   - description: 테스트 알림 - 애플리케이션이 정상 상태일 때
+    #     send:
+    #     - app-healthy
+    #     when: "true"  # 항상 트리거됨
+  
   subscriptions:
     - recipients:
       - slack:#argocd-alarm
@@ -630,3 +659,4 @@ notifications:
       - on-health-missing
       - on-health-unknown
       - on-restarted
+      # - test-notification

@@ -1,23 +1,21 @@
 #!/bin/bash
-# upgrade-template: external-standard
+# upgrade-template: local-cr-version
 set -euo pipefail
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
-# To reuse this script for other Helm charts, copy this file
-# and modify ONLY the variables below.
 # ============================================================
-SCRIPT_NAME="Kibana Helm Chart Upgrade Script"
-HELM_REPO_NAME="elastic"
-HELM_REPO_URL="https://helm.elastic.co"
-HELM_CHART="elastic/kibana"
-CHANGELOG_URL="https://github.com/elastic/helm-charts/tree/main/kibana"
-CHART_TYPE="local"  # "local" = manages Chart.yaml + values.yaml / "external" = helmfile + values/ only
+SCRIPT_NAME="Kibana (ECK CR) Version Upgrade Script"
+COMPONENT_LABEL="kibana"
+VERSION_SOURCE="elastic-artifacts"
+VALUES_FILE="values/mgmt.yaml"
+VERSION_KEY="version"
+MAJOR_PIN="9"
+CHANGELOG_URL="https://www.elastic.co/guide/en/kibana/current/release-notes.html"
 # ============================================================
 
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
-VALUES_DIR="$CHART_DIR/values"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 KEEP_BACKUPS=5
 
@@ -30,13 +28,12 @@ usage() {
 Usage: $(basename "$0") [COMMAND] [OPTIONS]
 
 $SCRIPT_NAME
-Checks for new versions, backs up current files, and applies the upgrade.
+Tracks the upstream version of a Custom Resource's component and bumps the
+version field inside values/<env>.yaml (plus Chart.yaml appVersion).
 
 Commands:
   (default)           Check latest version and upgrade
-  --version <VER>     Upgrade to a specific chart version
-  --exclude <PATTERN> Exclude values files whose name contains PATTERN (substring match,
-                      comma-separated; also skipped from backup copy)
+  --version <VER>     Upgrade to a specific version (skips upstream query)
   --dry-run           Preview changes only (no files will be modified)
   --rollback          Restore from a previous backup
   --list-backups      List available backups
@@ -44,14 +41,10 @@ Commands:
   -h, --help          Show this help message
 
 Examples:
-  $(basename "$0")                                # Upgrade to latest
+  $(basename "$0")                                # Upgrade to latest GA
   $(basename "$0") --dry-run                      # Preview upgrade without changes
-  $(basename "$0") --version 1.0.0                # Upgrade to specific version
-  $(basename "$0") --exclude old-release,test     # Skip files with 'old-release' or 'test' in name
-  $(basename "$0") --dry-run --version 1.0.0      # Combine flags
+  $(basename "$0") --version 9.1.2                # Pin to a specific version
   $(basename "$0") --rollback                     # Restore from backup
-  $(basename "$0") --list-backups                 # Show available backups
-  $(basename "$0") --cleanup-backups              # Remove old backups (keep last $KEEP_BACKUPS)
 EOF
   exit 0
 }
@@ -68,9 +61,9 @@ list_backups() {
   for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
     local dirname=$(basename "$dir")
     local chart_ver="unknown"
-    [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}')
-    local files=$(ls "$dir" | tr '\n' ', ' | sed 's/,$//')
-    printf "  [%d] %s (Chart: %s) — %s\n" "$i" "$dirname" "$chart_ver" "$files"
+    [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^appVersion:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
+    local files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+    printf "  [%d] %s (appVersion: %s) — %s\n" "$i" "$dirname" "$chart_ver" "$files"
     i=$((i + 1))
   done
   echo ""
@@ -103,16 +96,10 @@ do_rollback() {
   echo "Restoring from backup/$dirname..."
 
   [ -f "$selected/Chart.yaml" ] && cp "$selected/Chart.yaml" "$CHART_DIR/Chart.yaml" && echo "  Restored Chart.yaml"
-  [ -f "$selected/values.yaml" ] && cp "$selected/values.yaml" "$CHART_DIR/values.yaml" && echo "  Restored values.yaml"
-  [ -f "$selected/helmfile.yaml" ] && cp "$selected/helmfile.yaml" "$CHART_DIR/helmfile.yaml" && echo "  Restored helmfile.yaml"
-
-  for f in "$selected"/*.yaml; do
-    local fname=$(basename "$f")
-    if [ "$fname" != "Chart.yaml" ] && [ "$fname" != "values.yaml" ] && [ "$fname" != "helmfile.yaml" ]; then
-      cp "$f" "$VALUES_DIR/$fname"
-      echo "  Restored values/$fname"
-    fi
-  done
+  if [ -f "$selected/$(basename "$VALUES_FILE")" ]; then
+    cp "$selected/$(basename "$VALUES_FILE")" "$CHART_DIR/$VALUES_FILE"
+    echo "  Restored $VALUES_FILE"
+  fi
 
   echo ""
   echo "Rollback complete! Run 'helmfile diff' to verify."
@@ -144,18 +131,79 @@ cleanup_backups() {
   echo "Done."
 }
 
-is_excluded() {
-  local filename="$1"
-  if [ -z "$EXCLUDE_PATTERNS" ]; then
-    return 1
-  fi
-  IFS=',' read -ra patterns <<< "$EXCLUDE_PATTERNS"
-  for pattern in "${patterns[@]}"; do
-    if [[ "$filename" == *"$pattern"* ]]; then
-      return 0
-    fi
-  done
-  return 1
+# Read a top-level YAML string value. Handles quoted and unquoted values.
+# Usage: read_yaml_value <file> <key>
+read_yaml_value() {
+  local file="$1"
+  local key="$2"
+  awk -v k="$key" '
+    $0 ~ "^" k ":" {
+      sub("^" k ":[[:space:]]*", "")
+      gsub(/^["\x27]|["\x27]$/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      print
+      exit
+    }
+  ' "$file"
+}
+
+# Replace a top-level YAML string value (quotes preserved where possible).
+# Usage: update_yaml_value <file> <key> <new_value>
+update_yaml_value() {
+  local file="$1"
+  local key="$2"
+  local new="$3"
+  local tmp
+  tmp=$(mktemp)
+  awk -v k="$key" -v v="$new" '
+    BEGIN { done = 0 }
+    {
+      if (!done && $0 ~ "^" k ":") {
+        # Preserve leading indentation + key, preserve quoting style.
+        line = $0
+        if (match(line, /: *"[^"]*"/)) {
+          sub(/"[^"]*"/, "\"" v "\"", line)
+        } else if (match(line, /: *\x27[^\x27]*\x27/)) {
+          sub(/\x27[^\x27]*\x27/, "\x27" v "\x27", line)
+        } else {
+          sub(/:[[:space:]].*$/, ": " v, line)
+        }
+        print line
+        done = 1
+        next
+      }
+      print
+    }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
+# Fetch latest GA version from the configured source.
+# Prints version to stdout, empty on failure.
+fetch_latest_version() {
+  case "$VERSION_SOURCE" in
+    elastic-artifacts)
+      local url="https://artifacts-api.elastic.co/v1/versions"
+      curl -sSfL "$url" 2>/dev/null | python3 -c "
+import json, sys, re, os
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+versions = d.get('versions', [])
+# Keep strict X.Y.Z GA (exclude SNAPSHOT, rc, alpha, etc.)
+ga = [v for v in versions if re.fullmatch(r'\d+\.\d+\.\d+', v)]
+major = os.environ.get('MAJOR_PIN', '').strip()
+if major:
+    ga = [v for v in ga if v.startswith(major + '.')]
+ga.sort(key=lambda v: tuple(int(p) for p in v.split('.')), reverse=True)
+print(ga[0] if ga else '')
+" 2>/dev/null
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
 
 # -----------------------------------------------
@@ -164,7 +212,6 @@ is_excluded() {
 
 DRY_RUN=false
 TARGET_VERSION=""
-EXCLUDE_PATTERNS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -173,14 +220,6 @@ while [[ $# -gt 0 ]]; do
     --rollback)         do_rollback; exit 0 ;;
     --cleanup-backups)  cleanup_backups; exit 0 ;;
     --dry-run)          DRY_RUN=true; shift ;;
-    --exclude)
-      EXCLUDE_PATTERNS="${2:-}"
-      if [ -z "$EXCLUDE_PATTERNS" ]; then
-        echo "ERROR: --exclude requires a pattern (e.g., --exclude old-release,test)"
-        exit 1
-      fi
-      shift 2
-      ;;
     --version)
       TARGET_VERSION="${2:-}"
       if [ -z "$TARGET_VERSION" ]; then
@@ -205,61 +244,49 @@ fi
 if [ -n "$TARGET_VERSION" ]; then
   echo " Target: v$TARGET_VERSION"
 fi
-if [ -n "$EXCLUDE_PATTERNS" ]; then
-  echo " Exclude: $EXCLUDE_PATTERNS"
+if [ -n "$MAJOR_PIN" ]; then
+  echo " Major pin: $MAJOR_PIN.x"
 fi
 echo "================================================"
 
-# Step 1: Check current version
+# Step 1: Read current version
 echo ""
-echo "[Step 1/7] Checking current version..."
-CURRENT_VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
-CURRENT_APP_VERSION=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
-echo "  Installed - Chart: $CURRENT_VERSION / App: $CURRENT_APP_VERSION"
-
-if [ -f "$CHART_DIR/helmfile.yaml" ]; then
-  echo ""
-  echo "  Helmfile releases:"
-  awk '/^releases:/,0' "$CHART_DIR/helmfile.yaml" | grep -v '#' | awk '
-    /- name:/ { name=$3 }
-    /version:/ { if (name != "") { printf "    - %-30s version: %s\n", name, $2; name="" } }
-  '
-fi
-
-# Step 2: Fetch latest version from helm repo
-echo ""
-echo "[Step 2/7] Checking latest version..."
-
-helm repo add "$HELM_REPO_NAME" "$HELM_REPO_URL" > /dev/null 2>&1 || true
-helm repo update > /dev/null 2>&1 || true
-
-LATEST_INFO=$(helm search repo "$HELM_CHART" --output json 2>/dev/null | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-if data:
-    print(data[0].get('version', ''))
-    print(data[0].get('app_version', ''))
-" 2>/dev/null || true)
-
-LATEST_VERSION_FOUND=$(echo "$LATEST_INFO" | head -1)
-LATEST_APP_VERSION=$(echo "$LATEST_INFO" | tail -1)
-
-if [ -z "$LATEST_VERSION_FOUND" ]; then
-  echo "  ERROR: Failed to fetch latest version."
-  echo "  Try: helm repo add $HELM_REPO_NAME $HELM_REPO_URL && helm repo update"
+echo "[Step 1/5] Reading current version from $VALUES_FILE..."
+if [ ! -f "$CHART_DIR/$VALUES_FILE" ]; then
+  echo "  ERROR: values file not found: $CHART_DIR/$VALUES_FILE"
   exit 1
 fi
+CURRENT_VERSION=$(read_yaml_value "$CHART_DIR/$VALUES_FILE" "$VERSION_KEY")
+if [ -z "$CURRENT_VERSION" ]; then
+  echo "  ERROR: could not read '$VERSION_KEY' from $VALUES_FILE"
+  exit 1
+fi
+echo "  Current $COMPONENT_LABEL version: $CURRENT_VERSION"
 
-if [ -n "$TARGET_VERSION" ]; then
-  echo "  Latest available - Chart: $LATEST_VERSION_FOUND / App: $LATEST_APP_VERSION"
-  LATEST_VERSION="$TARGET_VERSION"
-  echo "  Using target     - Chart: $TARGET_VERSION"
-else
-  LATEST_VERSION="$LATEST_VERSION_FOUND"
-  echo "  Latest    - Chart: $LATEST_VERSION / App: $LATEST_APP_VERSION"
+CURRENT_APP_VERSION=""
+if [ -f "$CHART_DIR/Chart.yaml" ]; then
+  CURRENT_APP_VERSION=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"')
+  echo "  Chart.yaml appVersion:       $CURRENT_APP_VERSION"
 fi
 
-if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+# Step 2: Fetch latest version
+echo ""
+echo "[Step 2/5] Checking latest upstream version (source: $VERSION_SOURCE)..."
+
+if [ -n "$TARGET_VERSION" ]; then
+  LATEST_VERSION="$TARGET_VERSION"
+  echo "  Using explicit target: $TARGET_VERSION"
+else
+  LATEST_VERSION=$(MAJOR_PIN="$MAJOR_PIN" fetch_latest_version)
+  if [ -z "$LATEST_VERSION" ]; then
+    echo "  ERROR: failed to fetch latest version from '$VERSION_SOURCE'."
+    echo "  Verify network access and the source endpoint."
+    exit 1
+  fi
+  echo "  Latest available:      $LATEST_VERSION"
+fi
+
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ] && { [ -z "$CURRENT_APP_VERSION" ] || [ "$CURRENT_APP_VERSION" = "$LATEST_VERSION" ]; }; then
   echo ""
   echo "  Already up to date! Nothing to do."
   exit 0
@@ -269,164 +296,43 @@ echo ""
 echo "  Upgrade: $CURRENT_VERSION -> $LATEST_VERSION"
 echo "  Changelog: $CHANGELOG_URL"
 
-# Step 3: Fetch Chart.yaml and values.yaml for target version
+# Step 3: ECK / compatibility reminder
 echo ""
-echo "[Step 3/7] Fetching Chart.yaml and values.yaml for version $LATEST_VERSION..."
-TEMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TEMP_DIR"' EXIT
+echo "[Step 3/5] Compatibility reminder"
+cat <<EOF
+  * Verify the currently installed ECK Operator supports $COMPONENT_LABEL $LATEST_VERSION.
+    Compatibility matrix: https://www.elastic.co/support/matrix
+  * For Stack major bumps (e.g. 8.x -> 9.x) review breaking changes before applying.
+  * Keep Elasticsearch and Kibana on the same Stack version (Kibana <= Elasticsearch).
+EOF
 
-helm show chart "$HELM_CHART" --version "$LATEST_VERSION" > "$TEMP_DIR/Chart.yaml" 2>/dev/null
-helm show values "$HELM_CHART" --version "$LATEST_VERSION" > "$TEMP_DIR/values-new.yaml" 2>/dev/null
-
-# Fetch values.schema.json if the chart includes one
-helm pull "$HELM_CHART" --version "$LATEST_VERSION" --untar --untardir "$TEMP_DIR/pulled" 2>/dev/null || true
-PULLED_CHART_DIR=$(find "$TEMP_DIR/pulled" -maxdepth 1 -mindepth 1 -type d | head -1)
-if [ -n "$PULLED_CHART_DIR" ] && [ -f "$PULLED_CHART_DIR/values.schema.json" ]; then
-  cp "$PULLED_CHART_DIR/values.schema.json" "$TEMP_DIR/values.schema.json"
-fi
-
-if [ "$CHART_TYPE" = "local" ]; then
-  cp "$CHART_DIR/values.yaml" "$TEMP_DIR/values-old.yaml"
-else
-  helm show values "$HELM_CHART" --version "$CURRENT_VERSION" > "$TEMP_DIR/values-old.yaml" 2>/dev/null || true
-fi
-
-if [ ! -s "$TEMP_DIR/Chart.yaml" ] || [ ! -s "$TEMP_DIR/values-new.yaml" ]; then
-  echo "  ERROR: Failed to fetch chart for version $LATEST_VERSION"
-  exit 1
-fi
-
-LATEST_APP_VERSION=$(grep '^appVersion:' "$TEMP_DIR/Chart.yaml" | awk '{print $2}')
-echo "  Downloaded successfully (App: $LATEST_APP_VERSION)"
-
-# Step 4: Show Chart.yaml changes
-echo ""
-echo "[Step 4/7] Chart.yaml diff (current vs target)..."
-echo "------------------------------------------------"
-diff "$CHART_DIR/Chart.yaml" "$TEMP_DIR/Chart.yaml" || true
-echo "------------------------------------------------"
-
-# Step 5: Show values.yaml changes
-echo ""
-echo "[Step 5/7] values.yaml diff (current vs target)..."
-if [ -s "$TEMP_DIR/values-old.yaml" ]; then
-  DIFF_LINES=$( (diff "$TEMP_DIR/values-old.yaml" "$TEMP_DIR/values-new.yaml" || true) | wc -l | tr -d ' ')
-  echo "  Total diff lines: $DIFF_LINES (showing first 80)"
-  echo "------------------------------------------------"
-  (diff "$TEMP_DIR/values-old.yaml" "$TEMP_DIR/values-new.yaml" || true) | head -80
-  echo "------------------------------------------------"
-else
-  echo "  Could not fetch old version values for comparison"
-fi
-
-# Step 6: Check custom values for breaking changes
-echo ""
-echo "[Step 6/7] Checking custom values for breaking changes..."
-
-if [ -n "$EXCLUDE_PATTERNS" ]; then
-  echo "  Excluding patterns: $EXCLUDE_PATTERNS"
-fi
-
-for values_file in "$VALUES_DIR"/*.yaml; do
-  [ ! -f "$values_file" ] && continue
-  filename=$(basename "$values_file")
-
-  if is_excluded "$filename"; then
-    echo ""
-    echo "=== values/$filename === (SKIPPED)"
-    continue
-  fi
-
-  echo ""
-  echo "=== values/$filename ==="
-
-  if [ -s "$TEMP_DIR/values-old.yaml" ]; then
-    REMOVED_KEYS=$( (diff \
-      <(grep -E '^[a-zA-Z]' "$TEMP_DIR/values-old.yaml" | sed 's/:.*//' | sort -u) \
-      <(grep -E '^[a-zA-Z]' "$TEMP_DIR/values-new.yaml" | sed 's/:.*//' | sort -u) \
-      || true) | grep '^<' | sed 's/^< //' || true)
-
-    if [ -n "$REMOVED_KEYS" ]; then
-      echo "  !!  Removed top-level keys in target values.yaml:"
-      echo "$REMOVED_KEYS" | while read -r key; do
-        if grep -q "^$key:" "$values_file" 2>/dev/null; then
-          echo "    - $key  <-- USED in your $filename!"
-        else
-          echo "    - $key"
-        fi
-      done
-    fi
-
-    NEW_KEYS=$( (diff \
-      <(grep -E '^[a-zA-Z]' "$TEMP_DIR/values-old.yaml" | sed 's/:.*//' | sort -u) \
-      <(grep -E '^[a-zA-Z]' "$TEMP_DIR/values-new.yaml" | sed 's/:.*//' | sort -u) \
-      || true) | grep '^>' | sed 's/^> //' || true)
-
-    if [ -n "$NEW_KEYS" ]; then
-      echo "  ++  New top-level keys in target values.yaml:"
-      echo "$NEW_KEYS" | while read -r key; do echo "    - $key"; done
-    fi
-
-    if [ -z "$REMOVED_KEYS" ] && [ -z "$NEW_KEYS" ]; then
-      echo "  OK  No breaking top-level key changes detected"
-    fi
-  else
-    echo "  SKIP  Could not compare (old version values unavailable)"
-  fi
-done
-
-# Step 7: Apply changes (or exit if dry-run)
+# Step 4: Dry-run exit
 echo ""
 if $DRY_RUN; then
-  echo "[Step 7/7] DRY-RUN complete. No files were changed."
+  echo "[Step 4/5] DRY-RUN complete. No files were changed."
   echo ""
   echo "  To apply: ./upgrade.sh"
   [ -n "$TARGET_VERSION" ] && echo "  To apply: ./upgrade.sh --version $TARGET_VERSION"
   exit 0
 fi
 
-echo "[Step 7/7] Applying upgrade..."
-
-# Create backup
+echo "[Step 4/5] Backing up current files..."
 mkdir -p "$BACKUP_DIR/$TIMESTAMP"
-cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
-[ -f "$CHART_DIR/helmfile.yaml" ] && cp "$CHART_DIR/helmfile.yaml" "$BACKUP_DIR/$TIMESTAMP/helmfile.yaml"
-if [ -f "$CHART_DIR/values.yaml" ]; then
-  cp "$CHART_DIR/values.yaml" "$BACKUP_DIR/$TIMESTAMP/values.yaml"
-fi
-if [ -f "$CHART_DIR/values.schema.json" ]; then
-  cp "$CHART_DIR/values.schema.json" "$BACKUP_DIR/$TIMESTAMP/values.schema.json"
-fi
-for values_file in "$VALUES_DIR"/*.yaml; do
-  [ -f "$values_file" ] || continue
-  is_excluded "$(basename "$values_file")" && continue
-  cp "$values_file" "$BACKUP_DIR/$TIMESTAMP/$(basename "$values_file")"
-done
+cp "$CHART_DIR/$VALUES_FILE" "$BACKUP_DIR/$TIMESTAMP/$(basename "$VALUES_FILE")"
+[ -f "$CHART_DIR/Chart.yaml" ] && cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
 echo "  Backed up to: backup/$TIMESTAMP/"
 ls "$BACKUP_DIR/$TIMESTAMP/" | while read -r f; do echo "    - $f"; done
 
-# Update Chart.yaml
-cp "$TEMP_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml"
+# Step 5: Apply version updates
 echo ""
-echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_APP_VERSION)"
+echo "[Step 5/5] Applying version update..."
 
-# Update values.yaml
-cp "$TEMP_DIR/values-new.yaml" "$CHART_DIR/values.yaml"
-echo "  Updated values.yaml"
+update_yaml_value "$CHART_DIR/$VALUES_FILE" "$VERSION_KEY" "$LATEST_VERSION"
+echo "  Updated $VALUES_FILE ($VERSION_KEY: $CURRENT_VERSION -> $LATEST_VERSION)"
 
-# Update values.schema.json (if upstream chart includes one)
-if [ -f "$TEMP_DIR/values.schema.json" ]; then
-  cp "$TEMP_DIR/values.schema.json" "$CHART_DIR/values.schema.json"
-  echo "  Updated values.schema.json"
-fi
-
-# Update helmfile.yaml version (portable sed: works on macOS BSD sed and GNU sed)
-if [ -f "$CHART_DIR/helmfile.yaml" ]; then
-  UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
-  HELMFILE_TMP=$(mktemp)
-  sed "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml" > "$HELMFILE_TMP"
-  mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
-  echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
+if [ -f "$CHART_DIR/Chart.yaml" ]; then
+  update_yaml_value "$CHART_DIR/Chart.yaml" "appVersion" "$LATEST_VERSION"
+  echo "  Updated Chart.yaml (appVersion: ${CURRENT_APP_VERSION:-unset} -> $LATEST_VERSION)"
 fi
 
 echo ""
@@ -436,9 +342,10 @@ echo ""
 echo " Changelog: $CHANGELOG_URL"
 echo ""
 echo " Next steps:"
-echo "   1. Review values/ files for any needed changes"
+echo "   1. Verify ECK Operator supports the new Stack version."
 echo "   2. Run: helmfile diff"
 echo "   3. Run: helmfile apply"
+echo "   4. Watch CR: kubectl -n <ns> get $COMPONENT_LABEL -w"
 echo ""
 echo " To rollback:"
 echo "   ./upgrade.sh --rollback"

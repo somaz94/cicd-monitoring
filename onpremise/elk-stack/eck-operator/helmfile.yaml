@@ -1,0 +1,27 @@
+repositories:
+  - name: elastic
+    url: https://helm.elastic.co
+
+releases:
+  - name: eck-operator
+    namespace: elastic-system
+    chart: elastic/eck-operator
+    # -- Chart version reference (keep in sync with upgrade.sh output)
+    version: 3.3.2
+    values:
+      - values/mgmt.yaml
+
+# Hooks to ensure namespace exists before install
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "kubectl"
+    args:
+      - "create"
+      - "namespace"
+      - "elastic-system"
+      - "--dry-run=client"
+      - "-o"
+      - "yaml"
+      - "||"
+      - "true"

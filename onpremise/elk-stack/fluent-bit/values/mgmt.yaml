@@ -5,7 +5,10 @@ replicaCount: 1
 
 image:
   repository: cr.fluentbit.io/fluent/fluent-bit
-  tag: "3.1.4"
+  # tag omitted on purpose: chart default renders tag from Chart.AppVersion,
+  # so `./upgrade.sh` bumps both chart and image in lockstep. Override here
+  # only if an image variant outside the chart's default is required
+  # (unlike fluentd, which pins an ES-specific variant).
   pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -36,35 +39,23 @@ nodeSelector: {}
 
 affinity: {}
 
-env:
-  - name: FLUENT_ELASTICSEARCH_HOST
-    value: "elasticsearch-master"
-  - name: FLUENT_ELASTICSEARCH_PORT
-    value: "9200"
-  - name: FLUENT_ELASTICSEARCH_USER
-    valueFrom:
-      secretKeyRef:
-        name: elasticsearch-master-credentials
-        key: username
-  - name: FLUENT_ELASTICSEARCH_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: elasticsearch-master-credentials
-        key: password
+# fluent-bit forwards to fluentd (not ES directly); ES credentials are not
+# needed here. Removed to avoid dead references to monitoring-ns secrets.
+env: []
 
 # Volume mounts for log collection
 extraVolumeMounts:
-  - name: dev-app-game-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/app/dev/game
+  - name: dev-example-project-game-app-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/example-project/dev/game
     readOnly: true
-  - name: dev-app-battle-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/app/dev/battle
+  - name: dev-example-project-battle-app-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/example-project/dev/battle
     readOnly: true
-  - name: stg-app-game-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/app/staging/game
+  - name: stg-example-project-game-app-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/example-project/staging/game
     readOnly: true
-  - name: qa-app-game-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/app/qa/game
+  - name: qa-example-project-game-app-logs-pvc-fluentbit
+    mountPath: /fluent-bit/logs/example-project/qa/game
     readOnly: true
 
 config:
@@ -81,111 +72,119 @@ config:
         Health_Check On
 
   inputs: |
-    # Dev Game logs
+    # Dev ExampleProject Game logs
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/app/dev/game/*
+        Path /fluent-bit/logs/example-project/dev/game/*
         Path_Key filepath
-        Tag app.dev.game
-        Parser app_json
+        Tag example-project.dev.game
+        Parser example-project_json
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
-        Read_from_Head true
-        Ignore_Older 0
+        # Read_from_Head true: reads files from the beginning (causes re-ingestion of all historical logs on restart)
+        # Read_from_Head false: reads files from the end (only collects new log entries appended after startup)
+        Read_from_Head false
+        # Ignore_Older 0: disables age filtering (all files are processed regardless of modification time)
+        # Ignore_Older 7d: skips files not modified in the last 7 days (prevents processing months of old logs on NFS)
+        Ignore_Older 7d
 
-    # Dev Battle logs
+    # Dev ExampleProject Battle logs
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/app/dev/battle/*
+        Path /fluent-bit/logs/example-project/dev/battle/*
         Path_Key filepath
-        Tag app.dev.battle
-        Parser app_json
+        Tag example-project.dev.battle
+        Parser example-project_json
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
-        Read_from_Head true
-        Ignore_Older 0
+        Read_from_Head false
+        Ignore_Older 7d
 
-    # Staging Game logs
+    # Staging ExampleProject Game logs
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/app/staging/game/*
+        Path /fluent-bit/logs/example-project/staging/game/*
         Path_Key filepath
-        Tag app.stg.game
-        Parser app_json
+        Tag example-project.stg.game
+        Parser example-project_json
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
-        Read_from_Head true
-        Ignore_Older 0
+        Read_from_Head false
+        Ignore_Older 7d
 
-    # QA Game logs
+    # QA ExampleProject Game logs
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/app/qa/game/*
+        Path /fluent-bit/logs/example-project/qa/game/*
         Path_Key filepath
-        Tag app.qa.game
-        Parser app_json
+        Tag example-project.qa.game
+        Parser example-project_json
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
-        Read_from_Head true
-        Ignore_Older 0
+        Read_from_Head false
+        Ignore_Older 7d
 
   filters: |
     # Add metadata for dev game logs
     [FILTER]
         Name modify
-        Match app.dev.game
-        Set log_source dev-app-game
+        Match example-project.dev.game
+        Set log_source dev-example-project-game
         Set environment dev
-        Set app myapp
+        Set app example-project
         Set component game
+        Set label game
 
     # Add metadata for dev battle logs
     [FILTER]
         Name modify
-        Match app.dev.battle
-        Set log_source dev-app-battle
+        Match example-project.dev.battle
+        Set log_source dev-example-project-battle
         Set environment dev
-        Set app myapp
+        Set app example-project
         Set component battle
+        Set label battle
 
     # Add metadata for staging game logs
     [FILTER]
         Name modify
-        Match app.stg.game
-        Set log_source stg-app-game
+        Match example-project.stg.game
+        Set log_source stg-example-project-game
         Set environment stg
-        Set app myapp
+        Set app example-project
         Set component game
+        Set label game
 
     # Add metadata for qa game logs
     [FILTER]
         Name modify
-        Match app.qa.game
-        Set log_source qa-app-game
+        Match example-project.qa.game
+        Set log_source qa-example-project-game
         Set environment qa
-        Set app myapp
+        Set app example-project
         Set component game
+        Set label game
 
   outputs: |
     # Send to Fluentd for further processing
     [OUTPUT]
         Name forward
-        Match app.*
+        Match example-project.*
         Host fluentd
         Port 24224
         Retry_Limit 5
 
   customParsers: |
     [PARSER]
-        Name app_json
+        Name example-project_json
         Format json
         Time_Keep On
         Time_Key @timestamp
@@ -204,72 +203,83 @@ logLevel: info
 persistentVolumes:
   enabled: true
   items:
-    - name: dev-app-game-logs-pv-fluentbit
+    - name: dev-example-project-game-app-logs-pv-fluentbit
       storage: 5Gi
       volumeMode: Filesystem
       accessModes:
         - ReadWriteMany
       reclaimPolicy: Retain
       storageClassName: nfs-client-nopath
-      path: /volume1/nfs/app/dev/server/logs/game
-      server: 10.0.0.5
-    - name: dev-app-battle-logs-pv-fluentbit
+      path: /volume1/nfs/example-project/dev/server/logs/game
+      server: 192.168.1.5
+    - name: dev-example-project-battle-app-logs-pv-fluentbit
       storage: 5Gi
       volumeMode: Filesystem
       accessModes:
         - ReadWriteMany
       reclaimPolicy: Retain
       storageClassName: nfs-client-nopath
-      path: /volume1/nfs/app/dev/server/logs/battle
-      server: 10.0.0.5
-    - name: stg-app-game-logs-pv-fluentbit
+      path: /volume1/nfs/example-project/dev/server/logs/battle
+      server: 192.168.1.5
+    - name: stg-example-project-game-app-logs-pv-fluentbit
       storage: 5Gi
       volumeMode: Filesystem
       accessModes:
         - ReadWriteMany
       reclaimPolicy: Retain
       storageClassName: nfs-client-nopath
-      path: /volume1/nfs/app/staging/server/logs/game
-      server: 10.0.0.5
-    - name: qa-app-game-logs-pv-fluentbit
+      path: /volume1/nfs/example-project/staging/server/logs/game
+      server: 192.168.1.5
+    - name: qa-example-project-game-app-logs-pv-fluentbit
       storage: 5Gi
       volumeMode: Filesystem
       accessModes:
         - ReadWriteMany
       reclaimPolicy: Retain
       storageClassName: nfs-client-nopath
-      path: /volume1/nfs/app/qa/server/logs/game
-      server: 10.0.0.5
+      path: /volume1/nfs/example-project/qa/server/logs/game
+      server: 192.168.1.5
 
 # PersistentVolumeClaims for log collection
 persistentVolumeClaims:
   enabled: true
   items:
-    - name: dev-app-game-logs-pvc-fluentbit
+    - name: dev-example-project-game-app-logs-pvc-fluentbit
       accessModes:
         - ReadWriteMany
       storageClassName: nfs-client-nopath
       storage: 5Gi
       selector:
-        volumeName: dev-app-game-logs-pv-fluentbit
-    - name: dev-app-battle-logs-pvc-fluentbit
+        volumeName: dev-example-project-game-app-logs-pv-fluentbit
+    - name: dev-example-project-battle-app-logs-pvc-fluentbit
       accessModes:
         - ReadWriteMany
       storageClassName: nfs-client-nopath
       storage: 5Gi
       selector:
-        volumeName: dev-app-battle-logs-pv-fluentbit
-    - name: stg-app-game-logs-pvc-fluentbit
+        volumeName: dev-example-project-battle-app-logs-pv-fluentbit
+    - name: stg-example-project-game-app-logs-pvc-fluentbit
       accessModes:
         - ReadWriteMany
       storageClassName: nfs-client-nopath
       storage: 5Gi
       selector:
-        volumeName: stg-app-game-logs-pv-fluentbit
-    - name: qa-app-game-logs-pvc-fluentbit
+        volumeName: stg-example-project-game-app-logs-pv-fluentbit
+    - name: qa-example-project-game-app-logs-pvc-fluentbit
       accessModes:
         - ReadWriteMany
       storageClassName: nfs-client-nopath
       storage: 5Gi
       selector:
-        volumeName: qa-app-game-logs-pv-fluentbit
+        volumeName: qa-example-project-game-app-logs-pv-fluentbit
+
+# =============================================================================
+# ServiceMonitor (Prometheus metrics for Fluent Bit)
+# Monitors: log throughput, errors, buffer status, retry counts
+# =============================================================================
+serviceMonitor:
+  enabled: true
+  namespace: logging
+  interval: 30s
+  additionalLabels:
+    release: kube-prometheus-stack

@@ -7,6 +7,6 @@ releases:
   - name: example-project-mysql-exporter
     chart: prometheus-community/prometheus-mysql-exporter
     namespace: monitoring
-    version: 2.13.0
+    version: 2.13.1
     values:
       - values/example-project.yaml

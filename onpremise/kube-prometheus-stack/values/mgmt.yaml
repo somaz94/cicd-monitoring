@@ -8,7 +8,7 @@
 # =============================================================================
 grafana:
   enabled: true
-  adminPassword: "exampleAdminPassword"
+  adminPassword: "exampleAdminPassword"  # TODO: Change this to a secure password
 
   resources:
     requests:
@@ -32,7 +32,7 @@ grafana:
   persistence:
     enabled: true
     size: 10Gi
-    storageClassName: local-path
+    storageClassName: nfs-client-server
 
   # Default dashboards
   defaultDashboardsEnabled: true
@@ -47,7 +47,7 @@ grafana:
   #     isDefault: false
 
 # =============================================================================
-# Alertmanager -> Slack
+# Alertmanager → Slack
 # =============================================================================
 alertmanager:
   enabled: true
@@ -60,13 +60,6 @@ alertmanager:
       limits:
         cpu: 500m
         memory: 512Mi
-    # -- Schedule alertmanager on specific nodes using tolerations and nodeSelector.
-    # tolerations:
-    #   - key: "monitoring"
-    #     operator: "Equal"
-    #     effect: "NoSchedule"
-    # nodeSelector:
-    #   local-path: enabled
 
   ingress:
     enabled: true
@@ -111,7 +104,7 @@ alertmanager:
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
-      receiver: 'slack-alerts'
+      receiver: 'slack-infra-alerts'
       routes:
         - receiver: 'null'
           matchers:
@@ -121,10 +114,10 @@ alertmanager:
             - alertname = "InfoInhibitor"
     receivers:
       - name: 'null'
-      - name: 'slack-alerts'
+      - name: 'slack-infra-alerts'
         slack_configs:
-          - api_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-            channel: "#alerts"
+          - api_url: "https://hooks.slack.com/services/<TEAM>/<CHANNEL>/<TOKEN>"
+            channel: "#infra-alerts"
             send_resolved: true
             color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
             title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
@@ -145,90 +138,21 @@ alertmanager:
     templates:
       - '/etc/alertmanager/config/*.tmpl'
 
-  serviceMonitor:
-    selfMonitor: true
-
 # =============================================================================
 # Prometheus
 # =============================================================================
-kubelet:
-  enabled: true
-  namespace: kube-system
-
-kubeControllerManager:
-  enabled: true
-
-coreDns:
-  enabled: true
-
-kubeDns:
-  enabled: false
-
-kubeScheduler:
-  enabled: true
-
-kubeApiServer:
-  enabled: true
-
-kubeEtcd:
-  enabled: true
-
 prometheus:
-  enabled: true
-  thanosService:
-    enabled: true
-  thanosServiceMonitor:
-    enabled: true
-  thanosServiceExternal:
-    enabled: true
-    type: NodePort
-
-  # ── HTTP ingress (active) ──
   ingress:
     enabled: true
     ingressClassName: nginx
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     hosts:
       - prometheus.example.com
-
-  # ── HTTPS ingress with cert-manager + Let's Encrypt ──
-  # Prerequisites:
-  #   1. Install cert-manager: https://cert-manager.io/docs/installation/
-  #   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-  # Ref: https://github.com/example-user/certmanager-letsencrypt
-  #
-  # ingress:
-  #   enabled: true
-  #   ingressClassName: nginx
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  #     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-  #   hosts:
-  #     - prometheus.example.com
-  #   tls:
-  #     - secretName: prometheus-tls
-  #       hosts:
-  #         - prometheus.example.com
-
-  serviceMonitor:
-    disableCompaction: true
-    selfMonitor: true
-    replicas: 1
-    shards: 1
+    # tls:
+    #   - secretName: prometheus-tls
+    #     hosts:
+    #       - prometheus.example.com
 
   prometheusSpec:
-    # -- Schedule prometheus on specific nodes using tolerations and nodeSelector.
-    # tolerations:
-    #   - key: "monitoring"
-    #     operator: "Equal"
-    #     effect: "NoSchedule"
-    # nodeSelector:
-    #   local-path: enabled
-    replicas: 1
-
     # Resources
     resources:
       requests:
@@ -238,33 +162,18 @@ prometheus:
         cpu: 2000m
         memory: 4Gi
 
-    # Thanos sidecar for long-term storage
-    thanos:
-      baseImage: quay.io/thanos/thanos
-      version: v0.36.1
-      objectStorageConfig:
-        existingSecret:
-          name: thanos-objstore
-          key: objstore.yml
+    # Retention period
+    retention: 15d
 
     # Storage
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: local-path
+          storageClassName: nfs-client-server
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
-              storage: 100Gi
-
-    externalLabels:
-      provider: example
-      region: seoul1
-      cluster: mgmt
-      cluster_id: example-seoul1-mgmt
-
-    # Retention period
-    retention: 15d
+              storage: 50Gi
 
     # Scrape external targets (physical servers, VMs)
     # Install node-exporter on each server: https://github.com/prometheus/node_exporter
@@ -273,10 +182,10 @@ prometheus:
         scrape_interval: 30s
         static_configs:
           - targets:
-              - "10.0.0.1:9100"  # server1
-              - "10.0.0.2:9100"  # server2
-              - "10.0.0.3:9100"  # server3
-              - "10.0.0.4:9100"  # server4
+              - "192.168.1.10:9100"  # server1
+              - "192.168.1.12:9100"  # server2
+              - "192.168.1.20:9100"  # server3
+              - "192.168.1.15:9100"  # server4
             labels:
               env: "physical"
               group: "on-premise"
@@ -285,7 +194,7 @@ prometheus:
         scrape_interval: 30s
         static_configs:
           - targets:
-              - "10.0.0.5:9100"  # gitlab
+              - "192.168.1.60:9100"  # gitlab
             labels:
               env: "vm"
               group: "on-premise"
@@ -326,21 +235,10 @@ prometheus:
     podMonitorSelectorNilUsesHelmValues: false
 
 # =============================================================================
-# Kube Proxy (disable if using Cilium as kube-proxy replacement)
+# Kube Proxy (disabled — Cilium replaces kube-proxy)
 # =============================================================================
 kubeProxy:
-  enabled: true
-
-# =============================================================================
-# Prometheus Operator
-# =============================================================================
-prometheusOperator:
-  enabled: true
-  thanosImage:
-    registry: quay.io
-    repository: thanos/thanos
-    tag: v0.36.1
-    sha: ""
+  enabled: false
 
 # =============================================================================
 # Node Exporter (for K8s nodes - auto deployed via DaemonSet)
@@ -364,13 +262,6 @@ kubeStateMetrics:
   enabled: true
 
 kube-state-metrics:
-  namespaceOverride: ""
-  rbac:
-    create: true
-  releaseLabel: true
-  prometheus:
-    monitor:
-      enabled: true
   resources:
     requests:
       cpu: 50m
@@ -402,6 +293,7 @@ additionalPrometheusRulesMap:
         rules:
 
           # CPU usage > 85% for 5 minutes
+          # Calculates: 100% - idle CPU percentage (averaged per instance over 5m window)
           - alert: HighCPUUsage
             expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
             for: 5m
@@ -412,6 +304,7 @@ additionalPrometheusRulesMap:
               description: "CPU usage is above 85% for 5 minutes (current: {{ $value }}%)"
 
           # Memory usage > 85% for 5 minutes
+          # Calculates: (total - available) / total * 100
           - alert: HighMemoryUsage
             expr: (1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100 > 85
             for: 5m
@@ -422,6 +315,7 @@ additionalPrometheusRulesMap:
               description: "Memory usage is above 85% for 5 minutes (current: {{ $value }}%)"
 
           # Disk usage > 80% for 10 minutes (warning)
+          # Excludes tmpfs and overlay filesystems (container ephemeral storage)
           - alert: DiskSpaceRunningLow
             expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 80
             for: 10m
@@ -431,7 +325,7 @@ additionalPrometheusRulesMap:
               summary: "Disk space running low on {{ $labels.instance }}"
               description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
 
-          # Disk usage > 95% for 5 minutes (critical)
+          # Disk usage > 95% for 5 minutes (critical — immediate action needed)
           - alert: DiskSpaceCritical
             expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 95
             for: 5m
@@ -505,6 +399,7 @@ additionalPrometheusRulesMap:
         rules:
 
           # Pod restarting repeatedly (CrashLoopBackOff)
+          # Checks if restart count increased in the last 15 minutes
           - alert: PodCrashLooping
             expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
             for: 5m

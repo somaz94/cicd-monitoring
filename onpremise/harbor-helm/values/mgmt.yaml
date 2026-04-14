@@ -1,8 +1,9 @@
-# ── HTTP expose (active) ──
 expose:
   type: ingress
   tls:
     enabled: false
+    # The source of the tls certificate. Set as "auto", "secret"
+    # or "none" and fill the information in the corresponding section
     certSource: none
   ingress:
     hosts:
@@ -10,46 +11,18 @@ expose:
     controller: default
     className: "nginx"
     annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
   clusterIP:
+    # The name of ClusterIP service
     name: harbor
     ports:
+      # The service port Harbor listens on when serving HTTP
       httpPort: 80
+      # The service port Harbor listens on when serving HTTPS
       httpsPort: 443
 
 externalURL: http://harbor.example.com
-
-# ── HTTPS expose with cert-manager + Let's Encrypt ──
-# Prerequisites:
-#   1. Install cert-manager: https://cert-manager.io/docs/installation/
-#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-# cert-manager auto-creates Certificate & TLS Secret via ingress annotation.
-# Ref: https://github.com/example-user/certmanager-letsencrypt
-#
-# expose:
-#   type: ingress
-#   tls:
-#     enabled: true
-#     certSource: secret
-#     secret:
-#       secretName: harbor-tls
-#   ingress:
-#     hosts:
-#       core: harbor.example.com
-#     controller: default
-#     className: "nginx"
-#     annotations:
-#       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-#       nginx.ingress.kubernetes.io/ssl-passthrough: "false"
-#       cert-manager.io/cluster-issuer: "cloudflare-issuer"
-#   clusterIP:
-#     name: harbor
-#     ports:
-#       httpPort: 80
-#       httpsPort: 443
-#
-# externalURL: https://harbor.example.com
 
 persistence:
   enabled: true
@@ -84,7 +57,7 @@ persistence:
       #maxthreads: 100
 
 existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
-harborAdminPassword: "examplePassword123!"
+harborAdminPassword: "exampleAdminPassword"
 
 # debug, info, warning, error or fatal
 logLevel: info
@@ -221,7 +194,7 @@ database:
     image:
       repository: goharbor/harbor-db
       tag: v2.14.3
-    password: "examplePassword123!"
+    password: "exampleAdminPassword"
     # shmSizeLimit: 512Mi
     shmSizeLimit: 2048Mi
     resources:

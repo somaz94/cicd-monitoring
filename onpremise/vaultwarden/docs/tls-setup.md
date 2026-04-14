@@ -1,48 +1,48 @@
-# Vaultwarden TLS 설정
+# TLS Setup for Vaultwarden
 
-Vaultwarden Web Vault는 브라우저의 SubtleCrypto API를 사용하므로 HTTPS(보안 컨텍스트)가 필수입니다.
-이 문서는 현재 배포에서 사용하는 self-signed 인증서 방식을 다룹니다.
+Vaultwarden Web Vault requires HTTPS (Secure Context) for the browser's SubtleCrypto API.
+This document covers the self-signed certificate approach used in this deployment.
 
 <br/>
 
-## Self-Signed 인증서 (현재 설정)
+## Self-Signed Certificate (Current Setup)
 
-### 생성 및 적용
+### Generate and Apply
 
 ```bash
-# 1. Self-signed 인증서 생성 (10년 유효)
+# 1. Generate self-signed certificate (valid for 10 years)
 openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
   -keyout vw-key.pem -out vw-cert.pem \
   -subj "/CN=vault.example.com"
 
-# 2. Kubernetes TLS Secret 생성
+# 2. Create Kubernetes TLS secret
 kubectl create secret tls vaultwarden-tls \
   --cert=vw-cert.pem --key=vw-key.pem \
   -n vaultwarden
 
-# 3. 로컬 파일 정리
+# 3. Clean up local files
 rm vw-key.pem vw-cert.pem
 ```
 
 <br/>
 
-### 확인
+### Verify
 
 ```bash
-# Secret 존재 확인
+# Check secret exists
 kubectl get secret vaultwarden-tls -n vaultwarden
 
-# 인증서 상세 확인
+# Check certificate details
 kubectl get secret vaultwarden-tls -n vaultwarden -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -subject -dates
 ```
 
 <br/>
 
-### 갱신 (만료 전)
+### Renew (before expiration)
 
 ```bash
-# 기존 Secret 삭제 후 재생성
+# Delete old secret and recreate
 kubectl delete secret vaultwarden-tls -n vaultwarden
 
 openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
@@ -55,33 +55,33 @@ kubectl create secret tls vaultwarden-tls \
 
 rm vw-key.pem vw-cert.pem
 
-# 새 인증서 적용을 위해 재시작
+# Restart to pick up new cert
 kubectl rollout restart statefulset vaultwarden -n vaultwarden
 ```
 
 <br/>
 
-### 브라우저 경고
+### Browser Warning
 
-Self-signed 인증서는 첫 접속 시 브라우저 경고가 표시됩니다.
-경고를 수락하면 정상 사용 가능합니다. Vault 데이터 암호화는 클라이언트 측에서
-이루어지므로 보안에 영향을 주지 않습니다.
+Self-signed certificates will show a browser warning on first access.
+Accept the warning to proceed. This is expected behavior and does not affect security
+of the encrypted vault data (encryption happens client-side).
 
 <br/>
 
-## 대안: cert-manager + Let's Encrypt
+## Alternative: cert-manager + Let's Encrypt
 
-DNS provider가 API 기반 검증을 지원하는 경우 (Cloudflare, Route53, Google Cloud DNS 등)
-cert-manager를 사용하여 자동 인증서 관리가 가능합니다.
+If you have a DNS provider that supports API-based validation (e.g., Cloudflare, Route53, Google Cloud DNS),
+you can use cert-manager for automatic certificate management.
 
-> **참고**: Wix DNS는 API 기반 DNS 검증을 지원하지 않으므로, cert-manager의 DNS01 challenge를 사용할 수 없습니다.
-> HTTP01 challenge는 도메인이 외부에서 접근 가능해야 합니다.
+> **Note**: Wix DNS does NOT support API-based DNS validation, so cert-manager with DNS01 challenge is not available.
+> HTTP01 challenge requires the domain to be publicly accessible.
 
 ```bash
-# 1. cert-manager 설치
+# 1. Install cert-manager
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 
-# 2. ClusterIssuer 생성 (예: Cloudflare)
+# 2. Create ClusterIssuer (example: Cloudflare)
 cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -101,7 +101,7 @@ spec:
               key: api-token
 EOF
 
-# 3. values/mgmt.yaml ingress 설정 변경
+# 3. Update values/mgmt.yaml ingress annotations
 # ingress:
 #   additionalAnnotations:
 #     cert-manager.io/cluster-issuer: "cloudflare-issuer"

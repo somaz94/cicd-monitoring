@@ -137,7 +137,7 @@ Install node-exporter on target servers, then add IPs to `values/mgmt.yaml` `add
 
 ```yaml
 - targets:
-    - "192.0.2.10:9100"
+    - "192.168.1.10:9100"
 ```
 
 Verify: `http://prometheus.example.com/targets` → `physical-servers` group

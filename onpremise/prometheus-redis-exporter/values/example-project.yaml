@@ -1,14 +1,16 @@
 # =============================================================================
 # prometheus-redis-exporter Custom Values
-# Monitors: all Redis instances in example-project namespace
+# Monitors: all Redis/Valkey instances in example-project-db-redis namespace
 #
 # Redis instances (auth disabled):
+#   - valkey-redis (main)
 #   - dev-example-project-redis
 #   - qa-example-project-redis
 #   - stg-example-project-redis
 # =============================================================================
 
-# Primary Redis target
+# Primary Redis target (dev-example-project-redis)
+# valkey-redis is monitored by its own metrics sidecar (ServiceMonitor in example-project-db-redis namespace)
 redisAddress: "redis://dev-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
 
 # If auth is enabled:
@@ -33,6 +35,7 @@ serviceMonitor:
     release: kube-prometheus-stack  # Must match Prometheus serviceMonitorSelector
 
   # Multi-target: scrape env-specific Redis instances
+  # valkey-redis excluded (has its own metrics sidecar)
   targets:
     - url: "redis://dev-example-project-redis.example-project-db-redis.svc.example-cluster.local:6379"
       name: "dev-example-project-redis"
