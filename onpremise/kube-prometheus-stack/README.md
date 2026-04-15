@@ -21,7 +21,9 @@ kube-prometheus-stack/
 ├── Chart.yaml              # Version tracking
 ├── helmfile.yaml           # Helmfile release definition
 ├── values/
-│   └── mgmt.yaml           # Custom values (Grafana, Alertmanager, Scrape configs)
+│   ├── mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
+│   ├── mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
+│   └── mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 ├── dashboards/             # Custom Grafana dashboard JSON files
 ├── docs/                   # Detailed guides
 │   ├── dashboards-en.md
@@ -78,7 +80,7 @@ helmfile apply
 
 ### Slack Alert
 
-Set Slack webhook URL in `values/mgmt.yaml`:
+Set Slack webhook URL in `values/mgmt-alertmanager.yaml`:
 
 ```yaml
 alertmanager:

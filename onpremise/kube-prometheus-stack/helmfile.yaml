@@ -8,7 +8,9 @@ releases:
     namespace: monitoring
     version: 82.18.0
     values:
-      - values/mgmt.yaml
+      - values/mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
+      - values/mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
+      - values/mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 
 hooks:
   - events: ["presync"]

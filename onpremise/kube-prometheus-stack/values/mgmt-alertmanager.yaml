@@ -1,0 +1,151 @@
+# yaml-language-server: $schema=
+# =============================================================================
+# Alertmanager — routing, inhibit rules, Slack receiver
+# (Helm values override for kube-prometheus-stack, not raw AM config)
+# =============================================================================
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - alertmanager.example.com
+    # tls:
+    #   - secretName: alertmanager-tls
+    #     hosts:
+    #       - alertmanager.example.com
+
+  alertmanagerConfiguration:
+    name: ""
+  config:
+    global:
+      resolve_timeout: 5m
+    inhibit_rules:
+      # Pod crash-looping is the root cause — suppress related pod/deployment warnings
+      - source_matchers:
+          - 'alertname = PodCrashLooping'
+        target_matchers:
+          - 'alertname = PodNotReady'
+        equal:
+          - 'namespace'
+          - 'pod'
+      - source_matchers:
+          - 'alertname = PodCrashLooping'
+          - 'severity = critical'
+        target_matchers:
+          - 'alertname = KubeDeploymentRolloutStuck'
+        equal:
+          - 'namespace'
+
+      # Disk severity ladder — critical suppresses warning on same mountpoint
+      - source_matchers:
+          - 'alertname = DiskSpaceCritical'
+        target_matchers:
+          - 'alertname = DiskSpaceRunningLow'
+        equal:
+          - 'instance'
+          - 'mountpoint'
+      - source_matchers:
+          - 'alertname = NodeFilesystemInodesCritical'
+        target_matchers:
+          - 'alertname = NodeFilesystemInodesRunningLow'
+        equal:
+          - 'instance'
+          - 'mountpoint'
+
+      # Cilium — agent/operator failures cause downstream endpoint/drop alerts
+      - source_matchers:
+          - 'alertname = CiliumAgentUnhealthy'
+        target_matchers:
+          - 'alertname =~ "CiliumEndpointNotReady|CiliumDropRateHigh"'
+        equal:
+          - 'instance'
+      # CiliumOperatorDown is cluster-wide (absent() has no instance label)
+      - source_matchers:
+          - 'alertname = CiliumOperatorDown'
+        target_matchers:
+          - 'alertname =~ "CiliumEndpointNotReady|CiliumDropRateHigh|CiliumAgentUnhealthy"'
+
+      # Severity ladder within the same alertname (fallback)
+      - source_matchers:
+          - 'severity = critical'
+        target_matchers:
+          - 'severity =~ warning|info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'severity = warning'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+          - 'alertname'
+      - source_matchers:
+          - 'alertname = InfoInhibitor'
+        target_matchers:
+          - 'severity = info'
+        equal:
+          - 'namespace'
+      - target_matchers:
+          - 'alertname = InfoInhibitor'
+    route:
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'slack-infra-alerts'
+      routes:
+        - receiver: 'null'
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: 'null'
+          matchers:
+            - alertname = "InfoInhibitor"
+    receivers:
+      - name: 'null'
+      - name: 'slack-infra-alerts'
+        slack_configs:
+          - api_url: "https://hooks.slack.com/services/<TEAM>/<CHANNEL>/<TOKEN>"
+            channel: "#infra-alerts"
+            send_resolved: true
+            color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+            text: |-
+              {{ range .Alerts -}}
+              {{- if .Labels.namespace }}
+              *Namespace:* `{{ .Labels.namespace }}`
+              {{- end -}}
+              {{- if .Labels.pod }}
+              *Pod:* `{{ .Labels.pod }}`
+              {{- end -}}
+              {{- if .Labels.container }}
+              *Container:* `{{ .Labels.container }}`
+              {{- end -}}
+              {{- if .Labels.instance }}
+              *Instance:* `{{ .Labels.instance }}`
+              {{- end -}}
+              {{- if .Labels.env }}
+              *Env:* `{{ .Labels.env }}`
+              {{- end -}}
+              {{- if .Labels.group }}
+              *Group:* `{{ .Labels.group }}`
+              {{- end }}
+              *Severity:* `{{ .Labels.severity }}`
+              *Description:* {{ .Annotations.description }}
+              {{- if .GeneratorURL }}
+              *Source:* <{{ .GeneratorURL }}|Prometheus>
+              {{- end }}
+              {{ end }}
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'

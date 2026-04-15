@@ -60,7 +60,7 @@ Fix PR ([kubernetes/kubernetes#138075](https://github.com/kubernetes/kubernetes/
 
 #### Option 2: Silence KubeAPIErrorBudgetBurn alert
 
-If the Warning triggers alerts, add null routing in `values/mgmt.yaml`:
+If the Warning triggers alerts, add null routing in `values/mgmt-alertmanager.yaml`:
 
 ```yaml
 route:
@@ -184,7 +184,7 @@ Slack `#infra-alerts` channel receives repeated `Watchdog` and `InfoInhibitor` a
 
 ### Solution
 
-Route to null receiver in `values/mgmt.yaml` (included in default config):
+Route to null receiver in `values/mgmt-alertmanager.yaml` (included in default config):
 
 ```yaml
 route:
