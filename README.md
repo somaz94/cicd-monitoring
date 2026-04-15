@@ -14,18 +14,48 @@ Production-ready CI/CD pipelines and monitoring configurations for **AWS**, **GC
 
 ## Platform Coverage
 
+### Monitoring
+
 | Tool | AWS | GCP | On-Premise |
 |------|:---:|:---:|:----------:|
 | **Kube-Prometheus-Stack** | O | O | O |
 | **Grafana** | O | O | O |
-| **Loki** | O | O | O |
-| **ArgoCD** | O | O | O |
-| **Fluent Bit** | O | - | - |
 | **Thanos** | - | - | O |
-| **ELK Stack** | - | - | O |
-| **Harbor** | - | - | O |
-| **Jenkins** | - | - | O |
+| **Node Exporter** | - | - | O |
+| **Prometheus MySQL Exporter** | - | - | O |
+| **Prometheus Redis Exporter** | - | - | O |
+| **Prometheus Elasticsearch Exporter** | - | - | O |
+
+### Logging
+
+| Tool | AWS | GCP | On-Premise |
+|------|:---:|:---:|:----------:|
+| **Loki** | O | O | O |
 | **Promtail** | - | - | O |
+| **Elasticsearch** | - | - | O |
+| **Kibana** | - | - | O |
+| **ECK Operator** | - | - | O |
+| **Fluent Bit** | O | - | O |
+| **Fluentd** | - | - | O |
+
+### CI/CD
+
+| Tool | AWS | GCP | On-Premise |
+|------|:---:|:---:|:----------:|
+| **ArgoCD** | O | O | O |
+| **Jenkins** | - | - | O |
+
+### Registry
+
+| Tool | AWS | GCP | On-Premise |
+|------|:---:|:---:|:----------:|
+| **Harbor** | - | - | O |
+
+### Security
+
+| Tool | AWS | GCP | On-Premise |
+|------|:---:|:---:|:----------:|
+| **Vaultwarden** | - | - | O |
 
 <br/>
 
@@ -80,16 +110,21 @@ gcp/
 
 ```
 onpremise/
-├── argocd/                          # ArgoCD with Dex SSO & Slack notifications
-├── elk-stack/                       # Elasticsearch, Kibana, Filebeat, Logstash, APM
-├── grafana/                         # Grafana dashboards
-├── harbor-helm/                     # Harbor container registry
-├── ingress-nginx-sidecar-fluentbit/ # Nginx ingress with Fluent Bit sidecar
-├── jenkins/                         # Jenkins CI server
-├── kube-prometheus-stack/           # Full Kubernetes monitoring stack
-├── loki/                            # Log aggregation
-├── promtail/                        # Log collector for Loki
-└── thanos/                          # Long-term metrics storage
+├── argocd/                              # ArgoCD with Dex SSO & Slack notifications
+├── elk-stack/                           # Elasticsearch, Kibana, Filebeat, Logstash, APM
+├── grafana/                             # Grafana dashboards
+├── harbor-helm/                         # Harbor container registry
+├── ingress-nginx-sidecar-fluentbit/     # Nginx ingress with Fluent Bit sidecar
+├── jenkins/                             # Jenkins CI server
+├── kube-prometheus-stack/               # Full Kubernetes monitoring stack
+├── loki/                                # Log aggregation
+├── node-exporter/                       # Node Exporter (Ansible-deployed on hosts)
+├── prometheus-elasticsearch-exporter/   # Elasticsearch metrics exporter
+├── prometheus-mysql-exporter/           # MySQL metrics exporter
+├── prometheus-redis-exporter/           # Redis metrics exporter
+├── promtail/                            # Log collector for Loki
+├── thanos/                              # Long-term metrics storage
+└── vaultwarden/                         # Self-hosted Bitwarden-compatible password manager
 ```
 
 | Component | Link |
@@ -102,8 +137,13 @@ onpremise/
 | [Jenkins](onpremise/jenkins/) | CI/CD server |
 | [Kube-Prometheus-Stack](onpremise/kube-prometheus-stack/) | Prometheus, Alertmanager, Operator |
 | [Loki](onpremise/loki/) | Log aggregation system |
+| [Node Exporter](onpremise/node-exporter/) | Host-level metrics via Ansible (playbook, rollback, uninstall) |
+| [Prometheus Elasticsearch Exporter](onpremise/prometheus-elasticsearch-exporter/) | Chart `prometheus-community/prometheus-elasticsearch-exporter` 7.2.1 |
+| [Prometheus MySQL Exporter](onpremise/prometheus-mysql-exporter/) | Chart `prometheus-community/prometheus-mysql-exporter` 2.13.1 |
+| [Prometheus Redis Exporter](onpremise/prometheus-redis-exporter/) | Chart `prometheus-community/prometheus-redis-exporter` 6.22.0 |
 | [Promtail](onpremise/promtail/) | Log collector agent |
 | [Thanos](onpremise/thanos/) | Long-term Prometheus storage |
+| [Vaultwarden](onpremise/vaultwarden/) | Self-hosted password manager (chart 0.35.1, appVersion 1.35.4) |
 
 </details>
 
@@ -198,6 +238,20 @@ jenkins/
 ```
 
 See [jenkins/README.md](jenkins/) for details.
+
+</details>
+
+<details>
+<summary><b>scripts/</b> - Shared Tooling</summary>
+
+```
+scripts/
+└── helm-upgrade/            # Canonical upgrade.sh templates + drift sync tool
+    ├── sync.sh              # --check / --apply to keep all component upgrade.sh in sync
+    └── templates/           # Source-of-truth upgrade.sh bodies
+```
+
+See [scripts/helm-upgrade/README.md](scripts/helm-upgrade/) for the sync workflow.
 
 </details>
 
