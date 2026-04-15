@@ -15,8 +15,18 @@ harbor-helm/
 │   └── mgmt.yaml       # Custom values (manually managed)
 ├── upgrade.sh          # Version upgrade script
 ├── backup/             # Auto backup on upgrade
+├── docs/               # Detailed guides (TLS, OIDC, etc.)
 └── README.md
 ```
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [TLS Setup](docs/tls-setup-en.md) | Self-signed cert issuance, renewal, client trust configuration |
+| [OIDC SSO](docs/oidc-setup-en.md) | GitLab OAuth integration, `server` group filter / admin promotion policy |
 
 <br/>
 
@@ -27,6 +37,7 @@ harbor-helm/
 - Helmfile
 - Ingress controller (nginx)
 - StorageClass (e.g., `nfs-client-server`)
+- TLS Secret for HTTPS — see [`docs/tls-setup.md`](./docs/tls-setup.md) (self-signed, prepared before `helmfile apply`)
 
 <br/>
 
@@ -170,22 +181,74 @@ spec:
 
 <br/>
 
-## Node Configuration (HTTP Registry)
+## HTTPS (Self-Signed)
 
-When using Harbor over HTTP, containerd configuration is required (`/etc/containerd/config.toml`):
-
-```toml
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."harbor.your-domain.com"]
-  endpoint = ["http://harbor.your-domain.com"]
-[plugins."io.containerd.grpc.v1.cri".registry.configs."harbor.your-domain.com".tls]
-  insecure_skip_verify = true
-```
+Harbor is exposed over HTTPS to satisfy OIDC SSO requirements and secure registry traffic.
+This cluster does not run cert-manager → uses the same manual self-signed pattern as [Vaultwarden](../../security/vaultwarden/).
 
 ```bash
-sudo systemctl restart containerd
+# Summary: register harbor-tls Secret (see docs for full procedure)
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+  -keyout harbor-key.pem -out harbor-cert.pem \
+  -subj "/CN=harbor.example.com" \
+  -addext "subjectAltName=DNS:harbor.example.com"
+
+kubectl create secret tls harbor-tls \
+  --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
 ```
 
-> **Warning:** Using HTTPS with certificates is recommended for production environments.
+Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-setup-en.md`](./docs/tls-setup-en.md)** ([한국어](./docs/tls-setup.md)).
+
+<br/>
+
+## SSO — GitLab OIDC
+
+Harbor uses **GitLab OIDC** instead of `db_auth` (shares GitLab with ArgoCD, `server` group filter, admin manually promoted for `admin@example.com` only).
+
+OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The API injection procedure is the standard: **[`docs/oidc-setup-en.md`](./docs/oidc-setup-en.md)** ([한국어](./docs/oidc-setup.md)).
+
+⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. Follow the pre-flight checks in `docs/oidc-setup-en.md`.
+
+### Permissions Helper Script
+
+User / promotion / project member / OIDC group mapping management lives in the top-level [`scripts/harbor/admin/`](../../scripts/harbor/admin/).
+
+```bash
+../../scripts/harbor/admin/harbor-admin-en.sh users
+../../scripts/harbor/admin/harbor-admin-en.sh promote admin@example.com
+../../scripts/harbor/admin/harbor-admin-en.sh add-member library group:server developer
+../../scripts/harbor/admin/harbor-admin-en.sh config
+```
+
+The admin password is auto-extracted from this chart's `harborAdminPassword` by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/harbor/admin/README-en.md`](../../scripts/harbor/admin/README-en.md).
+
+<br/>
+
+## Node Configuration (Recommended)
+
+> **Current setup already works** — containerd follows the 308 redirect and `skip_verify: true` covers the self-signed cert. The config below is a **semantic cleanup recommendation** and is not urgent.
+
+Reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
+
+```yaml
+containerd_registries_mirrors:
+  - prefix: harbor.example.com
+    mirrors:
+      - host: https://harbor.example.com    # http → https
+        capabilities: ["pull", "resolve", "push"]
+        skip_verify: true                   # skip TLS verify for self-signed
+        # plain_http: true  ← removed (HTTPS now)
+```
+
+Apply to nodes when convenient:
+
+```bash
+cd ~/gitlab-project/kuberntes-infra/kubespray
+ansible-playbook -i inventory-example-cluster/hosts.yaml \
+  cluster.yml --tags container-engine -b
+```
+
+Details: [`docs/tls-setup.md`](./docs/tls-setup.md) §6 (Korean)
 
 <br/>
 

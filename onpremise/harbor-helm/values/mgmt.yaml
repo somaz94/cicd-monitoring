@@ -1,18 +1,36 @@
+# =============================================================================
+# Expose (HTTPS — self-signed certificate)
+#
+# Self-signed TLS secret must be created before deployment:
+#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+#     -keyout harbor-key.pem -out harbor-cert.pem \
+#     -subj "/CN=harbor.example.com" \
+#     -addext "subjectAltName=DNS:harbor.example.com"
+#   kubectl create secret tls harbor-tls \
+#     --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
+#   rm harbor-key.pem
+#
+# See docs/tls-setup.md for the full procedure (renewal, containerd trust).
+# =============================================================================
 expose:
   type: ingress
   tls:
-    enabled: false
-    # The source of the tls certificate. Set as "auto", "secret"
-    # or "none" and fill the information in the corresponding section
-    certSource: none
+    enabled: true
+    # The source of the tls certificate. Set as "auto", "secret" or "none".
+    # "secret" reads the certificate from the Secret specified below.
+    certSource: secret
+    secret:
+      # Must contain tls.crt and tls.key — created via docs/tls-setup.md.
+      secretName: harbor-tls
   ingress:
     hosts:
       core: harbor.example.com
     controller: default
     className: "nginx"
     annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"    # Force HTTP → HTTPS
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # TLS termination at ingress
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
   clusterIP:
     # The name of ClusterIP service
     name: harbor
@@ -22,7 +40,66 @@ expose:
       # The service port Harbor listens on when serving HTTPS
       httpsPort: 443
 
-externalURL: http://harbor.example.com
+externalURL: https://harbor.example.com
+
+# -----------------------------------------------------------------------------
+# Alternative: plain HTTP (no TLS)
+#
+# Comment out the HTTPS `expose:` / `externalURL:` block above and uncomment
+# the block below to serve Harbor over HTTP. Container runtimes (containerd,
+# docker) pulling/pushing via HTTP must be configured with insecure-registries.
+# -----------------------------------------------------------------------------
+# expose:
+#   type: ingress
+#   tls:
+#     enabled: false
+#   ingress:
+#     hosts:
+#       core: harbor.example.com
+#     controller: default
+#     className: "nginx"
+#     annotations:
+#       nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable HTTP → HTTPS redirect
+#       nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # No TLS termination needed
+#       nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
+#   clusterIP:
+#     name: harbor
+#     ports:
+#       httpPort: 80
+#       httpsPort: 443
+#
+# externalURL: http://harbor.example.com
+
+# =============================================================================
+# SSO — GitLab OpenID Connect
+#
+# Harbor does NOT expose OIDC settings as Helm values — they are stored in
+# Harbor's core database. Configure via Administration → Configuration →
+# Authentication AFTER `helmfile apply` succeeds and HTTPS is reachable.
+#
+# Prerequisites:
+#   1. GitLab Admin → Applications → New Application
+#      - Name: Harbor
+#      - Redirect URI: https://harbor.example.com/c/oidc/callback
+#      - Confidential: Yes
+#      - Scopes: openid, profile, email
+#   2. Copy Application ID and Secret.
+#
+# Harbor UI settings:
+#   - Auth Mode:           OIDC        (one-way — cannot revert to DB mode)
+#   - OIDC Provider Name:  GitLab
+#   - OIDC Endpoint:       http://gitlab.example.com
+#   - Client ID / Secret:  from step 2 above
+#   - Group Claim Name:    groups      (try groups_direct on GitLab 17+ if empty)
+#   - OIDC Admin Group:    <empty>     (admin@example.com promoted manually via Users menu)
+#   - OIDC Group Filter:   server      (only GitLab `server` group members may sign in)
+#   - OIDC Scope:          openid,profile,email
+#   - Username Claim:      preferred_username
+#   - Verify Certificate:  OFF         (GitLab is HTTP — cannot verify)
+#   - Automatic onboarding: ON         (only users passing Group Filter are created)
+#
+# Reference: cicd/argo-cd/values/mgmt.yaml (uses the same GitLab + `server` group).
+# =============================================================================
 
 persistence:
   enabled: true
