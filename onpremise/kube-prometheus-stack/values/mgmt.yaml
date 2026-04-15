@@ -126,6 +126,12 @@ alertmanager:
               {{- if .Labels.namespace }}
               *Namespace:* `{{ .Labels.namespace }}`
               {{- end -}}
+              {{- if .Labels.pod }}
+              *Pod:* `{{ .Labels.pod }}`
+              {{- end -}}
+              {{- if .Labels.container }}
+              *Container:* `{{ .Labels.container }}`
+              {{- end -}}
               {{- if .Labels.instance }}
               *Instance:* `{{ .Labels.instance }}`
               {{- end }}
