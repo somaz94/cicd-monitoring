@@ -4,6 +4,8 @@ Canonical templates and a sync tool for the per-chart `upgrade.sh` scripts.
 
 Each Helm chart directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, etc.) has an `upgrade.sh` for chart version upgrades. Their bodies are nearly identical, so they are managed in one place (this directory) and propagated to every chart via [sync.sh](sync.sh).
 
+To survey which charts have an upstream upgrade available before touching any `upgrade.sh`, use [check-versions.sh](check-versions.sh) (read-only).
+
 <br/>
 
 ## Table of contents
@@ -13,14 +15,15 @@ Each Helm chart directory (`cicd/argo-cd/`, `observability/monitoring/kube-prome
 3. [Architecture](#architecture)
 4. [Canonical templates](#canonical-templates)
 5. [sync.sh usage](#syncsh-usage)
-6. [How it works (internals)](#how-it-works-internals)
-7. [Adding a new chart](#adding-a-new-chart)
-8. [Adding a new canonical variant](#adding-a-new-canonical-variant)
-9. [Worked examples](#worked-examples)
-10. [Troubleshooting](#troubleshooting)
-11. [Compatibility](#compatibility)
-12. [Safety guards](#safety-guards)
-13. [FAQ](#faq)
+6. [check-versions.sh usage](#check-versionssh-usage)
+7. [How it works (internals)](#how-it-works-internals)
+8. [Adding a new chart](#adding-a-new-chart)
+9. [Adding a new canonical variant](#adding-a-new-canonical-variant)
+10. [Worked examples](#worked-examples)
+11. [Troubleshooting](#troubleshooting)
+12. [Compatibility](#compatibility)
+13. [Safety guards](#safety-guards)
+14. [FAQ](#faq)
 
 <br/>
 
@@ -31,10 +34,12 @@ scripts/helm-upgrade/
 ├── README.md                          # Korean docs
 ├── README-en.md                       # this file
 ├── sync.sh                            # sync tool (cross-platform)
+├── check-versions.sh                  # preflight upgrade scan (read-only)
 └── templates/
     ├── external-standard.sh           # external chart (helm repo) + default flow
     ├── external-with-image-tag.sh     # external + values image tag auto-update
-    └── local-with-templates.sh        # local chart (Chart.yaml in repo) + custom templates
+    ├── local-with-templates.sh        # local chart (Chart.yaml in repo) + custom templates
+    └── local-cr-version.sh            # local chart (CR wrapper) + values.version field tracking
 ```
 
 <br/>
@@ -219,7 +224,7 @@ An awk counter tracks markers to find precise boundaries.
 
 New variants must follow the same convention (e.g., `external-multi-release.sh`, `local-bare.sh`).
 
-### Current canonicals (3)
+### Current canonicals (4)
 
 #### 1. [external-standard.sh](templates/external-standard.sh) — external helm repo chart (most common)
 
@@ -263,6 +268,36 @@ New variants must follow the same convention (e.g., `external-multi-release.sh`,
   - `fluent-bit`, `fluent-bit-aws` (helm repo mode)
   - `local-path-provisioner` (git source mode)
 
+#### 4. [local-cr-version.sh](templates/local-cr-version.sh) — local chart (CR wrapper) + version field tracking
+
+- **Use**: Local charts whose `templates/` directory contains Custom Resource (CR) YAML, with the component version stored in a `values/*.yaml` field (e.g. `version`). **No upstream Helm chart exists** (we are the sole owner). Only the value field needs bumping — no chart sync.
+- **Flow**: 6 steps (read current version from values → fetch latest from source feed → **verify container image exists** → compatibility reminder → backup → update values + Chart.yaml appVersion)
+- **Extra variables**:
+  - `COMPONENT_LABEL`: label shown in output (e.g., `elasticsearch`, `kibana`)
+  - `VERSION_SOURCE`: version feed type (currently supported: `elastic-artifacts`)
+  - `VALUES_FILE`: path to the values file holding the version (e.g., `values/mgmt.yaml`)
+  - `VERSION_KEY`: top-level YAML key name (usually `version`)
+  - `MAJOR_PIN`: major line lock (e.g., `"9"` → track 9.x only). Empty = track all majors
+  - `CHANGELOG_URL`
+  - `CONTAINER_IMAGE`: container image to verify before upgrading (e.g., `docker.elastic.co/elasticsearch/elasticsearch`). Leave empty to skip verification
+  - `CR_WEBHOOK_NAME`: admission webhook name that blocks version downgrades (e.g., `elastic-operator.elastic-system.k8s.elastic.co`). Set together with the two variables below to enable automatic rollback handling
+  - `CR_OPERATOR_NS`: namespace where the operator is deployed (e.g., `elastic-system`)
+  - `CR_OPERATOR_STS`: operator StatefulSet name (e.g., `elastic-operator`)
+- **Safety features**:
+  - **Image verification (Step 3)**: Checks via Docker Registry v2 API that the target version's container image actually exists. Prevents upgrades to versions listed in the artifacts API whose Docker images have not been published yet
+  - **Smart rollback**: On `--rollback`, compares the cluster CR's current version with the backup version to detect downgrades. When a downgrade is detected, offers automatic webhook handling (scale down operator → delete webhook → helmfile apply → recreate webhook → scale up operator)
+- **Supported VERSION_SOURCE values**:
+  - `elastic-artifacts`: queries `https://artifacts-api.elastic.co/v1/versions`. All Elastic Stack components (Elasticsearch, Kibana, APM Server, Logstash, Beats) share a single Stack version. `VERSION_SOURCE_ARG` not needed.
+  - `github-releases`: queries the GitHub Releases API (`api.github.com/repos/<owner>/<repo>/releases`). Excludes prereleases/drafts, strips leading `v`, then keeps only strict `X.Y.Z`. Requires `VERSION_SOURCE_ARG="<owner>/<repo>"` (e.g. `cloudnative-pg/cloudnative-pg`).
+  - `docker-hub-tags`: queries the Docker Hub API (`hub.docker.com/v2/repositories/<namespace>/<repository>/tags`). Strips leading `v`, then keeps only strict `X.Y.Z` (suffixed tags like `-debian` are not matched). Requires `VERSION_SOURCE_ARG="<namespace>/<repository>"` (e.g. `library/redis`).
+  - Adding a new source: extend the `case` block inside `fetch_ga_versions()` in the canonical.
+- **Extending to other operators**: `local-cr-version` is not ECK-specific. Populating `CR_WEBHOOK_NAME`, `CR_OPERATOR_NS`, `CR_OPERATOR_STS`, and `CR_OPERATOR_CHART_DIR` correctly enables reuse for CloudNativePG, Strimzi Kafka, Redis Operator, and others. Example: for CNPG use `CR_OPERATOR_CHART_DIR="cnpg-operator"`, `VERSION_SOURCE="github-releases"`, `VERSION_SOURCE_ARG="cloudnative-pg/cloudnative-pg"`.
+- **Differences vs other templates**:
+  - Does not fetch Chart.yaml from upstream (we are the sole owner)
+  - Does not sync `templates/` (CR definitions are owned locally)
+  - Backup targets: `Chart.yaml` + `$VALUES_FILE` only
+- **2 charts**: `elasticsearch` (ECK CR), `kibana` (ECK CR)
+
 <br/>
 
 ## sync.sh usage
@@ -276,22 +311,21 @@ Run `./scripts/helm-upgrade/sync.sh --help` for the full inline help.
 ```
 
 ```
-Managed upgrade.sh files: 16
-  external-standard:       13
+Managed upgrade.sh files: 22
+  external-standard:       16
   external-with-image-tag: 1
-  local-with-templates:    2
+  local-with-templates:    3
+  local-cr-version:        2
 
 Available canonicals:
   external-standard
   external-with-image-tag
   local-with-templates
+  local-cr-version
 
 Unmanaged chart directories (have Chart.yaml but no upgrade.sh):
-  - observability/logging/elasticsearch
-  - observability/logging/kibana
-  - storage/local-path-provisoner
-  - storage/nfs-subdir-external-provisioner
-  - storage/static-file-server
+  - observability/logging/_deprecated/elasticsearch-helm-8.5.1
+  - observability/logging/_deprecated/kibana-helm-8.5.1
 ```
 
 **Unmanaged charts** are directories that have `Chart.yaml` but no `upgrade.sh`. They can be onboarded with the [Adding a new chart](#adding-a-new-chart) procedure.
@@ -375,6 +409,108 @@ For verifying that the canonical extraction logic is correct *before* `--insert-
 
 <br/>
 
+## check-versions.sh usage
+
+A read-only preflight tool. Before running the per-chart `upgrade.sh` one by one, use this to scan every managed chart and see which ones have an upstream upgrade available. It does not modify any files — it only prints a summary table.
+
+Each template uses the same upstream lookup logic its `upgrade.sh` already relies on:
+
+| Template | Current version | Latest version |
+|---|---|---|
+| `external-standard` / `external-with-image-tag` | `Chart.yaml` → `version` | `helm search repo <HELM_CHART>` (top entry) |
+| `local-with-templates` (helm mode) | `Chart.yaml` → `version` | `helm search repo <HELM_CHART>` (top entry) |
+| `local-with-templates` (git mode, `CHART_GIT_REPO` set) | `Chart.yaml` → `version` | Highest semver tag from `git ls-remote --tags` |
+| `local-cr-version` | `<VALUES_FILE>` → `<VERSION_KEY>` | `VERSION_SOURCE` feed (e.g. elastic-artifacts), respecting `MAJOR_PIN` |
+
+<br/>
+
+### Default run
+
+```bash
+./scripts/helm-upgrade/check-versions.sh
+```
+
+```
+Collecting managed upgrade.sh configs...
+  Managed: 22  Skipped (no header): 0
+Registering 13 helm repo(s)...
+Running 'helm repo update'...
+
+  STATUS   TEMPLATE                  CURRENT          LATEST           PATH
+  -------  ------------------------  ---------------  ---------------  ----
+  UPDATE   external-standard         9.4.15           9.5.0            cicd/argo-cd/upgrade.sh
+  OK       external-standard         0.87.1           0.87.1           cicd/gitlab-runner/upgrade.sh
+  ...
+  UPDATE   local-cr-version          9.0.0            9.4.0            observability/logging/elasticsearch/upgrade.sh
+  ...
+
+Summary: OK=15  UPDATE=7  ERROR=0  (total=22)
+Upgrades are available. Run 'cd <path> && ./upgrade.sh --dry-run' in each directory above.
+```
+
+STATUS column:
+- `OK`: current version matches the upstream latest
+- `UPDATE`: a higher upstream version exists → `cd` into the chart dir and run `./upgrade.sh --dry-run`
+- `ERROR`: upstream lookup failed, CONFIG missing, current version could not be read, etc. (reason printed on the next line as `-> ...`)
+
+<br/>
+
+### Options
+
+```bash
+# Only print rows that have an upgrade or an error
+./scripts/helm-upgrade/check-versions.sh --updates-only
+
+# Restrict by path substring (repeatable, OR-matched)
+./scripts/helm-upgrade/check-versions.sh --only observability/monitoring
+./scripts/helm-upgrade/check-versions.sh --only argo-cd --only valkey
+
+# Skip `helm repo update` (faster if you just updated)
+./scripts/helm-upgrade/check-versions.sh --no-update
+
+# Combine
+./scripts/helm-upgrade/check-versions.sh --updates-only --only observability
+```
+
+<br/>
+
+### Exit codes
+
+- `0`: all lookups succeeded, regardless of whether any UPDATE was found.
+- `1`: one or more rows ended up as ERROR (network issue, `helm` missing, CONFIG missing, etc). Treat as a CI failure if desired.
+
+<br/>
+
+### Prerequisites
+
+- `helm` (for helm-repo lookups)
+- `git` (for git-tags lookups, used by `local-with-templates` in git mode)
+- `curl`, `python3` (for version-source lookups used by `local-cr-version`)
+
+Same portability as sync.sh: works on macOS bash 3.2 and Linux bash 4+.
+
+<br/>
+
+### Recommended workflow
+
+```bash
+# 1. Survey upstream versions across every managed chart
+./scripts/helm-upgrade/check-versions.sh --updates-only
+
+# 2. For each chart with an upgrade, inspect the detailed diff
+cd observability/monitoring/kube-prometheus-stack
+./upgrade.sh --dry-run
+
+# 3. Apply when satisfied
+./upgrade.sh
+
+# 4. Roll out via helmfile
+helmfile diff
+helmfile apply
+```
+
+<br/>
+
 ## How it works (internals)
 
 ### sync.sh's three core functions
@@ -420,7 +556,9 @@ extract_body "$canonical"          # body from canonical (canonical-owned)
 ```bash
 detect_template() {
   local f="$1"
-  if grep -q '^CUSTOM_TEMPLATES=' "$f"; then
+  if grep -q '^VERSION_SOURCE=' "$f"; then
+    echo "local-cr-version"
+  elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"
   elif grep -q 'Update image tags in values files' "$f"; then
     echo "external-with-image-tag"
@@ -430,7 +568,7 @@ detect_template() {
 }
 ```
 
-Finds deterministic patterns that distinguish the three canonicals. Update this function when adding a new canonical variant.
+Finds deterministic patterns that distinguish the four canonicals. Update this function when adding a new canonical variant.
 
 ### Discovering managed files
 
@@ -616,6 +754,8 @@ detect_template() {
   local f="$1"
   if grep -q '^MULTI_RELEASE=' "$f"; then          # ← new variant
     echo "external-multi-release"
+  elif grep -q '^VERSION_SOURCE=' "$f"; then
+    echo "local-cr-version"
   elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"
   elif grep -q 'Update image tags in values files' "$f"; then

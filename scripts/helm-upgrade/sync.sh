@@ -119,7 +119,9 @@ read_template_header() {
 # Used by --insert-headers and --check --no-header.
 detect_template() {
   local f="$1"
-  if grep -q '^CUSTOM_TEMPLATES=' "$f"; then
+  if grep -q '^VERSION_SOURCE=' "$f"; then
+    echo "local-cr-version"
+  elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"
   elif grep -q 'Update image tags in values files' "$f"; then
     echo "external-with-image-tag"
