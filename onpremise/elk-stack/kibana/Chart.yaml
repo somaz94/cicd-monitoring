@@ -2,7 +2,10 @@ apiVersion: v2
 name: kibana
 description: Kibana Custom Resource wrapped as a local Helm chart for ECK
 type: application
-version: 0.1.0
+# Chart version mirrors appVersion (MIRROR_CHART_VERSION=true in upgrade.sh).
+# Both are auto-updated by upgrade.sh; bump manually with a SemVer suffix
+# (e.g. "9.0.0-1") if you need to signal a template-only change.
+version: 9.3.3
 # appVersion tracks the Kibana image version rendered by the CR.
 # Keep in sync with values/mgmt.yaml: .version
-appVersion: "9.0.0"
+appVersion: "9.3.3"

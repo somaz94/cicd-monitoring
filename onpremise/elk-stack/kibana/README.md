@@ -27,9 +27,20 @@ kibana/
 │   ├── kibana.yaml             # Kibana CR
 │   └── ingress.yaml            # Ingress (temporary / production host)
 ├── upgrade.sh                  # local-cr-version based version tracker
+├── docs/
+│   └── upgrade-rollback-en.md  # Kibana-specific notes + link to shared guide
 ├── README.md
 └── README-en.md
 ```
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|------|------|
+| [Upgrade / Rollback (Kibana-specific)](docs/upgrade-rollback-en.md) | ES dependency notes + link to shared guide |
+| [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback-en.md) | `upgrade.sh` safety features and incident response (primary doc) |
 
 <br/>
 
@@ -46,10 +57,14 @@ kibana/
 
 **Rule**: keep Kibana on the same Stack version as Elasticsearch. Upgrade order: **Elasticsearch first, Kibana second**. (Kibana against a newer ES is OK; the reverse breaks compatibility.)
 
+Kibana's `upgrade.sh` enforces this via `DEPENDENCY_CR_KIND=elasticsearch` — Step 5 reads the ES CR version and **aborts automatically if Kibana target version > ES version**.
+
 Apply the change:
 ```bash
 helmfile diff && helmfile apply
 ```
+
+**Safety features / incident response**: See [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback-en.md](../elasticsearch/docs/upgrade-rollback-en.md))
 
 <br/>
 
