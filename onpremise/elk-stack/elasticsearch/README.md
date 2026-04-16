@@ -28,9 +28,19 @@ elasticsearch/
 │   ├── elastic-user-secret.yaml # elastic account secret (rendered when values sets a password)
 │   └── ingress.yaml            # Ingress (temporary / production host)
 ├── upgrade.sh                  # local-cr-version based version tracker
+├── docs/
+│   └── upgrade-rollback-en.md  # Upgrade/rollback guide (shared with Kibana)
 ├── README.md
 └── README-en.md
 ```
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|------|------|
+| [Upgrade / Rollback Guide](docs/upgrade-rollback-en.md) | `upgrade.sh` safety features (image verification, health check, dependency CR, downgrade handling) and incident response. Shared with Kibana |
 
 <br/>
 
@@ -117,6 +127,8 @@ After the bump, run `helmfile apply` to propagate to the cluster. ECK performs a
 - https://www.elastic.co/support/matrix
 
 Keep Kibana on the **same Stack version** (bump `kibana/values/mgmt.yaml` `version` together).
+
+**Safety features / incident response**: `upgrade.sh` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md).
 
 <br/>
 

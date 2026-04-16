@@ -10,7 +10,7 @@ name: elasticsearch
 
 # Elastic Stack version. Bump and run `helmfile apply` for rolling upgrade.
 # Compatibility check required before bumping major versions.
-version: "9.0.0"
+version: "9.3.3"
 
 # Password for the built-in `elastic` superuser.
 # Rendered into Secret `<name>-es-elastic-user` (key: elastic) which ECK picks up.
