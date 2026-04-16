@@ -1,8 +1,0 @@
-apiVersion: networking.gke.io/v1
-kind: ManagedCertificate
-metadata:
-  name: loki-certificate
-spec:
-  domains:
-    - loki.example.com
-
