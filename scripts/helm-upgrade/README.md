@@ -6,6 +6,8 @@ Each Helm chart directory (`cicd/argo-cd/`, `observability/monitoring/kube-prome
 
 To survey which charts have an upstream upgrade available before touching any `upgrade.sh`, use [check-versions.sh](check-versions.sh) (read-only).
 
+To inspect or bulk-clean the `backup/` directories across every chart at once, use [manage-backups.sh](manage-backups.sh).
+
 <br/>
 
 ## Table of contents
@@ -35,6 +37,7 @@ scripts/helm-upgrade/
 ├── README-en.md                       # this file
 ├── sync.sh                            # sync tool (cross-platform)
 ├── check-versions.sh                  # preflight upgrade scan (read-only)
+├── manage-backups.sh                  # bulk backup management (list/cleanup/purge)
 └── templates/
     ├── external-standard.sh           # external chart (helm repo) + default flow
     ├── external-with-image-tag.sh     # external + values image tag auto-update
@@ -507,6 +510,109 @@ cd observability/monitoring/kube-prometheus-stack
 # 4. Roll out via helmfile
 helmfile diff
 helmfile apply
+```
+
+<br/>
+
+## manage-backups.sh usage
+
+Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` on every run. These accumulate over time — `manage-backups.sh` provides cross-chart visibility and bulk cleanup.
+
+<br/>
+
+### Governance rules
+
+| Topic | Rule |
+|---|---|
+| **Naming** | `backup/` (no leading underscore). Distinct from `_optional/` and `_deprecated/` — those are git-tracked meta dirs, this is a transient artifact with no gitignore |
+| **Location** | Always a child of the chart dir — `<chart>/backup/<TIMESTAMP>/` |
+| **Creator** | `upgrade.sh` (canonical template) only. No manual backups — use `~/tmp/` etc. outside the repo for ad-hoc snapshots |
+| **Git tracking** | Untracked by default (not in `.gitignore`). Users may selectively `git add` a specific backup as a preserved rollback point |
+| **Retention** | `KEEP_BACKUPS` policy (default 5). Auto-pruned via `auto_prune_backups` on every successful `upgrade.sh` run |
+| **Override** | Tune per-run via env: `KEEP_BACKUPS=1 ./upgrade.sh` |
+| **Bulk ops** | `scripts/helm-upgrade/manage-backups.sh` — `--list` / `--cleanup` / `--total-size` / `--purge` |
+| **Sync exclusion** | `sync.sh`, `check-versions.sh`, `manage-backups.sh`, and `cicd-sync/*` all skip `backup/` — backups never sync to other repos |
+
+<br/>
+
+### Backup retention policy
+
+- **Default**: keep the latest 5 per chart (`KEEP_BACKUPS=5`)
+- **Auto-cleanup**: after a successful `upgrade.sh` run, `auto_prune_backups` silently trims anything beyond the retention limit
+- **Override**: set via env on invocation — `KEEP_BACKUPS=1 ./upgrade.sh` keeps only the newest one
+
+<br/>
+
+### `--list` — summary of all backups
+
+```bash
+./scripts/helm-upgrade/manage-backups.sh --list
+```
+
+```
+  CHART                                  COUNT  SIZE   OLDEST          NEWEST
+  cicd/argo-cd                           2      380K   20260325_161008 20260416_113552
+  observability/logging/elasticsearch    2      16K    20260416_115115 20260416_140134
+  observability/logging/kibana           2      16K    20260416_115117 20260416_140521
+  ...
+
+  Total: 23 backup(s) across all charts, 1.7M
+```
+
+<br/>
+
+### `--cleanup [--keep N]` — bulk prune across all charts
+
+```bash
+# Default: keep the latest 5 per chart
+./scripts/helm-upgrade/manage-backups.sh --cleanup
+
+# Everything stable: keep just the latest one
+./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 1
+
+# Keep 3
+./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 3
+```
+
+<br/>
+
+### `--total-size` — disk usage
+
+```bash
+./scripts/helm-upgrade/manage-backups.sh --total-size
+# Total: 23 backup(s) in 14 chart(s), 1.7M
+```
+
+Suitable for CI / cron monitoring.
+
+<br/>
+
+### `--purge` — delete everything (destructive)
+
+```bash
+./scripts/helm-upgrade/manage-backups.sh --purge
+# WARNING: This will REMOVE ALL backups under every managed chart's backup/ directory.
+#          Existing rollback snapshots will be lost.
+#
+# Type 'PURGE' to confirm: _
+```
+
+Requires typing `PURGE` verbatim — `y` is not accepted. All rollback snapshots vanish, so use with care.
+
+<br/>
+
+### Recommended workflow
+
+```bash
+# Day-to-day
+./scripts/helm-upgrade/manage-backups.sh --list        # see current state
+./upgrade.sh                                            # upgrade (auto-prunes at end)
+
+# Periodic housekeeping (e.g. weekly)
+./scripts/helm-upgrade/manage-backups.sh --cleanup     # keep=5 bulk prune
+
+# Stable state — aggressive cleanup
+./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 1
 ```
 
 <br/>

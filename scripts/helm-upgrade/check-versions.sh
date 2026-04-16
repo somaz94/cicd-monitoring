@@ -62,7 +62,6 @@ find_managed_files() {
     -type f \
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
-    -not -path '*/_backup/*' \
     -not -path '*/_deprecated/*' \
     -not -path '*/scripts/helm-upgrade/*' \
     | sort

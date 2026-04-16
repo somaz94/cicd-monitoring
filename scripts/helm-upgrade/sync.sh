@@ -77,14 +77,13 @@ EOF
 
 # Find all managed upgrade.sh files (skip backups, deprecated, and the
 # canonical templates themselves).
-# Backup directory naming: both `backup/` (kuberntes-infra) and `_backup/`
-# (cicd-monitoring) are excluded.
+# Backup convention: only `backup/` (no leading underscore). See the
+# "backup governance" section in README.md.
 find_managed_files() {
   find "$REPO_ROOT" \
     -type f \
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
-    -not -path '*/_backup/*' \
     -not -path '*/_deprecated/*' \
     -not -path '*/scripts/helm-upgrade/*' \
     | sort
@@ -96,7 +95,6 @@ find_unmanaged_charts() {
     -type f \
     -name 'Chart.yaml' \
     -not -path '*/backup/*' \
-    -not -path '*/_backup/*' \
     -not -path '*/_deprecated/*' \
     -not -path '*/templates/*' \
     | while read -r chart; do

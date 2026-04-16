@@ -19,7 +19,8 @@ CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
 VALUES_DIR="$CHART_DIR/values"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-KEEP_BACKUPS=5
+# Number of backups to retain. Override via env: `KEEP_BACKUPS=1 ./upgrade.sh`.
+KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
 
 # -----------------------------------------------
 # Functions
@@ -142,6 +143,20 @@ cleanup_backups() {
   done
 
   echo "Done."
+}
+
+# Silent variant called at the end of a successful upgrade. Prunes old
+# backups to KEEP_BACKUPS without verbose output when there is nothing to do.
+auto_prune_backups() {
+  [ -d "$BACKUP_DIR" ] || return 0
+  local total
+  total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
+  [ "$total" -le "$KEEP_BACKUPS" ] && return 0
+  local to_delete=$((total - KEEP_BACKUPS))
+  ls -dt "$BACKUP_DIR"/2*/ | tail -n "$to_delete" | while read -r dir; do
+    rm -rf "$dir"
+  done
+  echo "  Auto-pruned $to_delete old backup(s) (KEEP_BACKUPS=$KEEP_BACKUPS)."
 }
 
 is_excluded() {
@@ -428,6 +443,9 @@ if [ -f "$CHART_DIR/helmfile.yaml" ]; then
   mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
   echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi
+
+# Auto-prune backups to KEEP_BACKUPS (silent on no-op).
+auto_prune_backups
 
 echo ""
 echo "================================================"
