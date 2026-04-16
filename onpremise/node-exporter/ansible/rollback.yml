@@ -15,9 +15,7 @@
   hosts: node_exporter
   become: true
 
-  vars:
-    node_exporter_bin: "/usr/local/bin/node_exporter"
-    node_exporter_port: "9100"
+  # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
     # ------------------------------------------------------------------
@@ -44,7 +42,7 @@
 
     - name: Display current version
       debug:
-        msg: "Current: {{ current_version.stderr_lines[0] | default('not running') }}"
+        msg: "Current: {{ current_version.stdout_lines[0] | default('not running') }}"
 
     # ------------------------------------------------------------------
     # 3. Stop, rollback, start
@@ -89,7 +87,7 @@
 
     - name: Display rollback result
       debug:
-        msg: "Rolled back {{ inventory_hostname }} ({{ ansible_host }}) → {{ rollback_version.stderr_lines[0] }}"
+        msg: "Rolled back {{ inventory_hostname }} ({{ ansible_host }}) → {{ rollback_version.stdout_lines[0] | default('unknown') }}"
 
     # ------------------------------------------------------------------
     # 5. Cleanup backup

@@ -21,15 +21,15 @@ Deploy [Prometheus Node Exporter](https://github.com/prometheus/node_exporter) t
 node-exporter/
 ├── ansible/
 │   ├── inventory.ini                    # Server list (physical + VM)
+│   ├── group_vars/
+│   │   └── all.yml                      # Shared variables (version, port, paths)
 │   ├── playbook.yml                     # Installation playbook
 │   ├── upgrade.yml                      # Upgrade playbook (with auto-rollback)
 │   ├── rollback.yml                     # Manual rollback playbook
 │   ├── uninstall.yml                    # Uninstall playbook
 │   └── templates/
 │       └── node_exporter.service.j2     # systemd unit template
-├── docs/
-│   ├── troubleshooting.md              # Troubleshooting guide (KR)
-│   └── troubleshooting-en.md           # Troubleshooting guide (EN)
+├── upgrade.sh                           # Version-bump helper (managed by upgrade-sync)
 ├── README.md
 └── README-en.md
 ```
@@ -120,15 +120,31 @@ ansible-playbook -i inventory.ini playbook.yml --check
 6. Restart service
 7. Verify `/metrics` endpoint responds
 
-### Run
+### Recommended: `./upgrade.sh` for version bumps
+
+Like the other components in this repo, `./upgrade.sh` is provided (built on the `ansible-github-release` canonical). It fetches the latest GA version from GitHub Releases and updates `ansible/group_vars/all.yml`.
+
+```bash
+cd observability/monitoring/node-exporter
+
+./upgrade.sh --dry-run            # Fetch latest + preview the diff
+./upgrade.sh                      # Bump to latest
+./upgrade.sh --version 1.12.0     # Pin to a specific version
+./upgrade.sh --rollback           # Restore previous group_vars/all.yml from backup/
+./upgrade.sh --list-backups       # List backups
+```
+
+`./upgrade.sh` only updates the source file (`group_vars/all.yml`). **Applying the new version to remote hosts is a separate ansible-playbook run** (see below).
+
+### Apply to remote hosts via Ansible
 
 ```bash
 cd ansible
 
-# Upgrade to version defined in upgrade.yml
+# Use the version from group_vars/all.yml (typical after ./upgrade.sh)
 ansible-playbook -i inventory.ini upgrade.yml
 
-# Upgrade to specific version
+# Override version via CLI without touching source files (one-off)
 ansible-playbook -i inventory.ini upgrade.yml -e "node_exporter_version=1.12.0"
 
 # Single server only
@@ -151,7 +167,9 @@ sudo systemctl start node_exporter
 
 ### Version Management
 
-After upgrade, update `node_exporter_version` in both `playbook.yml` and `upgrade.yml`, then commit.
+All shared variables (`node_exporter_version`, `node_exporter_arch`, `node_exporter_port`, etc.) live in `ansible/group_vars/all.yml`. After an upgrade, update `node_exporter_version` in that single file and commit.
+
+The `-e "node_exporter_version=..."` CLI override still works (extra-vars have higher precedence than group_vars in Ansible), so the existing one-off workflow is preserved.
 
 Check latest version: [GitHub Releases](https://github.com/prometheus/node_exporter/releases)
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# helm-upgrade/manage-backups.sh
+# upgrade-sync/manage-backups.sh
 #
 # Cross-chart visibility and bulk operations for upgrade.sh-managed backups.
 #
@@ -57,7 +57,7 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
-    -not -path '*/scripts/helm-upgrade/*' \
+    -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
 

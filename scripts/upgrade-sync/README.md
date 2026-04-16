@@ -1,8 +1,8 @@
-# helm-upgrade
+# upgrade-sync
 
-Canonical templates and a sync tool for the per-chart `upgrade.sh` scripts.
+Canonical templates and a sync tool for the per-component `upgrade.sh` scripts.
 
-Each Helm chart directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, etc.) has an `upgrade.sh` for chart version upgrades. Their bodies are nearly identical, so they are managed in one place (this directory) and propagated to every chart via [sync.sh](sync.sh).
+Each component directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, `observability/monitoring/node-exporter/`, etc.) has an `upgrade.sh` for version upgrades. Most components are Helm charts, but Ansible-deployed components (e.g. node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.sh](sync.sh).
 
 To survey which charts have an upstream upgrade available before touching any `upgrade.sh`, use [check-versions.sh](check-versions.sh) (read-only).
 
@@ -32,7 +32,7 @@ To inspect or bulk-clean the `backup/` directories across every chart at once, u
 ## Directory layout
 
 ```
-scripts/helm-upgrade/
+scripts/upgrade-sync/
 ├── README.md                          # Korean docs
 ├── README-en.md                       # this file
 ├── sync.sh                            # sync tool (cross-platform)
@@ -101,7 +101,7 @@ echo " Upgrade complete!"                        # ┘
 |---|---|---|
 | Add a new chart | User | Copy canonical → **fill in the CONFIG block variables only** |
 | Chart version upgrade | `upgrade.sh` automatically | Run `./upgrade.sh` or `./upgrade.sh --version X.Y.Z` |
-| Common logic change (e.g., usage text) | User edits once + sync propagates | `vim canonical → ./scripts/helm-upgrade/sync.sh --apply` |
+| Common logic change (e.g., usage text) | User edits once + sync propagates | `vim canonical → ./scripts/upgrade-sync/sync.sh --apply` |
 | Add a per-chart placeholder | User edits both canonical and each chart's CONFIG | Add placeholder to canonical + real value to each chart |
 | Edit body directly | ❌ Don't | Will be overwritten by next sync (see [FAQ](#faq)) |
 
@@ -115,7 +115,7 @@ echo " Upgrade complete!"                        # ┘
 
 ```
                 ┌─────────────────────────────────────────────┐
-                │  scripts/helm-upgrade/templates/            │
+                │  scripts/upgrade-sync/templates/            │
                 │  ┌────────────────────────────────────────┐ │
                 │  │ external-standard.sh         (CANONICAL)│ │
                 │  │ external-with-image-tag.sh   (CANONICAL)│ │
@@ -160,7 +160,7 @@ echo " Upgrade complete!"                        # ┘
                   ┌─────────────────────────────────────────────┘
                   │
                   ↓
-   canonical: scripts/helm-upgrade/templates/external-standard.sh
+   canonical: scripts/upgrade-sync/templates/external-standard.sh
    ┌──────────────────────────────────┐
    │ #!/bin/bash                       │
    │ # CANONICAL TEMPLATE — DO NOT...  │
@@ -233,13 +233,14 @@ New variants must follow the same convention (e.g., `external-multi-release.sh`,
 
 - **Use**: Receives a chart from an external helm repo and deploys via helmfile
 - **Flow**: 7 steps (current → fetch latest → download → diff Chart → diff values → check breaking → apply + backup)
-- **13 charts**:
+- **16 charts**:
   - cicd: `argo-cd`, `gitlab-runner`
   - db-redis: `valkey`
   - network: `metallb`, `ingress-nginx`
-  - observability/logging: `fluentd`
+  - observability/logging: `eck-operator`, `fluentd`
   - observability/monitoring: `kube-prometheus-stack`, `prometheus-mysql-exporter`, `prometheus-redis-exporter`, `prometheus-elasticsearch-exporter`, `prometheus-postgres-exporter`, `thanos`
   - security: `vaultwarden`
+  - storage: `nfs-subdir-external-provisioner`, `static-file-server`
 
 #### 2. [external-with-image-tag.sh](templates/external-with-image-tag.sh) — external + image tag auto-update
 
@@ -301,16 +302,34 @@ New variants must follow the same convention (e.g., `external-multi-release.sh`,
   - Backup targets: `Chart.yaml` + `$VALUES_FILE` only
 - **2 charts**: `elasticsearch` (ECK CR), `kibana` (ECK CR)
 
+#### 5. [ansible-github-release.sh](templates/ansible-github-release.sh) — Ansible-deployed (non-Helm) component + GitHub Releases tracking
+
+- **Use**: Components **deployed via Ansible**, not Helm, where the version lives in a single YAML file (e.g. `group_vars/all.yml`) and the upstream source is a GitHub Releases feed. No `Chart.yaml` / `helmfile.yaml`.
+- **Flow**: 5 steps (current → fetch latest from GitHub → diff preview + major-bump warning → backup → update VERSION_FILE)
+- **Specific variables**:
+  - `COMPONENT_NAME`: human-readable name (e.g. `node_exporter`)
+  - `GITHUB_REPO`: `<owner>/<repo>` (e.g. `prometheus/node_exporter`)
+  - `VERSION_FILE`: path to the YAML file holding the version (e.g. `ansible/group_vars/all.yml`)
+  - `VERSION_KEY`: top-level YAML key name (e.g. `node_exporter_version`)
+  - `ANSIBLE_DIR` / `ANSIBLE_INVENTORY` / `ANSIBLE_UPGRADE_PLAYBOOK`: used only for the "next steps" guidance
+  - `MAJOR_PIN`: pin to a major line (empty = track any major)
+  - `CHANGELOG_URL`
+- **Differences vs other templates**:
+  - No Helm concepts (`Chart.yaml`, `helmfile.yaml`, `values/`)
+  - Backup target: just `$VERSION_FILE`
+  - Does not apply upstream — prints `ansible-playbook upgrade.yml` as the next-step hint (same pattern as Helm templates pointing at `helmfile apply`)
+- **1 chart**: `observability/monitoring/node-exporter`
+
 <br/>
 
 ## sync.sh usage
 
-Run `./scripts/helm-upgrade/sync.sh --help` for the full inline help.
+Run `./scripts/upgrade-sync/sync.sh --help` for the full inline help.
 
 ### `--status` — show current state
 
 ```bash
-./scripts/helm-upgrade/sync.sh --status
+./scripts/upgrade-sync/sync.sh --status
 ```
 
 ```
@@ -338,7 +357,7 @@ Unmanaged chart directories (have Chart.yaml but no upgrade.sh):
 ### `--check` — drift verification (CI-friendly)
 
 ```bash
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 ```
 
 Verifies that every file matches its canonical bytewise. Exits non-zero on drift. Recommended in CI / pre-commit hooks.
@@ -348,7 +367,7 @@ Verifies that every file matches its canonical bytewise. Exits non-zero on drift
   OK    [external-standard] cicd/gitlab-runner/upgrade.sh
   OK    [external-with-image-tag] cicd/harbor-helm/upgrade.sh
   ...
-All 16 managed file(s) are in sync.
+All 23 managed file(s) are in sync.
 ```
 
 <br/>
@@ -357,10 +376,10 @@ All 16 managed file(s) are in sync.
 
 ```bash
 # Working tree must be clean (safety guard)
-./scripts/helm-upgrade/sync.sh --apply
+./scripts/upgrade-sync/sync.sh --apply
 
 # Force-apply even when working tree is dirty
-./scripts/helm-upgrade/sync.sh --apply --force
+./scripts/upgrade-sync/sync.sh --apply --force
 ```
 
 For each file:
@@ -377,10 +396,10 @@ For each file:
 
 ```bash
 # What would the file look like after sync? (stdout)
-./scripts/helm-upgrade/sync.sh --print-expected cicd/argo-cd/upgrade.sh
+./scripts/upgrade-sync/sync.sh --print-expected cicd/argo-cd/upgrade.sh
 
 # Compare against the current file
-./scripts/helm-upgrade/sync.sh --print-expected cicd/argo-cd/upgrade.sh | diff - cicd/argo-cd/upgrade.sh
+./scripts/upgrade-sync/sync.sh --print-expected cicd/argo-cd/upgrade.sh | diff - cicd/argo-cd/upgrade.sh
 ```
 
 Useful for debugging when a single file shows drift.
@@ -390,7 +409,7 @@ Useful for debugging when a single file shows drift.
 ### `--insert-headers` — one-shot migration
 
 ```bash
-./scripts/helm-upgrade/sync.sh --insert-headers
+./scripts/upgrade-sync/sync.sh --insert-headers
 ```
 
 Inserts a `# upgrade-template: <name>` header on line 2 of every file that doesn't have one yet. The template type is auto-detected from file content:
@@ -398,14 +417,14 @@ Inserts a `# upgrade-template: <name>` header on line 2 of every file that doesn
 - File contains `Update image tags in values files` comment → `external-with-image-tag`
 - Otherwise → `external-standard`
 
-Idempotent — files that already have a header are skipped. Run once when first introducing the helm-upgrade infrastructure.
+Idempotent — files that already have a header are skipped. Run once when first introducing the upgrade-sync infrastructure.
 
 <br/>
 
 ### `--no-header` — Phase 1 verification mode
 
 ```bash
-./scripts/helm-upgrade/sync.sh --check --no-header
+./scripts/upgrade-sync/sync.sh --check --no-header
 ```
 
 For verifying that the canonical extraction logic is correct *before* `--insert-headers` runs. Auto-detects template type. No longer needed once headers are in place.
@@ -424,13 +443,14 @@ Each template uses the same upstream lookup logic its `upgrade.sh` already relie
 | `local-with-templates` (helm mode) | `Chart.yaml` → `version` | `helm search repo <HELM_CHART>` (top entry) |
 | `local-with-templates` (git mode, `CHART_GIT_REPO` set) | `Chart.yaml` → `version` | Highest semver tag from `git ls-remote --tags` |
 | `local-cr-version` | `<VALUES_FILE>` → `<VERSION_KEY>` | `VERSION_SOURCE` feed (e.g. elastic-artifacts), respecting `MAJOR_PIN` |
+| `ansible-github-release` | `<VERSION_FILE>` → `<VERSION_KEY>` | GitHub Releases API (`<GITHUB_REPO>`), respecting `MAJOR_PIN` |
 
 <br/>
 
 ### Default run
 
 ```bash
-./scripts/helm-upgrade/check-versions.sh
+./scripts/upgrade-sync/check-versions.sh
 ```
 
 ```
@@ -462,17 +482,17 @@ STATUS column:
 
 ```bash
 # Only print rows that have an upgrade or an error
-./scripts/helm-upgrade/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.sh --updates-only
 
 # Restrict by path substring (repeatable, OR-matched)
-./scripts/helm-upgrade/check-versions.sh --only observability/monitoring
-./scripts/helm-upgrade/check-versions.sh --only argo-cd --only valkey
+./scripts/upgrade-sync/check-versions.sh --only observability/monitoring
+./scripts/upgrade-sync/check-versions.sh --only argo-cd --only valkey
 
 # Skip `helm repo update` (faster if you just updated)
-./scripts/helm-upgrade/check-versions.sh --no-update
+./scripts/upgrade-sync/check-versions.sh --no-update
 
 # Combine
-./scripts/helm-upgrade/check-versions.sh --updates-only --only observability
+./scripts/upgrade-sync/check-versions.sh --updates-only --only observability
 ```
 
 <br/>
@@ -498,7 +518,7 @@ Same portability as sync.sh: works on macOS bash 3.2 and Linux bash 4+.
 
 ```bash
 # 1. Survey upstream versions across every managed chart
-./scripts/helm-upgrade/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.sh --updates-only
 
 # 2. For each chart with an upgrade, inspect the detailed diff
 cd observability/monitoring/kube-prometheus-stack
@@ -530,7 +550,7 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 | **Git tracking** | Untracked by default (not in `.gitignore`). Users may selectively `git add` a specific backup as a preserved rollback point |
 | **Retention** | `KEEP_BACKUPS` policy (default 5). Auto-pruned via `auto_prune_backups` on every successful `upgrade.sh` run |
 | **Override** | Tune per-run via env: `KEEP_BACKUPS=1 ./upgrade.sh` |
-| **Bulk ops** | `scripts/helm-upgrade/manage-backups.sh` — `--list` / `--cleanup` / `--total-size` / `--purge` |
+| **Bulk ops** | `scripts/upgrade-sync/manage-backups.sh` — `--list` / `--cleanup` / `--total-size` / `--purge` |
 | **Sync exclusion** | `sync.sh`, `check-versions.sh`, `manage-backups.sh`, and `cicd-sync/*` all skip `backup/` — backups never sync to other repos |
 
 <br/>
@@ -546,7 +566,7 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 ### `--list` — summary of all backups
 
 ```bash
-./scripts/helm-upgrade/manage-backups.sh --list
+./scripts/upgrade-sync/manage-backups.sh --list
 ```
 
 ```
@@ -565,13 +585,13 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 
 ```bash
 # Default: keep the latest 5 per chart
-./scripts/helm-upgrade/manage-backups.sh --cleanup
+./scripts/upgrade-sync/manage-backups.sh --cleanup
 
 # Everything stable: keep just the latest one
-./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 1
+./scripts/upgrade-sync/manage-backups.sh --cleanup --keep 1
 
 # Keep 3
-./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 3
+./scripts/upgrade-sync/manage-backups.sh --cleanup --keep 3
 ```
 
 <br/>
@@ -579,7 +599,7 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 ### `--total-size` — disk usage
 
 ```bash
-./scripts/helm-upgrade/manage-backups.sh --total-size
+./scripts/upgrade-sync/manage-backups.sh --total-size
 # Total: 23 backup(s) in 14 chart(s), 1.7M
 ```
 
@@ -590,7 +610,7 @@ Suitable for CI / cron monitoring.
 ### `--purge` — delete everything (destructive)
 
 ```bash
-./scripts/helm-upgrade/manage-backups.sh --purge
+./scripts/upgrade-sync/manage-backups.sh --purge
 # WARNING: This will REMOVE ALL backups under every managed chart's backup/ directory.
 #          Existing rollback snapshots will be lost.
 #
@@ -605,14 +625,14 @@ Requires typing `PURGE` verbatim — `y` is not accepted. All rollback snapshots
 
 ```bash
 # Day-to-day
-./scripts/helm-upgrade/manage-backups.sh --list        # see current state
+./scripts/upgrade-sync/manage-backups.sh --list        # see current state
 ./upgrade.sh                                            # upgrade (auto-prunes at end)
 
 # Periodic housekeeping (e.g. weekly)
-./scripts/helm-upgrade/manage-backups.sh --cleanup     # keep=5 bulk prune
+./scripts/upgrade-sync/manage-backups.sh --cleanup     # keep=5 bulk prune
 
 # Stable state — aggressive cleanup
-./scripts/helm-upgrade/manage-backups.sh --cleanup --keep 1
+./scripts/upgrade-sync/manage-backups.sh --cleanup --keep 1
 ```
 
 <br/>
@@ -662,7 +682,9 @@ extract_body "$canonical"          # body from canonical (canonical-owned)
 ```bash
 detect_template() {
   local f="$1"
-  if grep -q '^VERSION_SOURCE=' "$f"; then
+  if grep -q '^GITHUB_REPO=' "$f"; then
+    echo "ansible-github-release"
+  elif grep -q '^VERSION_SOURCE=' "$f"; then
     echo "local-cr-version"
   elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"
@@ -674,7 +696,7 @@ detect_template() {
 }
 ```
 
-Finds deterministic patterns that distinguish the four canonicals. Update this function when adding a new canonical variant.
+Finds deterministic patterns that distinguish the five canonicals. Update this function when adding a new canonical variant.
 
 ### Discovering managed files
 
@@ -685,14 +707,14 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
-    -not -path '*/scripts/helm-upgrade/*' \
+    -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
 ```
 
 - Excludes `*/backup/*`: per-chart backups are not sync targets
 - Excludes `*/_deprecated/*`: deprecated charts are permanently excluded
-- Excludes `*/scripts/helm-upgrade/*`: the canonicals themselves are not targets
+- Excludes `*/scripts/upgrade-sync/*`: the canonicals themselves are not targets
 
 ### Auto-detecting unmanaged charts
 
@@ -723,7 +745,7 @@ Candidates: `storage/local-path-provisoner`, `storage/nfs-subdir-external-provis
 
 ```bash
 # 1. Copy the canonical to the new chart directory
-cp scripts/helm-upgrade/templates/external-standard.sh storage/local-path-provisoner/upgrade.sh
+cp scripts/upgrade-sync/templates/external-standard.sh storage/local-path-provisoner/upgrade.sh
 chmod +x storage/local-path-provisoner/upgrade.sh
 
 # 2. Fill in the CONFIG block placeholders with real values
@@ -742,7 +764,7 @@ CHART_TYPE="external"
 
 ```bash
 # 3. Verify drift (the header is already in place from the canonical copy)
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 
 # 4. Verify dry-run behavior
 cd storage/local-path-provisoner && ./upgrade.sh --dry-run
@@ -753,7 +775,7 @@ cd storage/local-path-provisoner && ./upgrade.sh --dry-run
 ### Case 2: local chart + custom templates (e.g., elasticsearch, kibana)
 
 ```bash
-cp scripts/helm-upgrade/templates/local-with-templates.sh \
+cp scripts/upgrade-sync/templates/local-with-templates.sh \
    observability/logging/elasticsearch/upgrade.sh
 chmod +x observability/logging/elasticsearch/upgrade.sh
 vim observability/logging/elasticsearch/upgrade.sh
@@ -775,7 +797,7 @@ CUSTOM_POD_PATCH='...'
 ```
 
 ```bash
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 cd observability/logging/elasticsearch && ./upgrade.sh --dry-run
 ```
 
@@ -784,9 +806,9 @@ cd observability/logging/elasticsearch && ./upgrade.sh --dry-run
 ### Case 3: external chart + image tag auto-update
 
 ```bash
-cp scripts/helm-upgrade/templates/external-with-image-tag.sh new-chart/upgrade.sh
+cp scripts/upgrade-sync/templates/external-with-image-tag.sh new-chart/upgrade.sh
 # Assumes values/*.yaml uses `tag: vX.Y.Z` pattern
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 ```
 
 Precondition: `values/*.yaml` image tags must follow the `tag: v2.14.3` form. Other formats (SHA, quoted, etc.) won't match.
@@ -798,7 +820,7 @@ Precondition: `values/*.yaml` image tags must follow the `tag: v2.14.3` form. Ot
 For charts that are not published to any helm repo and only available in a git repository (e.g., rancher/local-path-provisioner). Use the `local-with-templates` canonical's git source mode.
 
 ```bash
-cp scripts/helm-upgrade/templates/local-with-templates.sh new-chart/upgrade.sh
+cp scripts/upgrade-sync/templates/local-with-templates.sh new-chart/upgrade.sh
 chmod +x new-chart/upgrade.sh
 vim new-chart/upgrade.sh
 ```
@@ -820,7 +842,7 @@ CUSTOM_POD_PATCH=''  # empty if not used
 ```
 
 ```bash
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 cd new-chart && ./upgrade.sh --dry-run
 ```
 
@@ -845,14 +867,14 @@ When the existing 3 canonicals don't cover a new pattern.
 
 ```bash
 # 1. Copy the closest existing canonical
-cp scripts/helm-upgrade/templates/external-standard.sh \
-   scripts/helm-upgrade/templates/external-multi-release.sh
+cp scripts/upgrade-sync/templates/external-standard.sh \
+   scripts/upgrade-sync/templates/external-multi-release.sh
 
 # 2. Modify the new canonical's body (keep CONFIG block placeholders)
-vim scripts/helm-upgrade/templates/external-multi-release.sh
+vim scripts/upgrade-sync/templates/external-multi-release.sh
 
 # 3. Add a detection branch to sync.sh's detect_template()
-vim scripts/helm-upgrade/sync.sh
+vim scripts/upgrade-sync/sync.sh
 ```
 
 ```bash
@@ -878,11 +900,11 @@ vim path/to/chart/upgrade.sh
 # line 2: # upgrade-template: external-multi-release
 
 # 5. Verify
-./scripts/helm-upgrade/sync.sh --check
-./scripts/helm-upgrade/sync.sh --status
+./scripts/upgrade-sync/sync.sh --check
+./scripts/upgrade-sync/sync.sh --status
 
 # 6. Update the "Canonical templates" table in this README
-vim scripts/helm-upgrade/README-en.md
+vim scripts/upgrade-sync/README-en.md
 ```
 
 <br/>
@@ -895,25 +917,25 @@ vim scripts/helm-upgrade/README-en.md
 
 ```bash
 # 1. Edit canonicals
-vim scripts/helm-upgrade/templates/external-standard.sh
+vim scripts/upgrade-sync/templates/external-standard.sh
 # (modify the --exclude description in usage())
 
-vim scripts/helm-upgrade/templates/external-with-image-tag.sh
+vim scripts/upgrade-sync/templates/external-with-image-tag.sh
 # (modify the same section)
 
-vim scripts/helm-upgrade/templates/local-with-templates.sh
+vim scripts/upgrade-sync/templates/local-with-templates.sh
 # (modify the same section)
 
 # 2. Preview impact
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 # Should show DRIFT for all 16 files
 
 # 3. Propagate
-./scripts/helm-upgrade/sync.sh --apply
+./scripts/upgrade-sync/sync.sh --apply
 
 # 4. Verify
-./scripts/helm-upgrade/sync.sh --check
-# All 16 managed file(s) are in sync.
+./scripts/upgrade-sync/sync.sh --check
+# All 23 managed file(s) are in sync.
 
 # 5. Verify behavior in one chart
 cd cicd/argo-cd && ./upgrade.sh --help
@@ -923,11 +945,11 @@ cd cicd/argo-cd && ./upgrade.sh --help
 
 ```bash
 # 0. Precondition: elasticsearch should be unmanaged
-./scripts/helm-upgrade/sync.sh --status | grep elasticsearch
+./scripts/upgrade-sync/sync.sh --status | grep elasticsearch
 #   - observability/logging/elasticsearch
 
 # 1. Copy the canonical
-cp scripts/helm-upgrade/templates/local-with-templates.sh \
+cp scripts/upgrade-sync/templates/local-with-templates.sh \
    observability/logging/elasticsearch/upgrade.sh
 chmod +x observability/logging/elasticsearch/upgrade.sh
 
@@ -937,11 +959,11 @@ vim observability/logging/elasticsearch/upgrade.sh
 # - CUSTOM_TEMPLATES, CUSTOM_POD_PATCH (as needed)
 
 # 3. Verify drift
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 # All 17 managed file(s) are in sync.   ← 16 → 17
 
 # 4. Confirm it disappeared from unmanaged
-./scripts/helm-upgrade/sync.sh --status | grep elasticsearch
+./scripts/upgrade-sync/sync.sh --status | grep elasticsearch
 # (none)
 
 # 5. Dry-run
@@ -954,19 +976,19 @@ cd observability/logging/elasticsearch && ./upgrade.sh --dry-run
 
 ```bash
 # 1. Drift detected
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 #   DRIFT [external-standard] cicd/argo-cd/upgrade.sh
 
 # 2. See exactly what differs
-./scripts/helm-upgrade/sync.sh --print-expected cicd/argo-cd/upgrade.sh \
+./scripts/upgrade-sync/sync.sh --print-expected cicd/argo-cd/upgrade.sh \
   | diff - cicd/argo-cd/upgrade.sh
 
 # 3a. If the change was intentional → reflect it in the canonical and propagate
-vim scripts/helm-upgrade/templates/external-standard.sh
-./scripts/helm-upgrade/sync.sh --apply
+vim scripts/upgrade-sync/templates/external-standard.sh
+./scripts/upgrade-sync/sync.sh --apply
 
 # 3b. If the change was a mistake → revert via sync
-./scripts/helm-upgrade/sync.sh --apply
+./scripts/upgrade-sync/sync.sh --apply
 # This rewrites the single drifting file from the canonical
 ```
 
@@ -981,11 +1003,11 @@ vim db-redis/valkey/upgrade.sh
 #   # upgrade-template: external-with-image-tag
 
 # 2. Drift detected
-./scripts/helm-upgrade/sync.sh --check
+./scripts/upgrade-sync/sync.sh --check
 #   DRIFT [external-with-image-tag] db-redis/valkey/upgrade.sh
 
 # 3. Propagate
-./scripts/helm-upgrade/sync.sh --apply
+./scripts/upgrade-sync/sync.sh --apply
 # valkey now includes the image tag auto-update block
 
 # 4. Verify behavior
@@ -999,14 +1021,14 @@ cd db-redis/valkey && ./upgrade.sh --dry-run
 ### `sync.sh: command not found` or `Permission denied`
 
 ```bash
-chmod +x scripts/helm-upgrade/sync.sh
+chmod +x scripts/upgrade-sync/sync.sh
 ```
 
 ### `ERROR: <file> has no '# upgrade-template:' header on line 2`
 
 The file is missing its header. Run the one-shot migration:
 ```bash
-./scripts/helm-upgrade/sync.sh --insert-headers
+./scripts/upgrade-sync/sync.sh --insert-headers
 ```
 
 ### `ERROR: working tree is dirty. Commit or stash before --apply.`
@@ -1017,16 +1039,16 @@ The `--apply` safety guard. Two options:
 # Safer: commit the current changes first
 git -C kuberntes-infra status
 git -C kuberntes-infra add ... && git -C kuberntes-infra commit -m "..."
-./scripts/helm-upgrade/sync.sh --apply
+./scripts/upgrade-sync/sync.sh --apply
 
 # Or override (force-apply on dirty working tree)
-./scripts/helm-upgrade/sync.sh --apply --force
+./scripts/upgrade-sync/sync.sh --apply --force
 ```
 
 ### `--check` reports drift on every file
 
 Possible causes:
-1. You modified a canonical but haven't run `--apply` yet → `./scripts/helm-upgrade/sync.sh --apply`
+1. You modified a canonical but haven't run `--apply` yet → `./scripts/upgrade-sync/sync.sh --apply`
 2. The canonical's marker structure is broken (the `# ===` line count is not 3) → inspect the canonical
 3. `detect_template` mis-classified a file → check the explicit header
 
@@ -1035,7 +1057,7 @@ Possible causes:
 Manually edited, or a partial apply:
 ```bash
 # See what differs
-./scripts/helm-upgrade/sync.sh --print-expected <file> | diff - <file>
+./scripts/upgrade-sync/sync.sh --print-expected <file> | diff - <file>
 
 # If intentional, edit the canonical and --apply
 # If a mistake, --apply restores it from the canonical
@@ -1151,14 +1173,14 @@ A: Add `--check` to a CI step. Drift returns non-zero, which naturally fails the
 
 ```yaml
 # .github/workflows/upgrade-script-drift.yml (example)
-name: helm-upgrade drift check
+name: upgrade-sync drift check
 on: [pull_request, push]
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: ./scripts/helm-upgrade/sync.sh --check
+      - run: ./scripts/upgrade-sync/sync.sh --check
 ```
 
 <br/>

@@ -103,7 +103,7 @@ helmfile destroy
 
 ## Version Upgrades
 
-`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/mgmt.yaml` and the `appVersion` in `Chart.yaml`. It is based on the `local-cr-version` canonical template (see [scripts/helm-upgrade/README-en.md](../../../scripts/helm-upgrade/README-en.md)).
+`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/mgmt.yaml` and the `appVersion` in `Chart.yaml`. It is based on the `local-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
 
 **Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.sh` when ready to track 10.x.
 

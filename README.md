@@ -246,12 +246,12 @@ See [jenkins/README.md](jenkins/) for details.
 
 ```
 scripts/
-└── helm-upgrade/            # Canonical upgrade.sh templates + drift sync tool
+└── upgrade-sync/            # Canonical upgrade.sh templates + drift sync tool
     ├── sync.sh              # --check / --apply to keep all component upgrade.sh in sync
     └── templates/           # Source-of-truth upgrade.sh bodies
 ```
 
-See [scripts/helm-upgrade/README.md](scripts/helm-upgrade/) for the sync workflow.
+See [scripts/upgrade-sync/README.md](scripts/upgrade-sync/) for the sync workflow.
 
 </details>
 

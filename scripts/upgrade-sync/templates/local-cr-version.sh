@@ -21,7 +21,7 @@
 #                         (Elasticsearch, Kibana, APM Server, Logstash, Beats).
 #
 # Real per-chart upgrade.sh files are kept in sync via:
-#   scripts/helm-upgrade/sync.sh --apply
+#   scripts/upgrade-sync/sync.sh --apply
 # Only the body below the second `# ===` marker is propagated.
 set -euo pipefail
 

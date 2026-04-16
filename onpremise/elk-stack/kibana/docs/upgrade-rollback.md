@@ -38,4 +38,4 @@ No specific order required. Run `./upgrade.sh --rollback` independently in each 
 - **Main guide**: [Elasticsearch/docs/upgrade-rollback-en.md](../../elasticsearch/docs/upgrade-rollback-en.md)
 - [Kibana README](../README-en.md)
 - [Elasticsearch README](../../elasticsearch/README-en.md)
-- [helm-upgrade system guide](../../../../scripts/helm-upgrade/README-en.md)
+- [upgrade-sync system guide](../../../../scripts/upgrade-sync/README-en.md)

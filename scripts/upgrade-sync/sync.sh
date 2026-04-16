@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ============================================================
-# helm-upgrade/sync.sh
+# upgrade-sync/sync.sh
 #
 # Keeps all per-chart `upgrade.sh` files in sync with their canonical
-# templates under `scripts/helm-upgrade/templates/`.
+# templates under `scripts/upgrade-sync/templates/`.
 #
 # Each managed `upgrade.sh` declares its template via a header comment
 # on line 2:
@@ -85,7 +85,7 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
-    -not -path '*/scripts/helm-upgrade/*' \
+    -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
 
@@ -117,7 +117,9 @@ read_template_header() {
 # Used by --insert-headers and --check --no-header.
 detect_template() {
   local f="$1"
-  if grep -q '^VERSION_SOURCE=' "$f"; then
+  if grep -q '^GITHUB_REPO=' "$f"; then
+    echo "ansible-github-release"
+  elif grep -q '^VERSION_SOURCE=' "$f"; then
     echo "local-cr-version"
   elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"

@@ -46,7 +46,7 @@ kibana/
 
 ## Version Upgrades
 
-`upgrade.sh` uses the same [local-cr-version](../../../scripts/helm-upgrade/templates/local-cr-version.sh) canonical template as Elasticsearch: queries the Elastic artifacts API for the latest GA, then updates `values/mgmt.yaml` `version` and `Chart.yaml` `appVersion` (9.x major line pinned).
+`upgrade.sh` uses the same [local-cr-version](../../../scripts/upgrade-sync/templates/local-cr-version.sh) canonical template as Elasticsearch: queries the Elastic artifacts API for the latest GA, then updates `values/mgmt.yaml` `version` and `Chart.yaml` `appVersion` (9.x major line pinned).
 
 ```bash
 ./upgrade.sh --dry-run              # show latest only

@@ -14,9 +14,7 @@
   hosts: node_exporter
   become: true
 
-  vars:
-    node_exporter_bin: "/usr/local/bin/node_exporter"
-    node_exporter_service: "node_exporter"
+  # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
     # ------------------------------------------------------------------

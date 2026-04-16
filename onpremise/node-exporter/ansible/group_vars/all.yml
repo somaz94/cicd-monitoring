@@ -1,0 +1,21 @@
+---
+# =============================================================================
+# Node Exporter - Shared Variables
+#
+# Single source of truth for all playbooks in this directory
+# (playbook.yml, upgrade.yml, rollback.yml, uninstall.yml).
+#
+# Ansible variable precedence: `-e "key=value"` CLI extra-vars override
+# these, so one-off upgrades still work with:
+#   ansible-playbook -i inventory.ini upgrade.yml -e "node_exporter_version=1.12.0"
+#
+# To bump the default version, prefer `./upgrade.sh` at the component root
+# (auto-fetches latest from GitHub Releases and updates this file).
+# =============================================================================
+
+node_exporter_version: "1.11.1"
+node_exporter_arch: "amd64"
+node_exporter_port: "9100"
+node_exporter_bin: "/usr/local/bin/node_exporter"
+node_exporter_service: "node_exporter"
+node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"

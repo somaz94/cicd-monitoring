@@ -61,7 +61,7 @@ All four issues are now prevented or automatically recovered by the safety featu
 
 | Feature | Location |
 |---|---|
-| `check-versions.sh` **NO_IMG status** — prevents mis-reporting unavailable versions as UPDATE | [check-versions.sh](../../../../scripts/helm-upgrade/check-versions.sh) |
+| `check-versions.sh` **NO_IMG status** — prevents mis-reporting unavailable versions as UPDATE | [check-versions.sh](../../../../scripts/upgrade-sync/check-versions.sh) |
 | **Downgrade detection** — auto-detects during rollback → offers webhook handling | `do_rollback()` |
 
 <br/>
@@ -142,7 +142,7 @@ Proceeding with `y` without a snapshot leaves no recovery option on failure.
 ### Preflight across all charts
 
 ```bash
-./scripts/helm-upgrade/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.sh --updates-only
 ```
 
 ```
@@ -339,7 +339,7 @@ kubectl -n logging wait kibana/kibana \
 
 Before upgrade:
 
-- [ ] `./scripts/helm-upgrade/check-versions.sh --updates-only` — no `NO_IMG` status
+- [ ] `./scripts/upgrade-sync/check-versions.sh --updates-only` — no `NO_IMG` status
 - [ ] `./upgrade.sh --dry-run` — Step 2 health, Step 4 image, Step 5 dependency all pass
 - [ ] ECK Operator supports the target Stack version ([Compatibility matrix](https://www.elastic.co/support/matrix))
 - [ ] ES and Kibana on the same Stack version (ES first, then Kibana)
@@ -356,7 +356,7 @@ Before rollback:
 
 ## References
 
-- [helm-upgrade system guide](../../../../scripts/helm-upgrade/README-en.md)
-- [local-cr-version canonical template](../../../../scripts/helm-upgrade/templates/local-cr-version.sh)
+- [upgrade-sync system guide](../../../../scripts/upgrade-sync/README-en.md)
+- [local-cr-version canonical template](../../../../scripts/upgrade-sync/templates/local-cr-version.sh)
 - [ECK Operator chart](../../eck-operator/)
 - [Elasticsearch compatibility matrix](https://www.elastic.co/support/matrix)

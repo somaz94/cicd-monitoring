@@ -15,12 +15,7 @@
   hosts: node_exporter
   become: true
 
-  vars:
-    node_exporter_version: "1.11.0"
-    node_exporter_port: "9100"
-    node_exporter_arch: "amd64"
-    node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
-    node_exporter_bin: "/usr/local/bin/node_exporter"
+  # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
     # ------------------------------------------------------------------

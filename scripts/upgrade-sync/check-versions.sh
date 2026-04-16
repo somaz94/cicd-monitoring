@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # ============================================================
-# helm-upgrade/check-versions.sh
+# upgrade-sync/check-versions.sh
 #
 # Read-only preflight: scans every managed upgrade.sh, reads its
 # CONFIG block, queries the upstream source, and prints which
 # charts have an upgrade available. Does NOT modify any files.
 #
 # Intended flow:
-#   ./scripts/helm-upgrade/check-versions.sh      # see what's upgradable
+#   ./scripts/upgrade-sync/check-versions.sh      # see what's upgradable
 #   cd <chart-dir> && ./upgrade.sh --dry-run      # inspect one chart
 #   cd <chart-dir> && ./upgrade.sh                # apply
 #
@@ -19,6 +19,7 @@ set -euo pipefail
 #   local-with-templates     -> helm search repo OR git ls-remote --tags
 #                               (git mode when CHART_GIT_REPO is non-empty)
 #   local-cr-version         -> VERSION_SOURCE feed (e.g. elastic-artifacts)
+#   ansible-github-release   -> GitHub Releases API (GITHUB_REPO)
 #
 # Portability: bash 3.2+ (macOS default), POSIX-ish awk, no `sed -i`.
 # ============================================================
@@ -63,7 +64,7 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
-    -not -path '*/scripts/helm-upgrade/*' \
+    -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
 
@@ -100,6 +101,7 @@ dump_config_vars() {
     VERSION_SOURCE=""; VERSION_SOURCE_ARG=""
     VALUES_FILE=""; VERSION_KEY=""; MAJOR_PIN=""
     CONTAINER_IMAGE=""
+    GITHUB_REPO=""; VERSION_FILE=""
     # CONFIG block lives in our own repo, so eval is safe here.
     eval "$block" 2>/dev/null || true
     printf 'SCRIPT_NAME=%q\n' "${SCRIPT_NAME:-}"
@@ -115,6 +117,8 @@ dump_config_vars() {
     printf 'VERSION_KEY=%q\n' "${VERSION_KEY:-}"
     printf 'MAJOR_PIN=%q\n' "${MAJOR_PIN:-}"
     printf 'CONTAINER_IMAGE=%q\n' "${CONTAINER_IMAGE:-}"
+    printf 'GITHUB_REPO=%q\n' "${GITHUB_REPO:-}"
+    printf 'VERSION_FILE=%q\n' "${VERSION_FILE:-}"
   )
 }
 
@@ -323,7 +327,10 @@ matches_only() {
 # Phase 1: parse every managed upgrade.sh
 # -----------------------------------------------
 
-ROWS=()         # rel \t tpl \t label \t current \t fetcher \t fetcher_arg \t extra_arg \t container_image \t version_source_arg
+# Use ASCII Unit Separator (0x1f) so consecutive empty fields don't collapse
+# (bash `read` merges consecutive whitespace IFS chars; \x1f is non-whitespace).
+ROW_SEP=$'\x1f'
+ROWS=()         # rel | tpl | label | current | fetcher | fetcher_arg | extra_arg | container_image | version_source_arg
 HELM_REPOS=()   # "name=url" pairs (deduped later)
 
 echo "Collecting managed upgrade.sh configs..."
@@ -385,12 +392,22 @@ while IFS= read -r f; do
       fetcher_arg="$VERSION_SOURCE"
       extra_arg="$MAJOR_PIN"
       ;;
+    ansible-github-release)
+      if [ -n "$VERSION_FILE" ] && [ -f "$chart_dir/$VERSION_FILE" ] && [ -n "$VERSION_KEY" ]; then
+        current=$(read_yaml_value "$chart_dir/$VERSION_FILE" "$VERSION_KEY")
+      fi
+      fetcher="version-source"
+      fetcher_arg="github-releases"
+      extra_arg="$MAJOR_PIN"
+      # VERSION_SOURCE_ARG is used by the GitHub fetcher as owner/repo.
+      VERSION_SOURCE_ARG="$GITHUB_REPO"
+      ;;
     *)
       fetcher="unknown"
       ;;
   esac
 
-  ROWS+=("$rel"$'\t'"$tpl"$'\t'"$label"$'\t'"$current"$'\t'"$fetcher"$'\t'"$fetcher_arg"$'\t'"$extra_arg"$'\t'"${CONTAINER_IMAGE:-}"$'\t'"${VERSION_SOURCE_ARG:-}")
+  ROWS+=("$rel$ROW_SEP$tpl$ROW_SEP$label$ROW_SEP$current$ROW_SEP$fetcher$ROW_SEP$fetcher_arg$ROW_SEP$extra_arg$ROW_SEP${CONTAINER_IMAGE:-}$ROW_SEP${VERSION_SOURCE_ARG:-}")
 done < <(find_managed_files)
 
 managed=$((total - skipped))
@@ -454,7 +471,7 @@ error_count=0
 no_image_count=0
 
 for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r rel tpl label current fetcher fetcher_arg extra_arg container_image version_source_arg <<< "$row"
+  IFS="$ROW_SEP" read -r rel tpl label current fetcher fetcher_arg extra_arg container_image version_source_arg <<< "$row"
 
   latest=""
   err=""

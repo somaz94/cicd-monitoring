@@ -16,12 +16,8 @@
   hosts: node_exporter
   become: true
 
-  vars:
-    node_exporter_version: "1.11.0"
-    node_exporter_arch: "amd64"
-    node_exporter_port: "9100"
-    node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
-    node_exporter_bin: "/usr/local/bin/node_exporter"
+  # Variables are defined in group_vars/all.yml (single source of truth).
+  # Override per-run with: -e "node_exporter_version=1.12.0"
 
   tasks:
     # ------------------------------------------------------------------
@@ -64,7 +60,7 @@
 
     - name: Display current version
       debug:
-        msg: "Current: {{ current_version.stderr_lines[0] | default('not installed') }} → Target: v{{ node_exporter_version }}"
+        msg: "Current: {{ current_version.stdout_lines[0] | default('not installed') }} → Target: v{{ node_exporter_version }}"
 
     # ------------------------------------------------------------------
     # 2. Download new version
@@ -124,15 +120,6 @@
           delay: 2
           until: result.status == 200
 
-        - name: Get new version
-          command: "{{ node_exporter_bin }} --version"
-          register: new_version
-          changed_when: false
-
-        - name: Display upgrade result
-          debug:
-            msg: "Upgraded {{ inventory_hostname }} ({{ ansible_host }}) → {{ new_version.stderr_lines[0] }}"
-
       rescue:
         - name: "[ROLLBACK] Restoring previous binary"
           copy:
@@ -153,6 +140,21 @@
         - name: "[ROLLBACK] Upgrade failed"
           fail:
             msg: "Upgrade failed on {{ inventory_hostname }} ({{ ansible_host }}). Rolled back to previous version."
+
+    # ------------------------------------------------------------------
+    # 4. Report result (outside the rescue scope: display failures here
+    #    should NOT trigger a rollback — the upgrade itself already
+    #    succeeded by the time we get here).
+    # ------------------------------------------------------------------
+    - name: Get new version
+      command: "{{ node_exporter_bin }} --version"
+      register: new_version
+      changed_when: false
+      failed_when: false
+
+    - name: Display upgrade result
+      debug:
+        msg: "Upgraded {{ inventory_hostname }} ({{ ansible_host }}) → {{ new_version.stdout_lines[0] | default('unknown') }}"
 
     # ------------------------------------------------------------------
     # 5. Cleanup
