@@ -9,9 +9,12 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 9.5.0
+    version: 9.5.1
     values:
-      - values/mgmt.yaml
+      - values/mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets)
+      - values/mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
+      - values/mgmt-redis.yaml         # redis, redis-ha, redisSecretInit
+      - values/mgmt-notifications.yaml # notifications controller (Slack templates/triggers)
 
 # helmDefaults:
 #   wait: true

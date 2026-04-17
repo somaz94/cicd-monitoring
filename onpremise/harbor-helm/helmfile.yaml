@@ -11,9 +11,29 @@ releases:
     values:
       - values/mgmt.yaml
 
+    hooks:
+      # postsync: apply raw Gateway API resources (HTTPRoute + ClientSettingsPolicy) after chart upgrade.
+      # The Harbor 1.18.3 chart only generates an HTTPRoute when expose.type=route, but that mode
+      # cannot run alongside Ingress → managed separately as raw manifests to guarantee parallel operation.
+      # Note: helmfile apply skips hooks when there is no chart diff. Use helmfile sync for the first hook
+      # application or when only manifests/ changes.
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args: ["apply", "-f", "manifests/"]
+
+      # preuninstall: clean up HTTPRoute before helm uninstall — to avoid leaving stale attachment
+      # references on the parent Gateway.
+      - events: ["preuninstall"]
+        showlogs: true
+        command: "bash"
+        args:
+          - "-c"
+          - "kubectl delete -f manifests/ --ignore-not-found=true --wait=true || true"
+
 # helmDefaults:
 #   wait: true
-#   timeout: 900  # Harbor는 설치 시간이 좀 더 필요할 수 있어서 15분으로 설정
+#   timeout: 900  # Harbor may need more install time, so set to 15 minutes
 #   atomic: true
 #   cleanupOnFail: true
 
@@ -32,7 +52,7 @@ hooks:
       - "||"
       - "true"
 
-  # Harbor는 데이터베이스와 스토리지가 필요하므로, PVC가 있는지 확인
+  # Harbor needs a database and storage, so verify that a PVC exists
   - events: ["presync"]
     showlogs: true
     command: "kubectl"
