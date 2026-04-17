@@ -23,8 +23,9 @@ grafana:
       cpu: 1000m
       memory: 1Gi
 
+  # Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. grafana.route(below) is sole path.
   ingress:
-    enabled: true
+    enabled: false
     ingressClassName: nginx
     hosts:
       - grafana.example.com
@@ -32,6 +33,22 @@ grafana:
     #   - secretName: grafana-tls
     #     hosts:
     #       - grafana.example.com
+
+  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
+  # - grafana subchart natively supports the route: block (charts/grafana/templates/route.yaml)
+  # - Only matches specified → chart auto-wires backend to grafana Service (port 80)
+  route:
+    main:
+      enabled: true
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+      hostnames:
+        - grafana.example.com
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 
   # Persistent storage for dashboards and settings
   persistence:
@@ -55,8 +72,9 @@ grafana:
 # Prometheus
 # =============================================================================
 prometheus:
+  # Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. prometheus.route(below) is sole path.
   ingress:
-    enabled: true
+    enabled: false
     ingressClassName: nginx
     hosts:
       - prometheus.example.com
@@ -64,6 +82,22 @@ prometheus:
     #   - secretName: prometheus-tls
     #     hosts:
     #       - prometheus.example.com
+
+  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
+  # - upstream chart natively supports the route: block (templates/prometheus/route.yaml)
+  # - Only matches specified → chart auto-wires backend to prometheus Service (port 9090)
+  route:
+    main:
+      enabled: true
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+      hostnames:
+        - prometheus.example.com
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 
   prometheusSpec:
     # Resources

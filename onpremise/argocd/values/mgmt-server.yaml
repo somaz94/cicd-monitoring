@@ -1,0 +1,124 @@
+## Application controller
+controller:
+  replicas: 1
+  # Controller environment variable optimization
+  env:
+    # Kubernetes API request QPS limit (default: 50)
+    # Reduces bottlenecks during large-scale app synchronization
+    - name: ARGOCD_K8S_CLIENT_QPS
+      value: "150"
+    # Kubernetes API burst request limit (default: 100)
+    # Improves sync speed during traffic spikes
+    - name: ARGOCD_K8S_CLIENT_BURST
+      value: "300"
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 6Gi
+    requests:
+      cpu: 1000m
+      memory: 3Gi
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
+
+## Dex
+dex:
+  # -- Enable dex
+  enabled: true
+
+## Server
+server:
+  replicas: 1
+  # Argo CD server ingress configuration
+  # Disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
+  ingress:
+    # -- Enable an ingress resource for the Argo CD server
+    enabled: false
+    ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#option-1-ssl-passthrough
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
+      # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      # nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+
+    # -- Defines which ingress controller will implement the resource
+    ingressClassName: "nginx"
+
+    # -- The path to Argo CD server
+    path: /
+
+    # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
+    pathType: Prefix
+
+  # Gateway API HTTPRoute — Phase 3.5 (ingress-nginx → NGF) parallel deployment
+  # - Upstream chart natively supports server.httproute: block (templates/argocd-server/httproute.yaml)
+  # - backendRefs are auto-wired by the chart: configs.params["server.insecure"]=true → service port 80 (HTTP)
+  # - Omitting sectionName attaches the route to both HTTP/HTTPS listeners (preserves existing force-ssl-redirect: false behavior)
+  # - At Phase 6 cutover, NginxProxy loadBalancerIP swap (.69 → .55) automatically shifts real traffic
+  httproute:
+    enabled: true
+    parentRefs:
+      - name: ngf
+        namespace: nginx-gateway
+    hostnames:
+      - argocd.example.com
+    rules:
+      - matches:
+          - path:
+              type: PathPrefix
+              value: /
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
+
+## Repo Server
+repoServer:
+  replicas: 1
+  # Repo server environment variable optimization
+  env:
+    # Command execution timeout (default: 90s)
+    # Increased timeout needed for large Helm chart manifest generation
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "180"
+    # Git operation retry count (default: 1)
+    # Improves stability through retries on git ls-remote failures
+    - name: ARGOCD_GIT_ATTEMPTS_COUNT
+      value: "3"
+    # Allow Helm concurrent execution (default: false)
+    # Improves performance when syncing multiple Helm-based apps simultaneously
+    # Warning: Verify no interdependencies between templates
+    - name: ARGOCD_HELM_ALLOW_CONCURRENCY
+      value: "true"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  # ServiceMonitor (Prometheus metrics)
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+      additionalLabels:
+        release: kube-prometheus-stack
+
+## ApplicationSet controller
+applicationSet:
+  replicas: 1

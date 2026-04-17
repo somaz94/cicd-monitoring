@@ -97,23 +97,19 @@ service:
 # =============================================================================
 # Ingress (HTTPS — self-signed certificate)
 #
-# Self-signed TLS secret must be created before deployment:
-#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-#     -keyout vw-key.pem -out vw-cert.pem -subj "/CN=vault.example.com"
-#   kubectl create secret tls vaultwarden-tls \
-#     --cert=vw-cert.pem --key=vw-key.pem -n vaultwarden
-#   rm vw-key.pem vw-cert.pem
 # =============================================================================
+# Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55.
+# HTTPRoute via extraObjects below is the sole path, HTTPS termination by
+# Gateway (wildcard-example-tls) rather than this Ingress/vaultwarden-tls.
+# Legacy fields retained for rollback reference; re-enable only if NGF path is reverted.
 ingress:
-  enabled: true
+  enabled: false
   class: "nginx"
   nginxIngressAnnotations: true
   additionalAnnotations:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
   hostname: "vault.example.com"
-  tls: true
-  tlsSecret: "vaultwarden-tls"
   path: /
   pathType: Prefix
 
@@ -157,19 +153,9 @@ serviceAccount:
 # Restore: ./scripts/restore.sh [YYYYMMDD|latest]
 # =============================================================================
 extraObjects:
-  # Self-signed TLS Secret (valid for 10 years)
-  # Regenerate: openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-  #   -keyout vw-key.pem -out vw-cert.pem -subj "/CN=vault.example.com"
-  # Then base64 encode: base64 < vw-cert.pem | tr -d '\n' and base64 < vw-key.pem | tr -d '\n'
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: vaultwarden-tls
-      namespace: vaultwarden
-    type: kubernetes.io/tls
-    data:
-      tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURGekNDQWYrZ0F3SUJBZ0lVQkY4eEE5VHVWZU43MFVZNFZUajBNbXJHakM4d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0d6RVpNQmNHQTFVRUF3d1FkbUYxYkhRdVkyOXVZM0pwZEM1MWN6QWVGdzB5TmpBME1EZ3dNalUxTlRGYQpGdzB6TmpBME1EVXdNalUxTlRGYU1Cc3hHVEFYQmdOVkJBTU1FSFpoZFd4MExtTnZibU55YVhRdWRYTXdnZ0VpCk1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQzVEbVNmQWpORVpTREtQRFJNM0ROMjZMYVcKbzN0MVN0aUllZyszSjJ4cDAvcE9JRmpLRkl4TWcxdUx4Y2huTm15WmNpM0xLYS8wWmY4bjlaY1VCTHBCTVdsKwpkMzRCd28vTjhoUmkvazJ1MnZxM3dFT2Rab3c5RXdyV2s2SFFYMXZPZk9TRUhib1h3M1RpWUxFdDdNSkQ2MXM5ClJsVmJNNHlsVC8vWWJMUXljc0hQaEhwRnhtOElReVBSQldpQVpldlJsL3pMKzJuQVFDeFlRTW0rTWdDSm94cUoKUTJkdmEybXVwbVlVSWpoM0xZaHpNWkZNdnhUeDZFRlNNUGZubUVhNVFoUkFNU0V1WVgxT0xtUVVDdVVEL3I4SQo4c2NkbEZmRnFpbUlVM09SZTI4bFFOWkRaRUUycVZjLyt4NFRaWGc5N3ZDWmdNN2pURlY2eUg4ZWYyaDdBZ01CCkFBR2pVekJSTUIwR0ExVWREZ1FXQkJRMFdOM0dVV1ZYK2VWdy9RbVJyRnpCTXpFK0VEQWZCZ05WSFNNRUdEQVcKZ0JRMFdOM0dVV1ZYK2VWdy9RbVJyRnpCTXpFK0VEQVBCZ05WSFJNQkFmOEVCVEFEQVFIL01BMEdDU3FHU0liMwpEUUVCQ3dVQUE0SUJBUUF0bXozTzU3eTg2V3IxTVZqK0lPUkJxOXluUjllcUFrMmk5RUNyWXh6cXZYbis2VmFWCkJpWU9HZUc2ZmdtamlYMTBXcjExYmxpblk1Y2wwUXZRUGZ2RWpFQkRJVnVRVkhkalo1MXJZSnpiejBrRTU3OGUKSkxFTlNoUDJ0Q000czUzeFJMYUNsNTFwZE13VDhmWE4rNGZtMGNNVklYQ2pUemhtQVNNZ2NadmhWQ3p0OXZBKwpaaXdseE92UlZFWTR4cHUrZFNRTHpQdENQZTluM1RENWl1eVR0UDJLMXpNNW9JVUVoZzBXangxeDE0VVFQZGtDCmNGK0wzSy9rSFo3eExaak9lTkVRMlV1MTErV2ZJV216RG1JdFMyeVcxQTNHSUJPcEVQYkc5S3V1WnlMR0RWWjgKVXJkV1dPdGlFUmE5cjMrUTJyNDI2Z1htVjJpOFY3VGlQOFljCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
-      tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRQzVEbVNmQWpORVpTREsKUERSTTNETjI2TGFXbzN0MVN0aUllZyszSjJ4cDAvcE9JRmpLRkl4TWcxdUx4Y2huTm15WmNpM0xLYS8wWmY4bgo5WmNVQkxwQk1XbCtkMzRCd28vTjhoUmkvazJ1MnZxM3dFT2Rab3c5RXdyV2s2SFFYMXZPZk9TRUhib1h3M1RpCllMRXQ3TUpENjFzOVJsVmJNNHlsVC8vWWJMUXljc0hQaEhwRnhtOElReVBSQldpQVpldlJsL3pMKzJuQVFDeFkKUU1tK01nQ0pveHFKUTJkdmEybXVwbVlVSWpoM0xZaHpNWkZNdnhUeDZFRlNNUGZubUVhNVFoUkFNU0V1WVgxTwpMbVFVQ3VVRC9yOEk4c2NkbEZmRnFpbUlVM09SZTI4bFFOWkRaRUUycVZjLyt4NFRaWGc5N3ZDWmdNN2pURlY2CnlIOGVmMmg3QWdNQkFBRUNnZ0VBUFpEN3llajEvSFcybklHK0Zxb1YxeVFpQnVqWjNKSnJpckF0UlU1dzQ1NTYKQW44QmV5MnQ1WkM0SnI3RTV3MjB3TEk3YVFGMEFCZms5VHJnS2ZGT3Mvekg3Nks2Z2NSa2lteFUrd0JIQVBycQplYktWN0NwZlVyeGdtVFhobWt6M1lyR3Jad2JxMEJnZmJXY2syellQQllDcVNLNzdHODRCSjBoL3dsV2I5OElqCnhsb0ptbVBHTkdva1Zia1Y0RHBEN0kxZUhxbHNOdExGM3dFY25laElaR1gzZmtSNS9UVEFxVHVhUmdJckJhOXkKVnpWMFF6WHZBd1VBbi9WaFg2MEQ1ZjJMWWd3MVp2dkFIVk4rTmxoZUp0SURaSCtSdENjMHNCWTdzbkh0b2xTZgpMWHRCTzR6dlJFbk9EYmFlUlh5VGxhbnRtNjF6N1QwamVRVlFTdFFVTlFLQmdRRHNWam5zYTZQUTJMUmE5ZmtGCklqSjZRVGhEWnRvS250c1FudUt1TzVBeEt6cCtGb21ZdStQWTVmQmkvSnhUb1V2R1VnWCtwL25TOUFrZ0JVWjUKYWdzYWN2OUJmUENvK2p1UUpod0FiUEpxSnZmVC91SlJ1MTBUYk02YnNHRnl3OWtycFhQOGVoMU40SWpjbzd0TgpjVkNFMTVGbVVMSmhuV3JvTFZVczlsS05yd0tCZ1FESWMrNzltYUxkeGlvVHZLbTdOTks0TXdLVU4xREl2dTdnCnJoY2hXZkFwWVg0THlCcEF0bCs4S0FSeGhkT2syL1ZVcFlnVGsvdndvYUJkbVJmU3R5eEJDZXhxU0VGbHp3M28KbHBwQXBHcnRTbzhlcTlkaHkvSmZESkhrWVZWNjFTNHlFdkt3c2JkbUFxemFacWVHaFc5ZEFtc0JFYmk5VkEwdApuY0JUK0NNdzlRS0JnQVd4c2lXVEZsaFMwRTJjdllvMUg3ZzRXQTJ2cmJNeHpwOWc1SjlFQ2g1VkoweWdhR0pJCnJKMnVOSk45K0pvL09aOG1uTVJjOGJUMmNqM1dRck5zTGFaT2ZQM3I3N1J5aXZyWElEZVdhR1RNV1k0L0J0N24KUDcvWEVFZEtBWjhOUHU5QlJrRWdCQks3UlREanRRQ1JxVm42QTZQT2IrM1FLQ0k5N1Y1dTlPQTdBb0dBSkxXbQpsT2JuL3JsbHgwdUx3ZThBa05xK3BDb2xMejVZUE9sazd3U3JpTWlEN3VCc2ZtRm4wdXQ1Tk5rUFUyZTgzQTJjCmlBbFg0RStaTU1yeW8vSkx0blY4eUZJSE4vL2RTalVhZHJBbHJPTTBwcWROd0drN0w5RDdmdG1jYit4T2sza0kKM1BjTzRTMm9QaThDaXc0d3dOWEtodDJaK1lKRkQ0K09RMUowRDJrQ2dZRUFnOU5ZemJ4eVNYU0R6Mkg1NjMzNApCeGJUdXNBeGlCdmJVbGJIelQ2QXlGajJFZHFlTUdYcXZ3WXdnOEw1OFNyTGZuVzB1c3lJdkQ0YmlHa2Y0TGVJCnFtekxjdEYvMnZvU3c2VGJ3UzhiWFVyRlpvb1Qrd2xPeGt5cVQ4cjUzNm15TWFwVW45aHN4MmlDaDhjdG8wYTcKSWxKVHhGcmJxdTdVeGY2eVJrRDg4Nkk9Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
+  # Note: 2026-04-17 self-signed `vaultwarden-tls` Secret removed (unused after Phase 6 cutover).
+  # HTTPS termination is handled by `wildcard-example-tls` on NGF ngf Gateway (nginx-gateway ns).
+  # If re-introduction is needed: see Git history or `network/nginx-gateway-fabric/docs/tls-wildcard-setup.md`.
 
   # Backup PVC
   - apiVersion: v1
@@ -246,3 +232,101 @@ extraObjects:
                 - name: backup
                   persistentVolumeClaim:
                     claimName: vaultwarden-backup-data
+
+  # =============================================================================
+  # Gateway API HTTPRoute — Phase 4 (ingress-nginx → NGF) parallel deployment
+  # =============================================================================
+  # Runs alongside existing Ingress (the ingress: block above is kept as-is).
+  # On Phase 6 cutover MetalLB reassigns the .55 IP to NGF ngf → real traffic auto-switches.
+  #
+  # Annotation mapping:
+  #   force-ssl-redirect: true       → httpsRedirect sibling HTTPRoute (HTTP→HTTPS 301)
+  #   proxy-body-size: 1024m         → ClientSettingsPolicy body.maxSize: 1024m
+  #   proxy-{read,send}-timeout: 1800 → HTTPRoute timeouts.{request,backendRequest}: 1800s
+  #   proxy-connect-timeout: 10      → NGF default applied (no per-listener option)
+  #   limit-rps: 15                  → RateLimitPolicy rate: 15r/s (per source IP)
+  #   limit-connections: 25          → not preserved (NGF doesn't directly support limit_conn; possible via SnippetsFilter
+  #                                     but out of Phase 4 scope. Rely on app-level rate-limit)
+  #   enable-cors: true              → relies on Vaultwarden's own CORS handling (controlled via app ENV)
+  #   backend-protocol: HTTP         → default value, no extra policy needed
+  #
+  # Vaultwarden chart has no HTTPRoute template so injected via extraObjects (integrated with helm release lifecycle).
+
+  # Main HTTPRoute — attached to HTTPS listener (uses wildcard-example-tls)
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: vaultwarden
+      namespace: vaultwarden
+    spec:
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+          sectionName: https
+      hostnames:
+        - vault.example.com
+      rules:
+        - matches:
+            - path:
+                type: PathPrefix
+                value: /
+          timeouts:
+            request: 1800s
+            backendRequest: 1800s
+          backendRefs:
+            - name: vaultwarden
+              port: 80
+
+  # Sibling HTTPRoute — HTTP→HTTPS 301 redirect
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: vaultwarden-https-redirect
+      namespace: vaultwarden
+    spec:
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+          sectionName: http
+      hostnames:
+        - vault.example.com
+      rules:
+        - filters:
+            - type: RequestRedirect
+              requestRedirect:
+                scheme: https
+                statusCode: 301
+
+  # ClientSettingsPolicy — allow large body for attachments etc.
+  - apiVersion: gateway.nginx.org/v1alpha1
+    kind: ClientSettingsPolicy
+    metadata:
+      name: vaultwarden
+      namespace: vaultwarden
+    spec:
+      targetRef:
+        group: gateway.networking.k8s.io
+        kind: HTTPRoute
+        name: vaultwarden
+      body:
+        maxSize: "1024m"
+
+  # RateLimitPolicy — per-IP request frequency limit
+  - apiVersion: gateway.nginx.org/v1alpha1
+    kind: RateLimitPolicy
+    metadata:
+      name: vaultwarden
+      namespace: vaultwarden
+    spec:
+      targetRefs:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+          name: vaultwarden
+      rateLimit:
+        rejectCode: 429
+        local:
+          rules:
+            - key: $binary_remote_addr
+              rate: 15r/s
+              burst: 30
+              zoneSize: 10m

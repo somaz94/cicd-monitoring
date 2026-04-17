@@ -56,12 +56,41 @@ nodeStore:
 sysctlInitContainer:
   enabled: true
 
-# Ingress — primary host after Phase 4 cutover (2026-04-14).
+# Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute + BackendTLSPolicy(below) are sole path.
+# backend-protocol: HTTPS replaced by BackendTLSPolicy + CA ConfigMap (see httproute/backendTLS below).
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   host: elasticsearch.example.com
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+
+# Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
+# - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+# - When backendRefs name is omitted it defaults to `<name>-es-http`, port defaults to 9200
+# - backendTLS.enabled: auto-generates BackendTLSPolicy + CA ConfigMap to verify ECK self-signed TLS (9200 HTTPS).
+#   Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
+# - Schema aligned with static-file-server chart's httproute (supports rules[], filters, timeouts)
+httproute:
+  enabled: true
+  annotations: {}
+  parentRefs:
+    - name: ngf
+      namespace: nginx-gateway
+      # sectionName: https
+      # port: 443
+  hostnames:
+    - elasticsearch.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - port: 9200           # name omitted → defaults to elasticsearch-es-http
+  httpsRedirect:
+    enabled: false
+  backendTLS:
+    enabled: true

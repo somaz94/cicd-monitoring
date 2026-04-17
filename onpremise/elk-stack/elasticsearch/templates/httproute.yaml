@@ -1,0 +1,103 @@
+{{- if .Values.httproute.enabled -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Release.Namespace }}
+  {{- with .Values.httproute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- range .Values.httproute.parentRefs }}
+    - name: {{ .name }}
+      {{- with .namespace }}
+      namespace: {{ . }}
+      {{- end }}
+      {{- with .sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+      {{- with .port }}
+      port: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- with .Values.httproute.hostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.httproute.rules }}
+    - backendRefs:
+        {{- range .backendRefs }}
+        - name: {{ .name | default (printf "%s-es-http" $.Values.name) }}
+          port: {{ .port | default 9200 }}
+          {{- with .weight }}
+          weight: {{ . }}
+          {{- end }}
+        {{- end }}
+      {{- with .matches }}
+      matches:
+        {{- range . }}
+        - path:
+            type: {{ .path.type | default "PathPrefix" }}
+            value: {{ .path.value | default "/" | quote }}
+          {{- with .headers }}
+          headers:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .queryParams }}
+          queryParams:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .method }}
+          method: {{ . }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- with .filters }}
+      filters:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .timeouts }}
+      timeouts:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- if and .Values.httproute.enabled .Values.httproute.httpsRedirect.enabled }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Values.name }}-https-redirect
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    {{- range .Values.httproute.httpsRedirect.parentRefs }}
+    - name: {{ .name }}
+      {{- with .namespace }}
+      namespace: {{ . }}
+      {{- end }}
+      {{- with .sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+    {{- end }}
+  {{- with .Values.httproute.hostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: {{ .Values.httproute.httpsRedirect.statusCode | default 301 }}
+            {{- with .Values.httproute.httpsRedirect.port }}
+            port: {{ . }}
+            {{- end }}
+{{- end }}

@@ -1,0 +1,433 @@
+## Notifications controller
+notifications:
+  # -- Enable notifications controller
+  enabled: true
+
+  secret:
+    create: true
+    items:
+      slack-token: "xoxb-your-slack-bot-token"
+  
+  notifiers:
+    service.slack: |
+      token: $slack-token
+      username: ArgoCD
+      icon: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+      channel: "#argocd-alarm"
+  
+  templates:
+    template.app-deployed: |
+      message: |
+        :white_check_mark: Application {{.app.metadata.name}} has been deployed successfully.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Deployment Succeeded",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#18be52",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Deployed At",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+    
+    template.app-health-degraded: |
+      message: |
+        :red_circle: Application {{.app.metadata.name}} health has degraded.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Health Degraded",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#E96D76",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Occurred At",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            }
+            {{range $index, $c := .app.status.conditions}}
+            ,{
+              "title": "{{$c.type}}",
+              "value": "{{$c.message}}",
+              "short": false
+            }
+            {{end}}
+            ,{
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+    
+    template.app-sync-failed: |
+      message: |
+        :x: Application {{.app.metadata.name}} sync has failed.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Sync Failed",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}?operation=true",
+            "color": "#E96D76",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Failed At",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Error Message",
+              "value": "{{.app.status.operationState.message}}",
+              "short": false
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+    
+    template.app-sync-status-out-of-sync: |
+      message: |
+        :warning: Application {{.app.metadata.name}} is OutOfSync.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - OutOfSync",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#f4c030",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Detected At",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+    
+    template.app-health-missing: |
+      message: |
+        :question: Application {{.app.metadata.name}} health status is missing.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - App Health Missing",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#808080",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Detected At",
+              "value": "{{.app.status.operationState.finishedAt}}",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    template.app-restarted: |
+      message: |
+        :arrows_counterclockwise: Application {{.app.metadata.name}} has been restarted.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Restarted",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#3D85C6",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Restarted At",
+              "value": "{{.app.status.operationState.startedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    template.app-health-unknown: |
+      message: |
+        :grey_question: Application {{.app.metadata.name}} health status is unknown.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Health Unknown",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#808080",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Detected At",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
+    # template.app-healthy: |
+    #   message: |
+    #     :white_check_mark: Application {{.app.metadata.name}} is healthy.
+    #   slack:
+    #     attachments: |
+    #       [{
+    #         "title": "{{ .app.metadata.name}} - Healthy",
+    #         "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+    #         "color": "#18be52",
+    #         "fields": [
+    #         {
+    #           "title": "Sync Status",
+    #           "value": "{{.app.status.sync.status}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "App Health",
+    #           "value": "{{.app.status.health.status}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "Namespace",
+    #           "value": "{{.app.spec.destination.namespace}}",
+    #           "short": true
+    #         },
+    #         {
+    #           "title": "Revision",
+    #           "value": "{{.app.status.sync.revision}}",
+    #           "short": true
+    #         }
+    #         ]
+    #       }]
+    
+  triggers:
+    trigger.on-deployed: |
+      - description: Application is synced and healthy after any operation.
+        send:
+        - app-deployed
+        when: |
+          app.status.operationState.phase == 'Succeeded' and 
+          app.status.health.status == 'Healthy' and 
+          app.status.operationState != null
+        oncePer: app.status.summary.images[0]
+
+    trigger.on-health-degraded: |
+      - description: Application has degraded
+        send:
+        - app-health-degraded
+        when: app.status.health.status == 'Degraded'
+
+    trigger.on-sync-failed: |
+      - description: Application syncing has failed
+        send:
+        - app-sync-failed
+        when: app.status.operationState.phase in ['Error', 'Failed']
+
+    trigger.on-sync-status-out-of-sync: |
+      - description: Application sync status is 'OutOfSync'
+        send:
+        - app-sync-status-out-of-sync
+        when: |
+          app.status.sync.status == 'OutOfSync' and 
+          app.status.health.status not in ['Progressing', 'Healthy'] and 
+          (app.metadata.creationTimestamp == null or 
+            time.Now().Sub(time.Parse(app.metadata.creationTimestamp)).Minutes() > 5) and
+          ((app.status.operationState == null) or 
+          (app.status.operationState != null and 
+            app.status.operationState.phase != 'Running' and 
+            app.status.operationState.finishedAt != null and
+            time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60))
+
+    trigger.on-health-missing: |
+      - description: Application health status is missing
+        send:
+        - app-health-missing
+        when: app.status.health.status == 'Missing'
+        
+    trigger.on-restarted: |
+      - description: Application has been restarted
+        send:
+        - app-restarted
+        when: app.status.health.status == 'Progressing'
+
+    trigger.on-health-unknown: |
+      - description: Application health status is unknown
+        send:
+        - app-health-unknown
+        when: app.status.health.status == 'Unknown'
+
+    # trigger.test-notification: |
+    #   - description: Test notification - when application is healthy
+    #     send:
+    #     - app-healthy
+    #     when: "true"  # Always triggered
+  
+  subscriptions:
+    - recipients:
+      - slack:#argocd-alarm
+      triggers:
+      - on-deployed
+      - on-health-degraded
+      - on-sync-failed
+      - on-sync-status-out-of-sync
+      - on-health-missing
+      - on-health-unknown
+      - on-restarted
+      # - test-notification

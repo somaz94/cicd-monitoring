@@ -1,0 +1,72 @@
+# Phase 7+ chart-native HTTPRoute migration complete (2026-04-17).
+# With `expose.type: route` in chart values, the Harbor chart auto-generates the main HTTPRoute `harbor-route`.
+# This file keeps only the two resources the chart does not cover, as raw manifests:
+#   1. HTTP→HTTPS 301 redirect sibling HTTPRoute (`harbor-https-redirect`)
+#   2. ClientSettingsPolicy `harbor-route` (body.maxSize: "0" — unlimited docker push)
+# The previous raw `harbor` HTTPRoute + `harbor` Policy were removed via kubectl delete (see commented block below).
+#
+# ─ Rollback reference (state before entering Phase 7+) ─
+# apiVersion: gateway.networking.k8s.io/v1
+# kind: HTTPRoute
+# metadata:
+#   name: harbor
+#   namespace: harbor
+# spec:
+#   parentRefs:
+#     - name: ngf
+#       namespace: nginx-gateway
+#       sectionName: https
+#   hostnames:
+#     - harbor.example.com
+#   rules:
+#     - matches:
+#         - path: { type: PathPrefix, value: /api/ }
+#         - path: { type: PathPrefix, value: /service/ }
+#         - path: { type: PathPrefix, value: /v2/ }
+#         - path: { type: PathPrefix, value: /c/ }
+#       backendRefs:
+#         - name: harbor-core
+#           port: 80
+#     - matches:
+#         - path: { type: PathPrefix, value: / }
+#       backendRefs:
+#         - name: harbor-portal
+#           port: 80
+
+---
+# Sibling HTTPRoute: 301 redirect from the HTTP listener to HTTPS.
+# Not included in the chart-native templates → kept as raw. Replaces the previous Ingress `force-ssl-redirect: true`.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor-https-redirect
+  namespace: harbor
+spec:
+  parentRefs:
+    - name: ngf
+      namespace: nginx-gateway
+      sectionName: http
+  hostnames:
+    - harbor.example.com
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+# ClientSettingsPolicy: allow large docker push images (replaces the previous Ingress `proxy-body-size: "0"`).
+# targetRef points to the chart-generated `harbor-route` HTTPRoute. The chart templates have no Policy → kept as raw.
+# body.maxSize: "0" → unlimited (NGF maps this to nginx's client_max_body_size 0).
+apiVersion: gateway.nginx.org/v1alpha1
+kind: ClientSettingsPolicy
+metadata:
+  name: harbor-route
+  namespace: harbor
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: harbor-route
+  body:
+    maxSize: "0"

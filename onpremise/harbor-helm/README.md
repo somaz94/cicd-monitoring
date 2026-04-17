@@ -197,7 +197,7 @@ kubectl create secret tls harbor-tls \
   --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
 ```
 
-Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-setup-en.md`](./docs/tls-setup-en.md)** ([한국어](./docs/tls-setup.md)).
+Full procedure (issuance
 
 <br/>
 

@@ -44,13 +44,39 @@ resources:
 tls:
   enabled: false
 
-# Ingress — primary host after Phase 4 cutover (2026-04-14).
-# Keep `backend-protocol` in sync with the `tls.enabled` switch above.
+# Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
+# `backend-protocol` annotation kept for rollback reference; aligns with tls.enabled switch.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   host: kibana.example.com
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+
+# Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
+# - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+# - When backendRefs name is omitted, defaults to `<name>-kb-http`; when port is omitted, defaults to 5601
+# - After verification, cutover with ingress.enabled: false (bulk cleanup in Phase 7)
+# - Schema is unified with static-file-server chart's httproute (supports rules[], filters, timeouts)
+httproute:
+  enabled: true
+  annotations: {}
+  parentRefs:
+    - name: ngf
+      namespace: nginx-gateway
+      # sectionName: https     # When binding to HTTPS listener
+      # port: 443
+  hostnames:
+    - kibana.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - port: 5601           # name omitted → auto-resolves to kibana-kb-http
+  # HTTP→HTTPS 301 redirect sibling HTTPRoute (Phase 4+)
+  httpsRedirect:
+    enabled: false

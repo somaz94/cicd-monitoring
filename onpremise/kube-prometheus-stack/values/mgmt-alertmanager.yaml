@@ -15,8 +15,9 @@ alertmanager:
         cpu: 500m
         memory: 512Mi
 
+  # Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. alertmanager.route(below) is sole path.
   ingress:
-    enabled: true
+    enabled: false
     ingressClassName: nginx
     hosts:
       - alertmanager.example.com
@@ -24,6 +25,25 @@ alertmanager:
     #   - secretName: alertmanager-tls
     #     hosts:
     #       - alertmanager.example.com
+
+  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
+  # - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+  # - upstream chart natively supports the route: block (templates/alertmanager/route.yaml)
+  # - After verification, cutover by setting ingress.enabled: false
+  # - Only matches specified → chart auto-wires backend to alertmanager Service (port 9093)
+  #   (Using additionalRules appends the default rule, rendering 2 rules)
+  route:
+    main:
+      enabled: true
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+      hostnames:
+        - alertmanager.example.com
+      matches:
+        - path:
+            type: PathPrefix
+            value: /
 
   alertmanagerConfiguration:
     name: ""

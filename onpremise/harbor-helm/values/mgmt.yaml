@@ -1,36 +1,48 @@
 # =============================================================================
-# Expose (HTTPS — self-signed certificate)
+# Expose — chart-native HTTPRoute (Phase 7+, 2026-04-17)
 #
-# Self-signed TLS secret must be created before deployment:
-#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-#     -keyout harbor-key.pem -out harbor-cert.pem \
-#     -subj "/CN=harbor.example.com" \
-#     -addext "subjectAltName=DNS:harbor.example.com"
-#   kubectl create secret tls harbor-tls \
-#     --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
-#   rm harbor-key.pem
+# - expose.type: route → chart auto-generates HTTPRoute `harbor-route`
+#   (templates/gateway-apis/route.yaml)
+# - HTTPS termination is handled by `wildcard-example-tls` on the NGF ngf Gateway
+#   (nginx-gateway ns). The chart `expose.tls.secret.secretName: harbor-tls` reference is
+#   dead config not rendered in route mode but kept for values.schema.json compatibility.
+# - The actual self-signed Secret `harbor-tls` was removed via `kubectl delete` on 2026-04-17
+#   (consolidated into wildcard-example-tls).
+# - sibling `harbor-https-redirect` HTTPRoute + ClientSettingsPolicy(body.maxSize:0) are
+#   not supported by the chart → kept as raw in manifests/httproutes.yaml.
+# - The existing `ingress:` block is kept commented out for rollback reference (below).
 #
-# See docs/tls-setup.md for the full procedure (renewal, containerd trust).
+# When self-signed rollback is needed (e.g. Gateway/wildcard failure):
+#   1. Regenerate harbor-tls via the openssl procedure in docs/tls-setup.md
+#      kubectl create secret tls harbor-tls --cert=... --key=... -n harbor
+#   2. Switch to `expose.type: ingress` + restore the ingress: block below
 # =============================================================================
 expose:
-  type: ingress
+  type: route
   tls:
     enabled: true
-    # The source of the tls certificate. Set as "auto", "secret" or "none".
-    # "secret" reads the certificate from the Secret specified below.
     certSource: secret
     secret:
-      # Must contain tls.crt and tls.key — created via docs/tls-setup.md.
+      # Not rendered in route mode (dead config). Real Secret must be recreated on rollback.
       secretName: harbor-tls
-  ingress:
+  # ingress:  # (Phase 7+ commented out — using expose.type: route. On rollback, set type=ingress + restore below)
+  #   hosts:
+  #     core: harbor.example.com
+  #   controller: default
+  #   className: "nginx"
+  #   annotations:
+  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"    # Force HTTP → HTTPS
+  #     nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # TLS termination at ingress
+  #     nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
+  route:
+    # Chart HTTPRoute name: harbor-route (helpers.tpl `harbor.route` template)
+    # Path routing: /api/, /service/, /v2/, /c/ → harbor-core; `/` → harbor-portal (chart built-in)
     hosts:
-      core: harbor.example.com
-    controller: default
-    className: "nginx"
-    annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"    # Force HTTP → HTTPS
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # TLS termination at ingress
-      nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
+      - harbor.example.com
+    parentRefs:
+      - name: ngf
+        namespace: nginx-gateway
+        sectionName: https
   clusterIP:
     # The name of ClusterIP service
     name: harbor

@@ -135,7 +135,7 @@ fileConfigs:
 
   02_filters.conf: |-
     # Step 1: Fallback JSON parsing
-    # fluent-bit의 example-project_json 파서가 실패한 경우 대비
+    # Fallback for when fluent-bit's example-project_json parser fails
     <filter example-project.**>
       @type parser
       key_name log
@@ -147,8 +147,8 @@ fileConfigs:
       emit_invalid_record_to_error false
     </filter>
 
-    # Step 2: Pino → Winston 정규화
-    # Pino 포맷(숫자 level, time, msg)을 Winston 포맷(문자열 level, timestamp, message)으로 변환
+    # Step 2: Pino to Winston normalization
+    # Convert Pino format (numeric level, time, msg) to Winston format (string level, timestamp, message)
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
@@ -159,8 +159,8 @@ fileConfigs:
       </record>
     </filter>
 
-    # Step 3: 타임스탬프 정규화 + 불필요 필드 정리
-    # Pino time(Unix ms) / Winston timestamp(ISO8601) → @timestamp (Asia/Seoul)
+    # Step 3: Timestamp normalization + cleanup of unnecessary fields
+    # Pino time(Unix ms)
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
@@ -170,8 +170,8 @@ fileConfigs:
       remove_keys time,msg,filepath,req,log
     </filter>
 
-    # Step 4: data 필드 내 nested JSON 처리
-    # requestBody, responseBody, requestHeader를 JSON 문자열로 변환 (ES text 매핑 호환)
+    # Step 4: Handle nested JSON inside the data field
+    # Convert requestBody, responseBody, requestHeader to JSON strings (compatible with ES text mapping)
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
@@ -180,7 +180,7 @@ fileConfigs:
       </record>
     </filter>
 
-    # Step 5: stack 배열 \n unescape 처리
+    # Step 5: Unescape \n in stack array
     <filter example-project.**>
       @type record_transformer
       enable_ruby true

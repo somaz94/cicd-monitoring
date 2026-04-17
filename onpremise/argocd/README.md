@@ -12,7 +12,10 @@ argo-cd/
 ├── helmfile.yaml
 ├── values.yaml
 ├── values/
-│   └── mgmt.yaml
+│   ├── mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets)
+│   ├── mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
+│   ├── mgmt-redis.yaml         # redis, redis-ha, redisSecretInit
+│   └── mgmt-notifications.yaml # notifications controller (Slack templates/triggers)
 ├── upgrade.sh
 ├── backup/
 ├── README.md
