@@ -317,6 +317,12 @@ helmfile destroy  # Delete
 
 <br/>
 
+## Related Repositories
+
+For platform-specific **application deployment templates** (EKS Fargate, GKE with Firestore/PD-CSI/NFS, on-premise Kubernetes), see [helm-chart-template](https://github.com/somaz94/helm-chart-template).
+
+<br/>
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
