@@ -1,6 +1,6 @@
 # Kibana Upgrade / Rollback Guide
 
-Kibana and Elasticsearch share the same ECK operator/webhook and are managed by the same `local-cr-version` canonical template. The upgrade/rollback mechanisms are essentially identical, so **the full guide lives on the Elasticsearch side**.
+Kibana and Elasticsearch share the same ECK operator/webhook and are managed by the same `external-oci-cr-version` canonical template. The upgrade/rollback mechanisms are essentially identical, so **the full guide lives on the Elasticsearch side**. The OCI chart pin bump procedure is also documented there.
 
 **→ See [../../elasticsearch/docs/upgrade-rollback-en.md](../../elasticsearch/docs/upgrade-rollback-en.md)**
 

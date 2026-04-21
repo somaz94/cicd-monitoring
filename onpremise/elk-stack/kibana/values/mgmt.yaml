@@ -1,14 +1,20 @@
 ---
-# Kibana CR values — rendered by templates/kibana.yaml
-# The ECK operator watches this CR and reconciles a Deployment/Service.
+# Kibana CR values — consumed by the kibana-eck chart
+# (oci://ghcr.io/somaz94/charts/kibana-eck). The ECK operator watches the
+# rendered CR and reconciles a Deployment/Service.
+# 차트(oci://ghcr.io/somaz94/charts/kibana-eck)가 소비함. ECK operator가 렌더된
+# CR을 관찰하며 Deployment/Service를 reconcile.
 
 # CR name determines all downstream resource names:
 #   - Service: <name>-kb-http (port 5601)
 #   - Secret (HTTP certs): <name>-kb-http-certs-public
 #   - Deployment: <name>-kb
+# MUST stay "kibana" for Phase 2 migration.
 name: kibana
 
-# Elastic Stack version — must match (or be compatible with) the linked Elasticsearch CR.
+# Elastic Stack version — must match (or be compatible with) the linked
+# Elasticsearch CR. Kibana must be <= Elasticsearch version.
+# 연결된 Elasticsearch CR과 동일(또는 호환). Kibana는 Elasticsearch 이하.
 version: "9.3.3"
 
 replicas: 1
@@ -22,6 +28,7 @@ elasticsearchRef:
 
 # Node.js runtime flags passed via NODE_OPTIONS. Rendered as space-joined
 # string at deploy time — add additional flags as separate list entries.
+# 배포 시 공백 결합 문자열로 렌더 — 추가 플래그는 별도 list entry로.
 nodeOptions:
   - "--max-old-space-size=1800"
 
@@ -33,19 +40,20 @@ resources:
     cpu: "1000m"
     memory: "2Gi"
 
-# TLS on the Kibana pod's http endpoint (the 5601 port the ingress backends to).
-#   tls.enabled: false → ECK self-signed cert disabled, pod serves plain HTTP.
-#     publicBaseUrl becomes http://..., session cookies non-Secure → HTTP login
-#     works against the ingress. Ingress annotation `backend-protocol` must be
-#     HTTP in this mode.
-#   tls.enabled: true  → pod serves HTTPS (ECK self-signed by default),
-#     publicBaseUrl https://..., Secure cookies. Ingress `backend-protocol`
-#     must be HTTPS. Intended for cert-manager wired deployments (option C).
-tls:
-  enabled: false
+# TLS on the Kibana pod's http endpoint (the 5601 port the ingress/Gateway
+# backends to). Schema changed in new chart:
+# 백엔드로 연결하는 5601 포트). 새 차트에서 스키마 변경:
+#   http.tls.selfSignedCertificate.disabled: true  → pod serves plain HTTP.
+#     Cookie secureCookies/sameSiteCookies auto-injected by the chart.
+#   http.tls.selfSignedCertificate: {}            → ECK self-signed HTTPS (default when block omitted).
+# Current mgmt mode: plain HTTP (migration from legacy `tls.enabled: false`).
+http:
+  tls:
+    selfSignedCertificate:
+      disabled: true
 
 # Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
-# `backend-protocol` annotation kept for rollback reference; aligns with tls.enabled switch.
+# `backend-protocol` annotation kept for rollback reference.
 ingress:
   enabled: false
   className: nginx
@@ -58,11 +66,8 @@ ingress:
 # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
 # - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
 # - When backendRefs name is omitted, defaults to `<name>-kb-http`; when port is omitted, defaults to 5601
-# - After verification, cutover with ingress.enabled: false (bulk cleanup in Phase 7)
-# - Schema is unified with static-file-server chart's httproute (supports rules[], filters, timeouts)
 httproute:
   enabled: true
-  annotations: {}
   parentRefs:
     - name: ngf
       namespace: nginx-gateway

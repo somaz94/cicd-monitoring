@@ -1,11 +1,11 @@
 #!/bin/bash
-# upgrade-template: local-cr-version
+# upgrade-template: external-oci-cr-version
 set -euo pipefail
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
 # ============================================================
-SCRIPT_NAME="Kibana (ECK CR) Version Upgrade Script"
+SCRIPT_NAME="Kibana (ECK CR, OCI chart) Stack Version Upgrade Script"
 COMPONENT_LABEL="kibana"
 VERSION_SOURCE="elastic-artifacts"
 VERSION_SOURCE_ARG=""
@@ -20,7 +20,6 @@ CR_OPERATOR_STS="elastic-operator"
 CR_OPERATOR_CHART_DIR="eck-operator"
 DEPENDENCY_CR_KIND="elasticsearch"
 DEPENDENCY_CR_NAME="elasticsearch"
-MIRROR_CHART_VERSION="true"
 # ============================================================
 
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,8 +37,9 @@ usage() {
 Usage: $(basename "$0") [COMMAND] [OPTIONS]
 
 $SCRIPT_NAME
-Tracks the upstream version of a Custom Resource's component and bumps the
-version field inside values/<env>.yaml (plus Chart.yaml appVersion).
+Tracks the upstream version of a Custom Resource's component (Stack/app version)
+and bumps the version field inside $VALUES_FILE. The OCI chart version in
+helmfile.yaml is NOT touched — bump that manually after reviewing chart notes.
 
 Commands:
   (default)           Check latest version and upgrade
@@ -59,6 +59,23 @@ EOF
   exit 0
 }
 
+# Read the version field from a backup's values file.
+# Usage: read_backup_version <backup_dir>
+read_backup_version() {
+  local dir="$1"
+  local f="$dir/$(basename "$VALUES_FILE")"
+  [ -f "$f" ] || { echo ""; return; }
+  awk -v k="$VERSION_KEY" '
+    $0 ~ "^" k ":" {
+      sub("^" k ":[[:space:]]*", "")
+      gsub(/^["\x27]|["\x27]$/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      print
+      exit
+    }
+  ' "$f"
+}
+
 list_backups() {
   echo "Available backups:"
   echo ""
@@ -70,10 +87,10 @@ list_backups() {
   local i=1
   for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
     local dirname=$(basename "$dir")
-    local chart_ver="unknown"
-    [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^appVersion:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
+    local ver=""
+    ver=$(read_backup_version "$dir")
     local files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
-    printf "  [%d] %s (appVersion: %s) — %s\n" "$i" "$dirname" "$chart_ver" "$files"
+    printf "  [%d] %s (%s: %s) — %s\n" "$i" "$dirname" "$VERSION_KEY" "${ver:-unknown}" "$files"
     i=$((i + 1))
   done
   echo ""
@@ -105,9 +122,7 @@ do_rollback() {
 
   # Read the backup version to detect downgrades.
   local backup_ver=""
-  if [ -f "$selected/Chart.yaml" ]; then
-    backup_ver=$(grep '^appVersion:' "$selected/Chart.yaml" | awk '{print $2}' | tr -d '"')
-  fi
+  backup_ver=$(read_backup_version "$selected")
 
   # Detect live CR version via kubectl (best-effort).
   local live_ver=""
@@ -135,10 +150,12 @@ do_rollback() {
   echo ""
   echo "Restoring from backup/$dirname..."
 
-  [ -f "$selected/Chart.yaml" ] && cp "$selected/Chart.yaml" "$CHART_DIR/Chart.yaml" && echo "  Restored Chart.yaml"
   if [ -f "$selected/$(basename "$VALUES_FILE")" ]; then
     cp "$selected/$(basename "$VALUES_FILE")" "$CHART_DIR/$VALUES_FILE"
     echo "  Restored $VALUES_FILE"
+  else
+    echo "  WARN: backup does not contain $(basename "$VALUES_FILE"); nothing to restore."
+    exit 1
   fi
 
   if $is_downgrade; then
@@ -192,10 +209,6 @@ rollback_with_webhook_handling() {
   kubectl delete validatingwebhookconfiguration "$CR_WEBHOOK_NAME" --ignore-not-found
 
   # Recover Helm release from 'failed' state.
-  # When a previous helmfile apply was blocked by the webhook, Helm creates a
-  # failed revision. Subsequent helmfile diff compares against the failed
-  # revision (which already has the target version) and sees no changes.
-  # Roll back to the last successful revision so helmfile can detect the diff.
   echo "  [3/7] Recovering Helm release state..."
   if [ -n "$release_name" ] && [ -n "$release_ns" ]; then
     local helm_status
@@ -232,8 +245,6 @@ except Exception:
   (cd "$CHART_DIR" && helmfile apply)
 
   echo "  [5/7] Recreating webhook via operator helmfile sync..."
-  # Locate the operator chart directory relative to this chart.
-  # The operator chart typically lives as a sibling (or grandparent sibling).
   local operator_dir=""
   if [ -n "$CR_OPERATOR_CHART_DIR" ]; then
     local search_base="$CHART_DIR"
@@ -291,8 +302,7 @@ cleanup_backups() {
   echo "Done."
 }
 
-# Silent variant called at the end of a successful upgrade. Prunes old
-# backups to KEEP_BACKUPS without verbose output when there is nothing to do.
+# Silent variant called at the end of a successful upgrade.
 auto_prune_backups() {
   [ -d "$BACKUP_DIR" ] || return 0
   local total
@@ -306,7 +316,6 @@ auto_prune_backups() {
 }
 
 # Read a top-level YAML string value. Handles quoted and unquoted values.
-# Usage: read_yaml_value <file> <key>
 read_yaml_value() {
   local file="$1"
   local key="$2"
@@ -322,7 +331,6 @@ read_yaml_value() {
 }
 
 # Replace a top-level YAML string value (quotes preserved where possible).
-# Usage: update_yaml_value <file> <key> <new_value>
 update_yaml_value() {
   local file="$1"
   local key="$2"
@@ -333,7 +341,6 @@ update_yaml_value() {
     BEGIN { done = 0 }
     {
       if (!done && $0 ~ "^" k ":") {
-        # Preserve leading indentation + key, preserve quoting style.
         line = $0
         if (match(line, /: *"[^"]*"/)) {
           sub(/"[^"]*"/, "\"" v "\"", line)
@@ -353,7 +360,6 @@ update_yaml_value() {
 }
 
 # Fetch sorted list of GA versions (newest first, respecting MAJOR_PIN).
-# Prints one version per line to stdout.
 fetch_ga_versions() {
   case "$VERSION_SOURCE" in
     elastic-artifacts)
@@ -365,7 +371,6 @@ try:
 except Exception:
     sys.exit(0)
 versions = d.get('versions', [])
-# Keep strict X.Y.Z GA (exclude SNAPSHOT, rc, alpha, etc.)
 ga = [v for v in versions if re.fullmatch(r'\d+\.\d+\.\d+', v)]
 major = os.environ.get('MAJOR_PIN', '').strip()
 if major:
@@ -376,7 +381,6 @@ for v in ga:
 " 2>/dev/null
       ;;
     github-releases)
-      # VERSION_SOURCE_ARG = "owner/repo"
       [ -z "$VERSION_SOURCE_ARG" ] && return 0
       local url="https://api.github.com/repos/$VERSION_SOURCE_ARG/releases?per_page=100"
       curl -sSfL "$url" 2>/dev/null | python3 -c "
@@ -385,7 +389,6 @@ try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-# Exclude prereleases and drafts; strip leading 'v'.
 tags = [r.get('tag_name', '') for r in d
         if not r.get('prerelease') and not r.get('draft')]
 tags = [re.sub(r'^v', '', t) for t in tags]
@@ -399,7 +402,6 @@ for v in ga:
 " 2>/dev/null
       ;;
     docker-hub-tags)
-      # VERSION_SOURCE_ARG = "namespace/repository"
       [ -z "$VERSION_SOURCE_ARG" ] && return 0
       local url="https://hub.docker.com/v2/repositories/$VERSION_SOURCE_ARG/tags?page_size=100&ordering=last_updated"
       curl -sSfL "$url" 2>/dev/null | python3 -c "
@@ -424,15 +426,10 @@ for v in ga:
   esac
 }
 
-# Fetch latest GA version from the configured source.
-# Prints version to stdout, empty on failure.
 fetch_latest_version() {
   fetch_ga_versions | head -1
 }
 
-# Search older GA versions for the newest one with a published container image.
-# Caps at MAX_ATTEMPTS to avoid long waits. Prints version to stdout, empty if
-# none found. Also prints per-attempt status to stderr for user feedback.
 find_latest_available_version() {
   local max_attempts=15
   local attempt=0
@@ -452,7 +449,6 @@ find_latest_available_version() {
   return 1
 }
 
-# Compare two semver strings. Echoes -1 if a<b, 0 if a=b, 1 if a>b.
 semver_compare() {
   local a_tuple b_tuple
   a_tuple=$(echo "$1" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
@@ -466,14 +462,11 @@ semver_compare() {
   fi
 }
 
-# Resolve the release namespace from helmfile.yaml. Empty if not found.
 get_release_namespace() {
   [ -f "$CHART_DIR/helmfile.yaml" ] || return 0
   awk '/namespace:/ {print $2; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'"
 }
 
-# Best-effort cluster health check. Returns 0 if safe to upgrade, 1 otherwise.
-# Skips silently if kubectl is unavailable or the CR does not exist yet.
 check_cluster_health() {
   if ! command -v kubectl >/dev/null 2>&1; then
     echo "  Skipped (kubectl not available)."
@@ -521,8 +514,6 @@ check_cluster_health() {
   return 0
 }
 
-# Check dependency CR version constraint. Target must be <= dependency CR's version.
-# Used to prevent e.g. Kibana > Elasticsearch (which breaks the connection).
 check_dependency_version() {
   [ -z "$DEPENDENCY_CR_KIND" ] || [ -z "$DEPENDENCY_CR_NAME" ] && return 0
   command -v kubectl >/dev/null 2>&1 || return 0
@@ -548,7 +539,6 @@ check_dependency_version() {
   return 0
 }
 
-# Wait for CR to reach the Ready phase. Returns 0 if reached, 1 on timeout.
 wait_for_cr_ready() {
   command -v kubectl >/dev/null 2>&1 || return 0
   [ -z "$COMPONENT_LABEL" ] && return 0
@@ -573,7 +563,6 @@ wait_for_cr_ready() {
   return 1
 }
 
-# Wait for operator pod to become Ready after scale-up.
 wait_for_operator_ready() {
   { [ -z "$CR_OPERATOR_NS" ] || [ -z "$CR_OPERATOR_STS" ]; } && return 0
   command -v kubectl >/dev/null 2>&1 || return 0
@@ -586,9 +575,6 @@ wait_for_operator_ready() {
   }
 }
 
-# Verify that a container image tag exists in the registry.
-# Uses the Docker Registry HTTP API v2 with bearer token authentication.
-# Returns 0 if the image exists (or if CONTAINER_IMAGE is empty), 1 otherwise.
 verify_image_exists() {
   local tag="$1"
   if [ -z "$CONTAINER_IMAGE" ] || [ -z "$tag" ]; then
@@ -598,14 +584,12 @@ verify_image_exists() {
   local repo="${CONTAINER_IMAGE#*/}"
   local manifest_url="https://${registry}/v2/${repo}/manifests/${tag}"
 
-  # Step 1: Unauthenticated probe to get the WWW-Authenticate challenge.
   local auth_header
   auth_header=$(curl -sSL -I "$manifest_url" 2>/dev/null \
     | grep -i '^www-authenticate:' | head -1) || true
 
   local http_code
   if [ -n "$auth_header" ]; then
-    # Parse realm, service, and scope from the challenge header.
     local realm service scope
     realm=$(echo "$auth_header" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
     service=$(echo "$auth_header" | sed -n 's/.*service="\([^"]*\)".*/\1/p')
@@ -626,7 +610,6 @@ verify_image_exists() {
     fi
   fi
 
-  # Fallback: try without authentication (works for some registries).
   http_code=$(curl -sSL -o /dev/null -w '%{http_code}' \
     -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
     "$manifest_url" 2>/dev/null) || true
@@ -690,10 +673,10 @@ if [ -z "$CURRENT_VERSION" ]; then
 fi
 echo "  Current $COMPONENT_LABEL version: $CURRENT_VERSION"
 
-CURRENT_APP_VERSION=""
-if [ -f "$CHART_DIR/Chart.yaml" ]; then
-  CURRENT_APP_VERSION=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"')
-  echo "  Chart.yaml appVersion:       $CURRENT_APP_VERSION"
+# Report the OCI chart pin for situational awareness (informational only).
+if [ -f "$CHART_DIR/helmfile.yaml" ]; then
+  CHART_PIN=$(awk '/^[[:space:]]*version:/ {print $2; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'")
+  [ -n "$CHART_PIN" ] && echo "  OCI chart pin (helmfile.yaml): $CHART_PIN  (bump manually if needed)"
 fi
 
 # Step 2: Pre-flight cluster health check
@@ -725,7 +708,7 @@ else
   echo "  Latest available:      $LATEST_VERSION"
 fi
 
-if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ] && { [ -z "$CURRENT_APP_VERSION" ] || [ "$CURRENT_APP_VERSION" = "$LATEST_VERSION" ]; }; then
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
   echo ""
   echo "  Already up to date! Nothing to do."
   exit 0
@@ -750,7 +733,6 @@ if [ -n "$CONTAINER_IMAGE" ]; then
     echo "  The version $LATEST_VERSION is listed in the upstream feed but the"
     echo "  container image has not been published yet."
 
-    # If the user explicitly picked this version, don't auto-search.
     if [ -n "$TARGET_VERSION" ]; then
       echo ""
       echo "  Options:"
@@ -766,7 +748,7 @@ if [ -n "$CONTAINER_IMAGE" ]; then
     if [ -z "$AVAILABLE_VERSION" ]; then
       echo ""
       echo "  ERROR: No GA version with a published image found within search limit."
-      echo "  Retry later or check the Elastic release notes manually."
+      echo "  Retry later or check the release notes manually."
       exit 1
     fi
 
@@ -805,13 +787,11 @@ fi
 echo ""
 echo "[Step 5/7] Compatibility checks"
 cat <<EOF
-  * Verify the currently installed ECK Operator supports $COMPONENT_LABEL $LATEST_VERSION.
-    Compatibility matrix: https://www.elastic.co/support/matrix
+  * Verify the currently installed operator supports $COMPONENT_LABEL $LATEST_VERSION.
   * For Stack major bumps (e.g. 8.x -> 9.x) review breaking changes before applying.
-  * Keep Elasticsearch and Kibana on the same Stack version (Kibana <= Elasticsearch).
+  * Verify the OCI chart pin in helmfile.yaml supports this component version.
 EOF
 
-# Dependency CR version constraint (e.g. Kibana <= Elasticsearch).
 if [ -n "$DEPENDENCY_CR_KIND" ] && [ -n "$DEPENDENCY_CR_NAME" ]; then
   echo ""
   echo "  Checking dependency CR version constraint..."
@@ -859,7 +839,6 @@ fi
 echo "[Step 6/7] Backing up current files..."
 mkdir -p "$BACKUP_DIR/$TIMESTAMP"
 cp "$CHART_DIR/$VALUES_FILE" "$BACKUP_DIR/$TIMESTAMP/$(basename "$VALUES_FILE")"
-[ -f "$CHART_DIR/Chart.yaml" ] && cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
 echo "  Backed up to: backup/$TIMESTAMP/"
 ls "$BACKUP_DIR/$TIMESTAMP/" | while read -r f; do echo "    - $f"; done
 
@@ -870,22 +849,6 @@ echo "[Step 7/7] Applying version update..."
 update_yaml_value "$CHART_DIR/$VALUES_FILE" "$VERSION_KEY" "$LATEST_VERSION"
 echo "  Updated $VALUES_FILE ($VERSION_KEY: $CURRENT_VERSION -> $LATEST_VERSION)"
 
-if [ -f "$CHART_DIR/Chart.yaml" ]; then
-  update_yaml_value "$CHART_DIR/Chart.yaml" "appVersion" "$LATEST_VERSION"
-  echo "  Updated Chart.yaml (appVersion: ${CURRENT_APP_VERSION:-unset} -> $LATEST_VERSION)"
-
-  # Mirror into chart `version` when enabled. Useful for single-CR wrapper
-  # charts where the chart version and app version are functionally the same.
-  if [ "$MIRROR_CHART_VERSION" = "true" ]; then
-    CURRENT_CHART_VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}' | tr -d '"')
-    if [ "$CURRENT_CHART_VERSION" != "$LATEST_VERSION" ]; then
-      update_yaml_value "$CHART_DIR/Chart.yaml" "version" "$LATEST_VERSION"
-      echo "  Updated Chart.yaml (version: ${CURRENT_CHART_VERSION:-unset} -> $LATEST_VERSION) [mirrored]"
-    fi
-  fi
-fi
-
-# Auto-prune backups to KEEP_BACKUPS (silent on no-op).
 auto_prune_backups
 
 echo ""
@@ -895,7 +858,7 @@ echo ""
 echo " Changelog: $CHANGELOG_URL"
 echo ""
 echo " Next steps:"
-echo "   1. Verify ECK Operator supports the new Stack version."
+echo "   1. Verify the OCI chart pin in helmfile.yaml supports this version."
 echo "   2. Run: helmfile diff"
 echo "   3. Run: helmfile apply"
 echo "   4. Watch CR: kubectl -n <ns> get $COMPONENT_LABEL -w"

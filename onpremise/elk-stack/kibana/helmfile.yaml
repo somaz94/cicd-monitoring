@@ -1,9 +1,16 @@
 releases:
   - name: kibana
     namespace: logging
-    chart: .
-    # Run `helmfile sync` in `../elasticsearch` first; elasticsearchRef then resolves.
-    # (`needs:` cannot span separate helmfile state files.)
+    # Public OCI chart — the local templates/ and Chart.yaml under this directory
+    # are no longer consumed.
+    # Source repo: https://github.com/somaz94/helm-charts (charts/kibana-eck/)
+    # Run `helmfile sync` in `../elasticsearch` first; elasticsearchRef then
+    # resolves (`needs:` cannot span separate helmfile state files).
+    # `helmfile sync` 실행; 그 후 elasticsearchRef가 resolve됨 (`needs:`는 다른 helmfile state 파일 간 동작 불가).
+    chart: oci://ghcr.io/somaz94/charts/kibana-eck
+    # Pin chart version. Must be <= elasticsearch-eck chart version for Stack
+    # compatibility.
+    version: "0.1.1"
     values:
       - values/mgmt.yaml
 

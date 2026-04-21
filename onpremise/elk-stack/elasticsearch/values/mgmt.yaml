@@ -1,58 +1,73 @@
 ---
-# Elasticsearch CR values — rendered by templates/elasticsearch.yaml
-# The ECK operator watches this CR and reconciles a StatefulSet.
+# Elasticsearch CR values — consumed by the elasticsearch-eck chart
+# (oci://ghcr.io/somaz94/charts/elasticsearch-eck). The ECK operator watches
+# the rendered CR and reconciles a StatefulSet.
+# 차트(oci://ghcr.io/somaz94/charts/elasticsearch-eck)가 소비함. ECK operator가 렌더된
+# CR을 관찰하며 StatefulSet을 reconcile.
 
 # CR name determines all downstream resource names:
 #   - Service: <name>-es-http, <name>-es-internal-http, <name>-es-transport
 #   - Secrets: <name>-es-elastic-user, <name>-es-http-certs-public, <name>-es-http-certs-internal
 #   - StatefulSet pods: <name>-es-<nodeSet>-<idx>
+# MUST stay "elasticsearch" for Phase 2 migration (existing StatefulSet + PVC
+# rebind rely on unchanged naming).
+# (기존 StatefulSet + PVC 재바인딩이 이름 불변에 의존).
 name: elasticsearch
 
-# Elastic Stack version. Bump and run `helmfile apply` for rolling upgrade.
-# Compatibility check required before bumping major versions.
+# Elastic Stack version. Bump via ./upgrade.sh for rolling upgrade. Major bumps
+# require ECK operator compatibility check.
+# Major bump 시 ECK operator 호환성 확인 필요.
 version: "9.3.3"
 
 # Password for the built-in `elastic` superuser.
 # Rendered into Secret `<name>-es-elastic-user` (key: elastic) which ECK picks up.
-# Leave empty ("") to let ECK auto-generate a random password; retrieve it via:
+# Leave empty ("") to let ECK auto-generate; retrieve with:
 #   kubectl -n logging get secret elasticsearch-es-elastic-user \
 #     -o jsonpath='{.data.elastic}' | base64 -d
 elasticPassword: "exampleAdminPassword"
 
-# Single node cluster on NFS (no HA). Increase for production HA.
-replicas: 1
+# Node sets — array of StatefulSets. Single all-roles node set matches the
+# legacy (single-node, NFS) topology. Expand for HA.
+# 단일 all-roles nodeSet은 legacy(single-node, NFS) 토폴로지와 동일. HA 시 확장.
+nodeSets:
+  # nodeSet name MUST stay "default" for Phase 2 — existing StatefulSet is
+  # `elasticsearch-es-default` and the PVC `elasticsearch-data-elasticsearch-es-default-0`.
+  #
+  # `elasticsearch-es-default`, PVC `elasticsearch-data-elasticsearch-es-default-0`.
+  - name: default
+    count: 1
+    roles:
+      - master
+      - data
+      - data_content
+      - data_hot
+      - data_warm
+      - data_cold
+      - ingest
+      - ml
+      - remote_cluster_client
+      - transform
+    # elasticsearch.yml config. node.roles injected automatically by the chart.
+    config:
+      # NFS + hugepages support: disable mmap (uses niofs instead).
+      node.store.allow_mmap: false
+    # Resources — matches the legacy 8.5.1 baseline.
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "2Gi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+    # Storage — NFS backed, single PVC per pod.
+    storage:
+      storageClass: nfs-client
+      size: 30Gi
+      accessModes:
+        - ReadWriteOnce
 
-# Node roles applied uniformly to the single nodeSet.
-roles:
-  - master
-  - data
-  - data_content
-  - data_hot
-  - data_warm
-  - data_cold
-  - ingest
-  - ml
-  - remote_cluster_client
-  - transform
-
-# Storage — NFS backed, single PVC per pod.
-storageClass: nfs-client
-storageSize: 30Gi
-
-# Resources — matches the legacy 8.5.1 chart baseline.
-resources:
-  requests:
-    cpu: "100m"
-    memory: "2Gi"
-  limits:
-    cpu: "1000m"
-    memory: "2Gi"
-
-# NFS + hugepages support: disable mmap (uses niofs instead).
-# Keeps the sysctl init container as a belt-and-braces measure.
-nodeStore:
-  allowMmap: false
-
+# Keep the privileged sysctl init container that sets vm.max_map_count=262144.
+#
 sysctlInitContainer:
   enabled: true
 
@@ -70,12 +85,10 @@ ingress:
 # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
 # - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
 # - When backendRefs name is omitted it defaults to `<name>-es-http`, port defaults to 9200
-# - backendTLS.enabled: auto-generates BackendTLSPolicy + CA ConfigMap to verify ECK self-signed TLS (9200 HTTPS).
+# - backendTLSPolicy.enabled: auto-generates BackendTLSPolicy + CA ConfigMap to verify ECK self-signed TLS (9200 HTTPS).
 #   Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
-# - Schema aligned with static-file-server chart's httproute (supports rules[], filters, timeouts)
 httproute:
   enabled: true
-  annotations: {}
   parentRefs:
     - name: ngf
       namespace: nginx-gateway
@@ -92,5 +105,11 @@ httproute:
         - port: 9200           # name omitted → defaults to elasticsearch-es-http
   httpsRedirect:
     enabled: false
-  backendTLS:
-    enabled: true
+
+# BackendTLSPolicy — verifies the ECK self-signed HTTPS cert from the Gateway.
+# Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
+# Schema note: the new chart exposes this as a top-level toggle (was
+# `httproute.backendTLS.enabled` in the legacy local chart).
+# top-level 토글로 노출 (legacy local chart에서는 `httproute.backendTLS.enabled`였음).
+backendTLSPolicy:
+  enabled: true

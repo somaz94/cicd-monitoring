@@ -2,7 +2,11 @@
 
 Covers both Elasticsearch and Kibana. Describes the safety features in `upgrade.sh`, the automatic rollback flow, and incident response procedures.
 
-Both ES and Kibana use the `local-cr-version` canonical template, so this guide applies to both.
+Both ES and Kibana use the `external-oci-cr-version` canonical template, so this guide applies to both.
+
+> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/mgmt.yaml`. That's the rolling-update path.
+>
+> **NOT in scope**: bumping the **OCI chart version** in `helmfile.yaml`. The chart pin is edited manually (see "OCI chart pin bump" in the README). Chart bumps often come with template / values-schema changes, so always review `helmfile diff` before applying.
 
 <br/>
 
@@ -74,7 +78,7 @@ cd observability/logging/elasticsearch
 # 1. Dry-run (checks health + image availability + dependencies)
 ./upgrade.sh --dry-run
 
-# 2. Apply (updates Chart.yaml + values/mgmt.yaml)
+# 2. Apply (updates values/mgmt.yaml; there is no local Chart.yaml)
 ./upgrade.sh
 
 # 3. Push to cluster
@@ -147,7 +151,7 @@ Proceeding with `y` without a snapshot leaves no recovery option on failure.
 
 ```
 UPDATE   local-with-templates      0.56.0   0.57.2           observability/logging/_optional/fluent-bit-aws/upgrade.sh
-NO_IMG   local-cr-version          9.0.0    9.4.0 (→9.3.3)   observability/logging/elasticsearch/upgrade.sh
+NO_IMG   external-oci-cr-version     9.0.0    9.4.0 (→9.3.3)   observability/logging/elasticsearch/upgrade.sh
          -> 9.4.0 image missing; latest available: 9.3.3 (use --version 9.3.3)
 ```
 
@@ -167,7 +171,7 @@ cd observability/logging/elasticsearch   # or kibana
 Script behavior:
 
 1. Lists backups → pick a number
-2. Restores Chart.yaml + values/mgmt.yaml
+2. Restores `values/mgmt.yaml` (if a pre-OCI-migration backup also contains `Chart.yaml`, it is ignored)
 3. **Downgrade detection**: compares backup version with live cluster CR version via `kubectl`
 4. If downgrade detected:
    ```
@@ -354,9 +358,40 @@ Before rollback:
 
 <br/>
 
+## OCI chart pin bump (separate path)
+
+`upgrade.sh` does NOT touch the chart version. Procedure to consume a new chart release:
+
+```bash
+# 1. Review the chart's release notes (breaking changes?)
+open https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck
+open https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck
+
+# 2. Check the latest chart version
+helm show chart oci://ghcr.io/somaz94/charts/elasticsearch-eck | grep '^version:'
+
+# 3. Edit helmfile.yaml (version: "0.1.1" → "0.2.0", etc.)
+
+# 4. Review the actual diff
+helmfile diff
+
+# 5. Apply (if the diff looks right)
+helmfile apply
+```
+
+Chart version bumps may carry **values-schema changes** — scrutinize `helmfile diff` output. If the schema has changed, you may also need to adjust `values/mgmt.yaml`. Keep chart bumps in a **separate commit** from Stack bumps so you can isolate the cause if something goes wrong.
+
+Rollback paths:
+- File level: `git revert` the `helmfile.yaml` change, then `helmfile apply`
+- Cluster level: `helm rollback elasticsearch <previous-revision> -n logging`
+
+<br/>
+
 ## References
 
 - [upgrade-sync system guide](../../../../scripts/upgrade-sync/README-en.md)
-- [local-cr-version canonical template](../../../../scripts/upgrade-sync/templates/local-cr-version.sh)
+- [external-oci-cr-version canonical template](../../../../scripts/upgrade-sync/templates/external-oci-cr-version.sh)
 - [ECK Operator chart](../../eck-operator/)
+- [elasticsearch-eck chart source (maintainer repo)](https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck)
+- [kibana-eck chart source](https://github.com/somaz94/helm-charts/tree/main/charts/kibana-eck)
 - [Elasticsearch compatibility matrix](https://www.elastic.co/support/matrix)
