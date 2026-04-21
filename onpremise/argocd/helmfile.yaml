@@ -9,7 +9,7 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 9.5.1
+    version: 9.5.2
     values:
       - values/mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets)
       - values/mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
