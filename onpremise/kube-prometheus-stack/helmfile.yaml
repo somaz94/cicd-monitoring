@@ -6,7 +6,7 @@ releases:
   - name: kube-prometheus-stack
     chart: prometheus-community/kube-prometheus-stack
     namespace: monitoring
-    version: 83.5.0
+    version: 83.6.0
     values:
       - values/mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
       - values/mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
