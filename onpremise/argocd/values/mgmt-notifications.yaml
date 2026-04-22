@@ -358,60 +358,83 @@ notifications:
     #       }]
     
   triggers:
+    # Fires on successful sync + Healthy state; dedup by all image tags so sidecar changes also trigger
     trigger.on-deployed: |
       - description: Application is synced and healthy after any operation.
         send:
         - app-deployed
         when: |
-          app.status.operationState.phase == 'Succeeded' and 
-          app.status.health.status == 'Healthy' and 
+          app.status.operationState.phase == 'Succeeded' and
+          app.status.health.status == 'Healthy' and
           app.status.operationState != null
-        oncePer: app.status.summary.images[0]
+        oncePer: app.status.summary.images.join(',')
 
+    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per reconcile cycle
     trigger.on-health-degraded: |
-      - description: Application has degraded
+      - description: Application has degraded (not due to sync)
         send:
         - app-health-degraded
-        when: app.status.health.status == 'Degraded'
+        when: |
+          app.status.health.status == 'Degraded' and
+          (app.status.operationState == nil or
+           (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
+            app.status.operationState.finishedAt != nil and
+            time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
+        oncePer: app.status.reconciledAt
 
+    # Fires once per failed sync operation (dedup by finishedAt timestamp)
     trigger.on-sync-failed: |
       - description: Application syncing has failed
         send:
         - app-sync-failed
         when: app.status.operationState.phase in ['Error', 'Failed']
+        oncePer: app.status.operationState.finishedAt
 
+    # Fires on OutOfSync, excluding freshly-created apps (<5min) and post-sync settling window (<60s); dedup per git revision
     trigger.on-sync-status-out-of-sync: |
       - description: Application sync status is 'OutOfSync'
         send:
         - app-sync-status-out-of-sync
         when: |
-          app.status.sync.status == 'OutOfSync' and 
-          app.status.health.status not in ['Progressing', 'Healthy'] and 
-          (app.metadata.creationTimestamp == null or 
+          app.status.sync.status == 'OutOfSync' and
+          app.status.health.status not in ['Progressing', 'Healthy'] and
+          (app.metadata.creationTimestamp == null or
             time.Now().Sub(time.Parse(app.metadata.creationTimestamp)).Minutes() > 5) and
-          ((app.status.operationState == null) or 
-          (app.status.operationState != null and 
-            app.status.operationState.phase != 'Running' and 
+          ((app.status.operationState == null) or
+          (app.status.operationState != null and
+            app.status.operationState.phase != 'Running' and
             app.status.operationState.finishedAt != null and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60))
+        oncePer: app.status.sync.revision
 
+    # Fires on Missing health; dedup per reconcile cycle
     trigger.on-health-missing: |
       - description: Application health status is missing
         send:
         - app-health-missing
         when: app.status.health.status == 'Missing'
-        
+        oncePer: app.status.reconciledAt
+
+    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout
     trigger.on-restarted: |
-      - description: Application has been restarted
+      - description: Application has been restarted (not due to sync)
         send:
         - app-restarted
-        when: app.status.health.status == 'Progressing'
+        when: |
+          app.status.health.status == 'Progressing' and
+          (app.status.operationState == nil or
+           (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
+            app.status.operationState.finishedAt != nil and
+            time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
+        oncePer: app.status.reconciledAt
 
+    # Fires on Unknown health; dedup per reconcile cycle
     trigger.on-health-unknown: |
       - description: Application health status is unknown
         send:
         - app-health-unknown
         when: app.status.health.status == 'Unknown'
+        oncePer: app.status.reconciledAt
 
     # trigger.test-notification: |
     #   - description: Test notification - when application is healthy
