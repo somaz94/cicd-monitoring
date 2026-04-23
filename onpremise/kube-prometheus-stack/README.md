@@ -25,6 +25,8 @@ kube-prometheus-stack/
 │   ├── mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
 │   └── mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 ├── dashboards/             # Custom Grafana dashboard JSON files
+├── scripts/                # Operational helper scripts
+│   └── import-dashboards.sh
 ├── docs/                   # Detailed guides
 │   ├── dashboards-en.md
 │   ├── slack-alert-format-en.md
@@ -172,19 +174,34 @@ Import: Grafana → **Dashboards** → **New** → **Import** → Enter ID → D
 
 ### Import All Custom Dashboards
 
+Use `scripts/import-dashboards.sh` to POST JSON files under `dashboards/` through the Grafana HTTP API. Re-runs are idempotent because dashboards with the same uid are overwritten (`overwrite: true`).
+
 ```bash
 cd observability/monitoring/kube-prometheus-stack
-for f in dashboards/*.json; do
-  echo "Importing: $(basename $f)"
-  cat "$f" | \
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps({'dashboard':d,'overwrite':True}))" | \
-    curl -s -X POST http://grafana.example.com/api/dashboards/db \
-      -H "Content-Type: application/json" \
-      -u admin:<password> -d @- | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','error'))"
-done
+
+# Bulk import — password resolved from the in-cluster secret
+./scripts/import-dashboards.sh --all --from-secret
+
+# Bulk import — password via environment variable
+GRAFANA_PASSWORD=<password> ./scripts/import-dashboards.sh --all
+
+# Specific files (repeat -f)
+./scripts/import-dashboards.sh -f dashboards/mysql-dashboard.json -f dashboards/redis-dashboard.json -p <password>
+
+# Skip specific files (substring match, comma-separated)
+./scripts/import-dashboards.sh --all --except ingress-nginx,metallb --from-secret
+
+# Dry-run — list targets without POSTing
+./scripts/import-dashboards.sh --all --dry-run
+
+# Different Grafana endpoint
+./scripts/import-dashboards.sh --all -u http://grafana.example.com -U admin -p <password>
 ```
 
-> Dashboards with same uid are overwritten. No duplicates.
+See `./scripts/import-dashboards.sh --help` for the full option list.
+
+> Only JSON files directly under `dashboards/` are processed — sub-directories such as `dashboards/_deprecated/` are skipped automatically.
+> `--from-secret` reads the Grafana password from a Kubernetes secret via `kubectl`. The default target is `monitoring/kube-prometheus-stack-grafana` (key `admin-password`); override with `--secret-namespace / --secret-name / --secret-key` or the `GRAFANA_SECRET_NS / GRAFANA_SECRET_NAME / GRAFANA_SECRET_KEY` environment variables. The current kubectl context must point at the target cluster.
 
 Custom dashboard details: [Dashboard Guide](docs/dashboards-en.md)
 

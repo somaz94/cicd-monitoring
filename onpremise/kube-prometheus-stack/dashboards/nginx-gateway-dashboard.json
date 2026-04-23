@@ -1,0 +1,266 @@
+{
+  "id": null,
+  "uid": "nginx-gateway-fabric",
+  "title": "NGINX Gateway Fabric",
+  "description": "Control-plane health for NGINX Gateway Fabric (NGF). Focuses on reconcile loop, work-queue, event batching, and resources. Data-plane (request/latency/bytes) panels will be added once per-nginx-pod metrics are wired up.",
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "refresh": "30s",
+  "tags": ["nginx-gateway", "nginx-gateway-fabric", "ngf", "gateway-api", "networking", "kubernetes"],
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(controller_runtime_reconcile_total, namespace)",
+        "regex": "/nginx-gateway.*/",
+        "current": { "selected": true, "text": "nginx-gateway", "value": "nginx-gateway" },
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "name": "pod",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{namespace=\"$namespace\"}, pod)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "controller",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(controller_runtime_reconcile_total{namespace=\"$namespace\"}, controller)",
+        "multi": true,
+        "includeAll": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Controllers Up",
+      "description": "Number of NGF controller pods exposing /metrics (up=1).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(up{namespace=\"$namespace\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Reconcile Errors / sec (5m)",
+      "description": "Sum of controller_runtime_reconcile_errors_total rate across selected controllers.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.05 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(controller_runtime_reconcile_errors_total{namespace=\"$namespace\", controller=~\"$controller\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Goroutines",
+      "description": "Total Go goroutines across NGF pods; sudden jumps may indicate a leak.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "targets": [
+        {
+          "expr": "sum(go_goroutines{namespace=\"$namespace\", pod=~\"$pod\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Memory RSS",
+      "description": "Sum of process_resident_memory_bytes across NGF pods.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      },
+      "targets": [
+        {
+          "expr": "sum(process_resident_memory_bytes{namespace=\"$namespace\", pod=~\"$pod\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Reconciliation",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Reconcile Rate by Controller",
+      "description": "rate(controller_runtime_reconcile_total[5m]) split by controller + result.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (controller, result) (rate(controller_runtime_reconcile_total{namespace=\"$namespace\", controller=~\"$controller\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{controller}} / {{result}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Reconcile Latency",
+      "description": "p50 / p95 / p99 reconcile duration per controller.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=\"$namespace\", controller=~\"$controller\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "p50 {{controller}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=\"$namespace\", controller=~\"$controller\"}[5m])))",
+          "refId": "B",
+          "legendFormat": "p95 {{controller}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=\"$namespace\", controller=~\"$controller\"}[5m])))",
+          "refId": "C",
+          "legendFormat": "p99 {{controller}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Work Queue & Events",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Work Queue Depth",
+      "description": "workqueue_depth by controller-runtime queue name. Persistently >0 = backlog.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "expr": "sum by (name) (workqueue_depth{namespace=\"$namespace\"})",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "NGF Event Batch p95 Latency",
+      "description": "nginx_gateway_fabric_event_batch_processing_milliseconds p95 per pod. Latency spikes indicate slow processing of K8s watch events (Gateway/HTTPRoute/EndpointSlice).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pod) (rate(nginx_gateway_fabric_event_batch_processing_milliseconds_bucket{namespace=\"$namespace\", pod=~\"$pod\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "p95 {{pod}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Resources",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU Usage per Pod",
+      "description": "container_cpu_usage_seconds_total rate per NGF pod.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Memory Working Set per Pod",
+      "description": "container_memory_working_set_bytes per NGF pod.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"})",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    }
+  ]
+}
