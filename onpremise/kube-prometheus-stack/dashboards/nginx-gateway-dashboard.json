@@ -2,7 +2,7 @@
   "id": null,
   "uid": "nginx-gateway-fabric",
   "title": "NGINX Gateway Fabric",
-  "description": "Control-plane health for NGINX Gateway Fabric (NGF). Focuses on reconcile loop, work-queue, event batching, and resources. Data-plane (request/latency/bytes) panels will be added once per-nginx-pod metrics are wired up.",
+  "description": "NGINX Gateway Fabric (NGF) — control-plane (reconcile loop, work-queue, event batching, resources) + data-plane (request rate, connections, CPU/memory, network throughput from nginx-agent OTEL export on port 9113). No latency histograms or status-code labels (not exposed by NGF 2.x).",
   "schemaVersion": 39,
   "timezone": "browser",
   "refresh": "30s",
@@ -50,7 +50,7 @@
       "id": 1,
       "type": "stat",
       "title": "Controllers Up",
-      "description": "Number of NGF controller pods exposing /metrics (up=1).",
+      "description": "NGF controller Pods exposing /metrics (up=1). Filtered by container=\"nginx-gateway\" so data-plane Pods (container=\"nginx\") don't inflate the count.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "fieldConfig": {
@@ -67,7 +67,7 @@
       },
       "targets": [
         {
-          "expr": "sum(up{namespace=\"$namespace\"})",
+          "expr": "sum(up{namespace=\"$namespace\", container=\"nginx-gateway\"})",
           "refId": "A"
         }
       ]
@@ -233,14 +233,14 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "CPU Usage per Pod",
-      "description": "container_cpu_usage_seconds_total rate per NGF pod.",
+      "title": "Control-Plane CPU Usage per Pod",
+      "description": "container_cpu_usage_seconds_total rate for NGF control-plane Pod(s) (container=\"nginx-gateway\"). Data-plane CPU is shown in the Data Plane row via the nginx-agent's system_cpu_utilization_ratio.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "percentunit" } },
       "targets": [
         {
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"}[5m]))",
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$pod\", container=\"nginx-gateway\"}[5m]))",
           "refId": "A",
           "legendFormat": "{{pod}}"
         }
@@ -249,16 +249,118 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Memory Working Set per Pod",
-      "description": "container_memory_working_set_bytes per NGF pod.",
+      "title": "Control-Plane Memory Working Set per Pod",
+      "description": "container_memory_working_set_bytes for NGF control-plane Pod(s) (container=\"nginx-gateway\"). Data-plane memory is shown in the Data Plane row via the nginx-agent's system_memory_usage_bytes.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "bytes" } },
       "targets": [
         {
-          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$pod\", container!=\"\"})",
+          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$pod\", container=\"nginx-gateway\"})",
           "refId": "A",
           "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Data Plane",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "HTTP Request Rate per Pod",
+      "description": "rate(nginx_http_requests_total[5m]) per data-plane Pod. NGF 2.x exposes request COUNT only — no status-code (2xx/4xx/5xx) or path breakdown, and no latency histogram.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(nginx_http_requests_total{namespace=\"$namespace\", pod=~\"$pod\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Active Connections by State",
+      "description": "nginx_http_connection_count_connections (gauge) grouped by nginx_connections_outcome = ACTIVE
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "expr": "sum by (nginx_connections_outcome) (nginx_http_connection_count_connections{namespace=\"$namespace\", pod=~\"$pod\"})",
+          "refId": "A",
+          "legendFormat": "{{nginx_connections_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Connection Accept / Handle Rate",
+      "description": "rate(nginx_http_connections_total[5m]) by outcome. ACCEPTED > HANDLED means NGINX dropped connections (resource exhaustion, worker_connections limit).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "cps" } },
+      "targets": [
+        {
+          "expr": "sum by (nginx_connections_outcome) (rate(nginx_http_connections_total{namespace=\"$namespace\", pod=~\"$pod\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{nginx_connections_outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Data-Plane CPU Utilization per Pod",
+      "description": "system_cpu_utilization_ratio reported by the nginx-agent inside each data-plane Pod (summed across state=user|system). 1.0 = one full logical CPU.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (system_cpu_utilization_ratio{namespace=\"$namespace\", pod=~\"$pod\"})",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Data-Plane Memory Used per Pod",
+      "description": "system_memory_usage_bytes{state=\"used\"} reported by nginx-agent inside each data-plane Pod (OS-visible used memory, not container working-set).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (system_memory_usage_bytes{namespace=\"$namespace\", pod=~\"$pod\", state=\"used\"})",
+          "refId": "A",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Data-Plane Network Throughput per Pod (eth0)",
+      "description": "rate(system_network_io_bytes_total{device=\"eth0\"}[5m]) split by direction. receive / transmit in bytes per second.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 49 },
+      "fieldConfig": { "defaults": { "unit": "Bps" } },
+      "targets": [
+        {
+          "expr": "sum by (pod, direction) (rate(system_network_io_bytes_total{namespace=\"$namespace\", pod=~\"$pod\", device=\"eth0\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{pod}} / {{direction}}"
         }
       ]
     }
