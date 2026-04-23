@@ -358,7 +358,7 @@ notifications:
     #       }]
     
   triggers:
-    # Fires on successful sync + Healthy state; dedup by all image tags so sidecar changes also trigger
+    # Fires on successful sync + Healthy state; dedup per sync operation to avoid duplicate alerts during rolling updates
     trigger.on-deployed: |
       - description: Application is synced and healthy after any operation.
         send:
@@ -367,9 +367,9 @@ notifications:
           app.status.operationState.phase == 'Succeeded' and
           app.status.health.status == 'Healthy' and
           app.status.operationState != null
-        oncePer: app.status.summary.images.join(',')
+        oncePer: app.status.operationState.finishedAt
 
-    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per reconcile cycle
+    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per sync operation
     trigger.on-health-degraded: |
       - description: Application has degraded (not due to sync)
         send:
@@ -380,7 +380,7 @@ notifications:
            (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
             app.status.operationState.finishedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
-        oncePer: app.status.reconciledAt
+        oncePer: app.status.operationState.finishedAt
 
     # Fires once per failed sync operation (dedup by finishedAt timestamp)
     trigger.on-sync-failed: |
@@ -415,7 +415,7 @@ notifications:
         when: app.status.health.status == 'Missing'
         oncePer: app.status.reconciledAt
 
-    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout
+    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout; dedup per sync operation to avoid repeated alerts while health stays Progressing
     trigger.on-restarted: |
       - description: Application has been restarted (not due to sync)
         send:
@@ -426,7 +426,7 @@ notifications:
            (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
             app.status.operationState.finishedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
-        oncePer: app.status.reconciledAt
+        oncePer: app.status.operationState.finishedAt
 
     # Fires on Unknown health; dedup per reconcile cycle
     trigger.on-health-unknown: |
@@ -442,15 +442,23 @@ notifications:
     #     - app-healthy
     #     when: "true"  # Always triggered
   
+  # Current mode: Option B — notifications handles all events incl. health state.
+  # Alertmanager covers only ArgoCDControllerReconcileStuck (root-cause of 2026-04-23 stuck).
+  # Option A (optional): move Degraded/Missing/Unknown to Alertmanager for auto-RESOLVED,
+  #   silencing, and inhibit rules. To switch to A:
+  #     1) comment out the 3 triggers below (on-health-degraded/missing/unknown)
+  #     2) enable the 3 commented-out alerts in observability/.../mgmt-alerts.yaml
+  #     3) enable the ArgoCD inhibit_rule in observability/.../mgmt-alertmanager.yaml
+  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
   subscriptions:
     - recipients:
       - slack:#argocd-alarm
       triggers:
       - on-deployed
-      - on-health-degraded
       - on-sync-failed
       - on-sync-status-out-of-sync
-      - on-health-missing
-      - on-health-unknown
       - on-restarted
+      - on-health-degraded   # A: comment out when moving to Alertmanager
+      - on-health-missing    # A: comment out when moving to Alertmanager
+      - on-health-unknown    # A: comment out when moving to Alertmanager
       # - test-notification

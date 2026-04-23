@@ -18,9 +18,30 @@ argo-cd/
 │   └── mgmt-notifications.yaml # notifications controller (Slack templates/triggers)
 ├── upgrade.sh
 ├── backup/
+├── docs/
+│   ├── ghost-alarm-incident-2026-04-23.md      # 2026-04-23 ghost-alarm incident analysis + Notification rules design
+│   ├── ghost-alarm-followup-prompt.md          # Prompt template for asking Claude when similar symptoms recur
+│   └── notification-rule-change-playbook.md    # Playbook for minimizing resends when changing notification rules
+├── scripts/
+│   └── notify-rule-change.sh                   # Rule-change helper (check/pre/post/status)
 ├── README.md
 └── README-en.md
 ```
+
+<br/>
+
+## Documentation
+
+| Topic | Document |
+|---|---|
+| 2026-04-23 ghost-alarm incident analysis, Notification rules (Option A/B) design, Alertmanager role split | [docs/ghost-alarm-incident-2026-04-23-en.md](docs/ghost-alarm-incident-2026-04-23-en.md) |
+| Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook-en.md](docs/notification-rule-change-playbook-en.md) |
+| Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt-en.md](docs/ghost-alarm-followup-prompt-en.md) |
+| Upstream issue submission template (English) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template-en.md) |
+
+Related external files:
+- Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml](../../observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml)
+- Alertmanager inhibit/routing config: [observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml](../../observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml)
 
 <br/>
 

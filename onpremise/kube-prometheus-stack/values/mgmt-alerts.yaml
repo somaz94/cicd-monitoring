@@ -222,3 +222,81 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "Cilium operator is down"
               description: "No Cilium operator process detected for 5 minutes — CRD management and IP allocation are halted"
+
+  # ---------------------------------------------------------------------------
+  # ArgoCD Alerts — controller-level health (Option B, active)
+  #
+  # Current mode: Option B
+  #   - Only ArgoCDControllerReconcileStuck is active (root-cause alert for 2026-04-23 incident).
+  #   - App-level health alerts (Degraded/Missing/OutOfSync) remain in ArgoCD notifications
+  #     (cicd/argo-cd/values/mgmt-notifications.yaml, #argocd-alarm channel).
+  #
+  # Option A (optional): also move app-level health to Alertmanager.
+  #   Benefits: auto-RESOLVED alerts (send_resolved=true), silencing, inhibit rules.
+  #   To switch to A:
+  #     1) uncomment the 3 alerts below (ArgoCDAppDegraded/Missing/OutOfSync)
+  #     2) comment out the 3 triggers in cicd/argo-cd/values/mgmt-notifications.yaml
+  #        (on-health-degraded/missing/unknown in subscriptions)
+  #     3) uncomment the ArgoCD inhibit_rule in mgmt-alertmanager.yaml
+  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
+  # ---------------------------------------------------------------------------
+  argocd-alerts:
+    groups:
+      - name: argocd-alerts
+        rules:
+
+          # --- Active rules (Option B) ---
+
+          # Controller reconcile stuck — early detection of the 2026-04-23 incident pattern
+          # Normal reconcile interval is 3-10 min (timeout.reconciliation=600s); 30 min silence is abnormal
+          #
+          # The `time() - timestamp(...) < 300` clause filters out stale series from
+          # recently-deleted pods (pod restarts leave old instance IPs in Prometheus
+          # for ~5 min with counter frozen, which would otherwise cause false firing).
+          - alert: ArgoCDControllerReconcileStuck
+            expr: |
+              (increase(argocd_app_reconcile_count[30m]) == 0)
+              and ((time() - timestamp(argocd_app_reconcile_count)) < 300)
+            for: 10m
+            labels:
+              severity: critical
+              group: argocd
+            annotations:
+              summary: "ArgoCD application-controller reconcile stuck (no activity 30+ min)"
+              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue
+
+          # --- Option A rules (disabled by default) ---
+          # Uncomment the block below to enable Option A (move app-level health to Alertmanager)
+
+          # # App Degraded for 5 minutes
+          # - alert: ArgoCDAppDegraded
+          #   expr: argocd_app_info{health_status="Degraded"} == 1
+          #   for: 5m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} is Degraded"
+          #     description: "Application {{ $labels.name }} (project: {{ $labels.project }}, dest: {{ $labels.dest_namespace }}) has been Degraded for 5+ minutes."
+          #
+          # # App resources Missing for 10 minutes
+          # - alert: ArgoCDAppMissing
+          #   expr: argocd_app_info{health_status="Missing"} == 1
+          #   for: 10m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} is Missing"
+          #     description: "Application {{ $labels.name }} has Missing resources for 10+ minutes — expected resources are not present on the cluster."
+          #
+          # # App OutOfSync for 30 minutes — likely auto-sync disabled or failing
+          # - alert: ArgoCDAppOutOfSync
+          #   expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          #   for: 30m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} OutOfSync for 30+ min"
+          #     description: "Application {{ $labels.name }} has been OutOfSync for 30+ minutes. Auto-sync may be disabled or failing — investigate in ArgoCD UI."

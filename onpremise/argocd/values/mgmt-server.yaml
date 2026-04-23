@@ -11,6 +11,12 @@ controller:
     # Improves sync speed during traffic spikes
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "300"
+    # Enable pprof endpoint on :6060 for goroutine leak debugging
+    # Access: kubectl port-forward -n argocd argocd-application-controller-0 6060:6060
+    #        curl localhost:6060/debug/pprof/goroutine?debug=2 > goroutine.txt
+    # See: cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - post-incident follow-up section
+    - name: ARGOCD_APPLICATION_CONTROLLER_PPROF
+      value: "true"
   resources:
     limits:
       cpu: 2000m

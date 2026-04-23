@@ -36,6 +36,20 @@ kube-prometheus-stack/
 
 <br/>
 
+## Documentation
+
+| Topic | Document |
+|---|---|
+| Grafana dashboard layout | [docs/dashboards-en.md](docs/dashboards-en.md) |
+| Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format-en.md) |
+| Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting-en.md) |
+
+Related external docs:
+- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../../../cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md) (KR)
+  - The `argocd-alerts` group in `mgmt-alerts.yaml` and the ArgoCD inhibit rule in `mgmt-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
+
+<br/>
+
 ## Prerequisites
 
 - Kubernetes cluster

@@ -96,6 +96,16 @@ alertmanager:
         target_matchers:
           - 'alertname =~ "CiliumEndpointNotReady|CiliumDropRateHigh|CiliumAgentUnhealthy"'
 
+      # ArgoCD — reconcile stuck is root cause; suppress downstream app state alerts on same app.
+      # Enabled only under Option A (when ArgoCDAppDegraded/Missing/OutOfSync are active).
+      # See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
+      # - source_matchers:
+      #     - 'alertname = ArgoCDControllerReconcileStuck'
+      #   target_matchers:
+      #     - 'alertname =~ "ArgoCDAppDegraded|ArgoCDAppMissing|ArgoCDAppOutOfSync"'
+      #   equal:
+      #     - 'name'
+
       # Severity ladder within the same alertname (fallback)
       - source_matchers:
           - 'severity = critical'
