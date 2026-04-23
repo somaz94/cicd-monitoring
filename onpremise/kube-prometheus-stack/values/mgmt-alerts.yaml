@@ -300,3 +300,126 @@ additionalPrometheusRulesMap:
           #   annotations:
           #     summary: "ArgoCD app {{ $labels.name }} OutOfSync for 30+ min"
           #     description: "Application {{ $labels.name }} has been OutOfSync for 30+ minutes. Auto-sync may be disabled or failing — investigate in ArgoCD UI."
+
+  # ---------------------------------------------------------------------------
+  # Elasticsearch Alerts — cluster health + disk (via prometheus-elasticsearch-exporter, namespace=logging)
+  # ---------------------------------------------------------------------------
+  elasticsearch-alerts:
+    groups:
+      - name: elasticsearch-alerts
+        rules:
+
+          # Cluster health RED for 5 minutes — at least one primary shard unassigned
+          # Indicates potential data unavailability; queries/ingest may fail
+          - alert: ElasticsearchClusterRed
+            expr: elasticsearch_cluster_health_status{color="red"} == 1
+            for: 5m
+            labels:
+              severity: critical
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch cluster {{ $labels.cluster }} health is RED"
+              description: "Cluster {{ $labels.cluster }} has been in RED state for 5+ minutes — at least one primary shard is unassigned. Check `kubectl get pods -n logging` and ES _cluster/allocation/explain."
+
+          # Cluster health YELLOW for 15 minutes — replica shards unassigned (redundancy lost)
+          # 15m for suppresses transient YELLOW during rolling restart / index creation.
+          # Guarded by data_nodes > 1: in single-node deployments YELLOW is the steady state
+          # (replica shards cannot be allocated on the same node as the primary), so this
+          # alert only fires when the cluster has ≥2 data nodes — i.e., replicas SHOULD be placeable.
+          - alert: ElasticsearchClusterYellow
+            expr: |
+              elasticsearch_cluster_health_status{color="yellow"} == 1
+              and on(cluster) elasticsearch_cluster_health_number_of_data_nodes > 1
+            for: 15m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch cluster {{ $labels.cluster }} health is YELLOW"
+              description: "Cluster {{ $labels.cluster }} has been in YELLOW state for 15+ minutes — replica shards are unassigned, redundancy is reduced."
+
+          # Data path free space < 15% for 10 minutes
+          # ES low watermark defaults to 85% used (15% free); alert before allocation is blocked
+          - alert: ElasticsearchDiskLow
+            expr: (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) * 100 < 15
+            for: 10m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch disk low on {{ $labels.name }}"
+              description: "Node {{ $labels.name }} has only {{ $value }}% free space on {{ $labels.path }} — approaching ES low watermark (85% used). Shard allocation will be blocked at 85%."
+
+  # ---------------------------------------------------------------------------
+  # Redis Alerts — instance availability
+  # Covers both example-project-redis-exporter (namespace=monitoring) and valkey-redis-metrics (namespace=example-project-db-redis)
+  # ---------------------------------------------------------------------------
+  redis-alerts:
+    groups:
+      - name: redis-alerts
+        rules:
+
+          # Redis instance unreachable from exporter for 2 minutes
+          # redis_up=0 means exporter cannot PING/INFO the target — Redis down or network partition
+          - alert: RedisDown
+            expr: redis_up == 0
+            for: 2m
+            labels:
+              severity: critical
+              group: redis
+            annotations:
+              summary: "Redis instance down ({{ $labels.namespace }}/{{ $labels.service }})"
+              description: "Redis exporter reports redis_up=0 for 2+ minutes (instance: {{ $labels.instance }}, job: {{ $labels.job }}) — dependent apps may see cache/session failures."
+
+  # ---------------------------------------------------------------------------
+  # MySQL Alerts — instance availability (via example-project-mysql-exporter, namespace=monitoring)
+  # ---------------------------------------------------------------------------
+  mysql-alerts:
+    groups:
+      - name: mysql-alerts
+        rules:
+
+          # MySQL instance unreachable from exporter for 2 minutes
+          # mysql_up=0 means exporter cannot connect — DB down, credentials, or network issue
+          - alert: MySQLDown
+            expr: mysql_up == 0
+            for: 2m
+            labels:
+              severity: critical
+              group: mysql
+            annotations:
+              summary: "MySQL instance down ({{ $labels.namespace }}/{{ $labels.service }})"
+              description: "MySQL exporter reports mysql_up=0 for 2+ minutes (instance: {{ $labels.instance }}) — dependent services will fail DB operations."
+
+  # ---------------------------------------------------------------------------
+  # Harbor Alerts — per-component + aggregate health (via harbor-exporter, namespace=harbor)
+  # Components: core, database, jobservice, portal, redis, registry, registryctl, trivy
+  # ---------------------------------------------------------------------------
+  harbor-alerts:
+    groups:
+      - name: harbor-alerts
+        rules:
+
+          # Harbor component reports harbor_up=0 for 3 minutes
+          # Per-component label pinpoints which subsystem failed (e.g., registry vs jobservice)
+          - alert: HarborComponentDown
+            expr: harbor_up == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: harbor
+            annotations:
+              summary: "Harbor component {{ $labels.component }} is down"
+              description: "Harbor component '{{ $labels.component }}' has been unhealthy for 3+ minutes (pod: {{ $labels.pod }}) — image push/pull for this subsystem is affected."
+
+          # Harbor aggregate /api/v2.0/health reports unhealthy for 3 minutes
+          # Fires when core health endpoint returns non-healthy — cross-check with HarborComponentDown
+          - alert: HarborOverallHealth
+            expr: harbor_health == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: harbor
+            annotations:
+              summary: "Harbor overall health is unhealthy"
+              description: "Harbor /api/v2.0/health aggregate has been unhealthy for 3+ minutes — one or more components failing (check HarborComponentDown for specifics)."
