@@ -13,7 +13,7 @@ Managed as JSON files in `dashboards/` directory.
 | `mysql-dashboard.json` | MySQL (Connections, QPS, InnoDB, Slow Query) |
 | `redis-dashboard.json` | Redis (Memory, Commands, Keys, Hit Rate) |
 | `fluentbit-fluentd-dashboard.json` | Fluent Bit + Fluentd logging pipeline |
-| `nginx-gateway-dashboard.json` | NGINX Gateway Fabric (reconcile loop, work queue, NGF event batch, resources) |
+| `nginx-gateway-dashboard.json` | NGINX Gateway Fabric — control-plane (reconcile loop, work queue, NGF event batch, resources) + data-plane (request rate, connection state, accept/handle rate, agent CPU
 | `argocd-dashboard.json` | ArgoCD (App sync, Git requests, Cluster status) |
 | `harbor-dashboard.json` | Harbor (Projects, Storage, HTTP requests) |
 
