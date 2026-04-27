@@ -877,7 +877,7 @@ A chronological digest of everything done that day. In subsequent operation, thi
 
 | Item | Current value | Note |
 |---|---|---|
-| Chart / appVersion | `argo-cd 9.5.1` / `v3.3.6` | Rolled back due to the v3.3.7 goroutine-leak-shaped issue |
+| Chart / appVersion | `argo-cd 9.5.4` / `v3.3.8` | Upgraded 2026-04-24. The v3.3.7 work-queue stall is fixed by PR #27400 (= the revert of #27230). See § 2026-04-24 v3.3.8 upgrade result below. |
 | `trigger.on-deployed.oncePer` | `app.status.operationState.finishedAt` | 1 sync = 1 alarm |
 | `trigger.on-restarted.oncePer` | `app.status.operationState.finishedAt` | Same principle |
 | `trigger.on-health-degraded.oncePer` | `app.status.operationState.finishedAt` | Role split with Alertmanager (Option B) — still active in subscriptions |
@@ -906,7 +906,7 @@ A chronological digest of everything done that day. In subsequent operation, thi
 **Filed:** [argoproj/argo-cd#27516](https://github.com/argoproj/argo-cd/issues/27516)
 — "application-controller reconcile queue silently halts (work queue stall) after settings reload on v3.3.7" (title updated after correction)
 — Labels: `bug`, `triage/pending`
-— Status (as of 2026-04-23): just submitted, awaiting maintainer triage. A correction comment was added describing the rollback evidence.
+— Status (as of 2026-04-24): maintainer `@blakepettersson` replied "Try 3.3.8, there was a fix merged that should address this." Upgraded our dev cluster to v3.3.8 and verified the fix holds (see § 2026-04-24 v3.3.8 upgrade result). Plan to close after >24h of stable operation.
 
 Record further updates in this section.
 
@@ -932,10 +932,10 @@ After ~30 minutes of healthy operation on v3.3.6, the following was confirmed an
 
 ### 4. Open follow-ups
 
-- [ ] **Verify the actual pprof endpoint port.** `ARGOCD_APPLICATION_CONTROLLER_PPROF=true` alone did not produce a listener on 6060. Under v3.3.7, `/debug/pprof/` may live on 8082 (metrics), but that timed out. Try again on v3.3.6 with the same env. Check ArgoCD docs / source if needed.
-- [ ] **Monitor upstream #27516.** When maintainers respond, log the updates here. Provide extra artifacts (pprof dump, longer logs) when requested.
-- [ ] **Plan for retrying v3.3.7 (or a later patch).** If #27516 is fixed in 3.3.8, verify in staging first and then apply to mgmt. No automatic roll-forward.
-- [ ] **Long-term observation on v3.3.6 for similar symptoms.** A day or more of healthy operation confirms that v3.3.7 is the root cause. If the same symptom appears on v3.3.6, investigate other factors (e.g. Kubernetes v1.34.3 interaction).
+- [ ] **Verify the actual pprof endpoint port.** `ARGOCD_APPLICATION_CONTROLLER_PPROF=true` alone did not produce a listener on 6060. Under v3.3.7, `/debug/pprof/` may live on 8082 (metrics), but that timed out. Re-try on v3.3.8 with the same env (kept for regression capture readiness).
+- [x] **Monitor upstream #27516.** 2026-04-24 maintainer `@blakepettersson` pointed to v3.3.8 as the fix; dev-cluster upgrade verified it. Keep logging further updates here.
+- [x] **Plan for retrying v3.3.7 (or a later patch).** v3.3.8 confirmed as the fix and applied to the dev cluster on 2026-04-24. See § 2026-04-24 v3.3.8 upgrade result.
+- [ ] **Long-term observation on v3.3.8 for similar symptoms.** A day or more of healthy operation confirms the fix. If a stall reappears, roll back immediately and report the regression upstream with a pprof dump.
 
 <br/>
 
@@ -950,13 +950,70 @@ cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
 kubectl rollout restart statefulset/argocd-application-controller -n argocd
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=120s
 
-# 3) If recurrence is frequent on v3.3.7 and above, roll back to v3.3.6:
-#    revert Chart.yaml / helmfile.yaml to version 9.5.1 / appVersion v3.3.6
-#    (backup/20260421_173002/ preserves the originals)
+# 3) If a stall reappears on v3.3.8, roll back to a known-good version:
+#    - First choice: v3.3.6 (chart 9.5.1). Originals preserved in backup/20260421_173002/.
+#    - Or roll back to the pre-v3.3.8 snapshot via ./upgrade.sh --rollback
+#      (restores backup/20260424_111248/, the upgrade-time snapshot).
 #    cp backup/20260421_173002/Chart.yaml .
 #    cp backup/20260421_173002/helmfile.yaml .
 #    helmfile apply
+#    # Capture a pprof goroutine dump during the stall and report the regression on upstream #27516.
 ```
+
+<br/>
+
+## 2026-04-24 v3.3.8 upgrade result
+
+After maintainer `@blakepettersson` responded on upstream #27516 with "Try 3.3.8, there was a fix merged that should address this", the dev cluster was upgraded to v3.3.8 (chart 9.5.4) and the fix was verified.
+
+<br/>
+
+### Timeline (KST)
+
+| Time | Event |
+|---|---|
+| 11:12 | `./upgrade.sh --version 9.5.4` — bumped Chart.yaml / helmfile.yaml / values.yaml, preserved the v3.3.6 snapshot in `backup/20260424_111248/` |
+| 11:13 | Commit `95d72f5`: `feat(cicd/argo-cd): upgrade argocd v3.3.6 -> v3.3.8 (chart 9.5.1 -> 9.5.4)` |
+| 11:15:31 | `helmfile apply` succeeded (44s). All component images `v3.3.6 → v3.3.8`, helm release revision 27. |
+| 11:16 | First reconcile round on the new controller |
+| 11:19:26 | Phase 5 deliberate settings-reload — `kubectl annotate cm argocd-cm / argocd-notifications-cm / argocd-rbac-cm` to fire three extra `Notifying settings subscribers` bursts |
+| 11:26~27 | Second reconcile round completed (standard 10-min cycle) |
+| 11:36~37 | Third reconcile round completed |
+| 11:43 | Final verification — all signals healthy, fix confirmed. Preparing upstream report. |
+
+<br/>
+
+### Quantitative evidence (apply+27min / reload-trigger+23min)
+
+| Signal | Result | On v3.3.7 stall |
+|---|---|---|
+| `Reconciliation completed` log lines (last 30m) | **18** | 0 (completely silent) |
+| Reconcile rounds | Two full rounds at 02:26~27 and 02:36~37 UTC | First round began, then froze |
+| `Goroutines` stats line | 1446, steady baseline | 1446 (same value, but during stall) |
+| `increase(argocd_app_reconcile_count[30m])` | 8.15 / 15.18 (old/new pod instances) | 0 |
+| Active alerts | Only `Watchdog` firing (normal) | `ArgoCDControllerReconcileStuck` critical |
+| Application state | Synced / Healthy (10/10) | Several apps with `reconciledAt` stuck for hours |
+
+On v3.3.7 the stall landed **~11 min** after a settings reload. Clearing **~23 min + three extra reload bursts** is decisive evidence that the fix is effective.
+
+<br/>
+
+### Relevant fixes included in v3.3.8
+
+From the v3.3.8 release notes, the commits directly related to this regression:
+
+- **PR [#27400](https://github.com/argoproj/argo-cd/pull/27400)** — "Revert prevent automatic refreshes from informer resync and status updates" (= the revert of #27230). This is exactly the PR we flagged as the **most likely stall cause** during the original diagnosis; the revert clears the work-queue stall.
+- PR [#27396](https://github.com/argoproj/argo-cd/pull/27396) — stale-cache fix in the RevisionMetadata handler (secondary possibility).
+
+<br/>
+
+### Operating principles (updated)
+
+With the stall risk gone on v3.3.8, the post-`helmfile apply` check surface simplifies:
+
+1. Run `./scripts/notify-rule-change.sh status` and confirm **"completed reconciles in the last 10m" > 0**. The `Goroutines` value is informational — 1446 is the normal baseline for this cluster.
+2. Keep the `ArgoCDControllerReconcileStuck` alert as a regression canary. If v3.3.8 ever regresses, this alert is the first signal.
+3. Stall recurrence procedure: capture a pprof dump (port 6060) → roll back immediately → report the regression on upstream #27516.
 
 <br/>
 

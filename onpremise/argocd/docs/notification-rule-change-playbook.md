@@ -148,7 +148,7 @@ kubectl rollout restart deployment/argocd-notifications-controller -n argocd
 kubectl rollout status deployment/argocd-notifications-controller -n argocd --timeout=60s
 ```
 
-**⚠️ Note:** `helmfile apply` patches the ArgoCD ConfigMaps, which **triggers a settings reload in the application-controller**. Under v3.3.7 this path hits the goroutine-leak-shaped work queue stall (see ghost-alarm-incident-2026-04-23-en.md, "post-incident follow-up" section). Always check the controller state in the next step. (The production cluster has been rolled back to v3.3.6 as of 2026-04-23, which is not affected.)
+**ℹ️ Note:** `helmfile apply` patches the ArgoCD ConfigMaps, which **triggers a settings reload in the application-controller**. Under v3.3.7 this path caused a work-queue stall, but **the regression is fixed in v3.3.8 (chart 9.5.4)** — verified on 2026-04-24 (see ghost-alarm-incident-2026-04-23-en.md, "2026-04-24 v3.3.8 upgrade result" section). Keep an eye on reconcile activity in the next step regardless.
 
 ### 6) Post-verification + completion notice
 
