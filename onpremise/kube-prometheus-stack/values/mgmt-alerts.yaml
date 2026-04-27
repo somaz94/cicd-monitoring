@@ -149,16 +149,18 @@ additionalPrometheusRulesMap:
       - name: pod-alerts
         rules:
 
-          # Pod restarting repeatedly (CrashLoopBackOff)
-          # Checks if restart count increased in the last 15 minutes
+          # Pod stuck in CrashLoopBackOff
+          # kubelet sets waiting.reason=CrashLoopBackOff only after consecutive
+          # restart failures, so this avoids false positives from a single restart
+          # (e.g. transient liveness probe timeout under CPU pressure).
           - alert: PodCrashLooping
-            expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 15 > 0
+            expr: max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}[5m]) >= 1
             for: 5m
             labels:
               severity: critical
             annotations:
-              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
-              description: "Pod has been restarting frequently in the last 15 minutes"
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff"
+              description: "Container {{ $labels.container }} has been in CrashLoopBackOff for at least 5 minutes"
 
           # Pod not ready for 10 minutes (stuck in init, image pull, or probe failure)
           # Excludes Completed/Succeeded Pods (e.g., CronJob backup Pods) to prevent false alerts
