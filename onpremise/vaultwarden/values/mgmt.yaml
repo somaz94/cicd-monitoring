@@ -11,10 +11,6 @@ domain: "https://vault.example.com"
 
 fullnameOverride: "vaultwarden"
 
-image:
-  tag: "1.35.4-alpine"
-  pullPolicy: IfNotPresent
-
 # =============================================================================
 # Admin Portal
 # =============================================================================
