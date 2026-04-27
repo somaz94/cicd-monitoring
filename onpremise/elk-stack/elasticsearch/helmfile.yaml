@@ -6,7 +6,7 @@ releases:
     # Source repo: https://github.com/somaz94/helm-charts (charts/elasticsearch-eck/)
     chart: oci://ghcr.io/somaz94/charts/elasticsearch-eck
     # Pin chart version. Bump via ./upgrade.sh after verifying the new chart release.
-    version: "0.1.1"
+    version: "0.1.4"
     values:
       - values/mgmt.yaml
 

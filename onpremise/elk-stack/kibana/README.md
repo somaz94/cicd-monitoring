@@ -51,7 +51,7 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 | Version | Where it lives | How to bump |
 |---|---|---|
 | **Stack version** | `values/mgmt.yaml` `.version` | `./upgrade.sh` |
-| **OCI chart version** | `helmfile.yaml` `.releases[0].version` | manual edit (per chart release cadence) |
+| **OCI chart version** | `helmfile.yaml` `.releases[0].version` | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 <br/>
 
@@ -81,16 +81,29 @@ helmfile diff && helmfile apply
 
 ## OCI chart pin bump
 
-```bash
-# Check the latest chart version
-helm show chart oci://ghcr.io/somaz94/charts/kibana-eck | grep '^version:'
+On top of Stack version tracking, `upgrade.sh` also tracks `helmfile.yaml`'s `version:` (publisher chart release tag):
 
-# Edit helmfile.yaml (version: "0.1.1" → new version) → diff → apply
-helmfile diff
-helmfile apply
+```bash
+# Compare the current pin with the latest publisher release (read-only)
+./upgrade.sh --check-chart
+
+# Dry-run bump: pull both charts, render each with the active values file,
+# show a unified diff. No files touched.
+./upgrade.sh --upgrade-chart --dry-run
+
+# Apply: review the diff, confirm, back up helmfile.yaml, bump the pin
+./upgrade.sh --upgrade-chart
+
+# Pin to a specific chart version
+./upgrade.sh --upgrade-chart --chart-version 0.1.2
+
+# Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
+./upgrade.sh --rollback
 ```
 
-**Note**: Keep Kibana's chart pin **≤ Elasticsearch chart pin** for Stack compatibility. Bumping both charts together is the safest workflow.
+**Note**: Keep Kibana's chart pin **≤ Elasticsearch chart pin** for Stack compatibility. When bumping both charts, **bump Elasticsearch first, Kibana second**.
+
+Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched. Chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately from Stack backups and auto-detected by `--rollback`. To survey chart-pin status across every managed chart, run `./scripts/upgrade-sync/check-versions.sh` from the repo root.
 
 <br/>
 

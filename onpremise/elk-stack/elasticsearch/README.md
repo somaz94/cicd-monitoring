@@ -50,7 +50,7 @@ After the OCI migration, **two independent version pins** live in this directory
 | Version | Where it lives | Tracks | Frequency | Who bumps | How |
 |---|---|---|---|---|---|
 | **Stack version** (Elasticsearch image) | `values/mgmt.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.sh` |
-| **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck) | ~1× / quarter | consumer (this repo) | manual edit (see "OCI chart pin bump" below) |
+| **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 The two are **independent**: you can bump Stack to 9.3.4 without touching the chart pin, or vice versa.
 
@@ -145,22 +145,31 @@ Keep Kibana on the **same Stack version** (bump `kibana/values/mgmt.yaml` `versi
 
 ## OCI chart pin bump
 
-`upgrade.sh` does NOT touch the chart version. To consume a new chart release, edit `helmfile.yaml` manually:
+On top of Stack version tracking, `upgrade.sh` also tracks `helmfile.yaml`'s `version:` (the publisher's chart release tag). The `CHART_SOURCE_TYPE` / `CHART_SOURCE_REPO` / `CHART_NAME` variables in the CONFIG block activate the two sub-commands:
 
 ```bash
-# 1. Check the latest chart version
-helm show chart oci://ghcr.io/somaz94/charts/elasticsearch-eck | grep '^version:'
+# Compare the current pin with the latest publisher release (read-only)
+./upgrade.sh --check-chart
 
-# Or check ArtifactHub:
-#   https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck
+# Bump to the latest chart (dry-run): pulls both chart versions, renders each
+# with the active values file, and shows a unified diff. No files touched.
+./upgrade.sh --upgrade-chart --dry-run
 
-# 2. Edit helmfile.yaml (version: "0.1.1" → new version)
-# 3. Review the diff and apply
-helmfile diff
-helmfile apply
+# Apply: review the diff, confirm, then back up helmfile.yaml and update the pin
+./upgrade.sh --upgrade-chart
+
+# Pin to a specific chart version
+./upgrade.sh --upgrade-chart --chart-version 0.1.2
+
+# Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
+./upgrade.sh --rollback
 ```
 
-Chart version bumps may bring **schema or feature changes** — always review the [chart changelog](https://github.com/somaz94/helm-charts/blob/main/charts/elasticsearch-eck/README.md). If `helmfile diff` shows unexpectedly large changes, the chart's values schema probably changed.
+Key points:
+- `--upgrade-chart` runs `helm template` on both the current and target chart with your active values file and diffs the rendered manifests. Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched.
+- Stack backups (`backup/<TIMESTAMP>/`) and chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately. `--rollback` auto-detects the backup type and restores only the relevant file.
+- Chart bumps may still carry **schema or feature changes** — skim the [chart changelog](https://github.com/somaz94/helm-charts/blob/main/charts/elasticsearch-eck/README.md) alongside the render diff.
+- To survey chart-pin status across every managed chart at once, run `./scripts/upgrade-sync/check-versions.sh` from the repo root (see the secondary OCI chart pin table).
 
 <br/>
 

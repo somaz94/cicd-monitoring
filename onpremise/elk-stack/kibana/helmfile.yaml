@@ -10,7 +10,7 @@ releases:
     chart: oci://ghcr.io/somaz94/charts/kibana-eck
     # Pin chart version. Must be <= elasticsearch-eck chart version for Stack
     # compatibility.
-    version: "0.1.1"
+    version: "0.1.3"
     values:
       - values/mgmt.yaml
 

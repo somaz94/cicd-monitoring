@@ -20,6 +20,9 @@ CR_OPERATOR_STS="elastic-operator"
 CR_OPERATOR_CHART_DIR="eck-operator"
 DEPENDENCY_CR_KIND="elasticsearch"
 DEPENDENCY_CR_NAME="elasticsearch"
+CHART_SOURCE_TYPE="github-releases"
+CHART_SOURCE_REPO="somaz94/helm-charts"
+CHART_NAME="kibana-eck"
 # ============================================================
 
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,42 +41,97 @@ Usage: $(basename "$0") [COMMAND] [OPTIONS]
 
 $SCRIPT_NAME
 Tracks the upstream version of a Custom Resource's component (Stack/app version)
-and bumps the version field inside $VALUES_FILE. The OCI chart version in
-helmfile.yaml is NOT touched — bump that manually after reviewing chart notes.
+and bumps the version field inside $VALUES_FILE. When CHART_SOURCE_TYPE is set,
+the --check-chart / --upgrade-chart commands also track the OCI chart pin in
+helmfile.yaml (publisher release tag \`<CHART_NAME>-<semver>\`).
 
-Commands:
-  (default)           Check latest version and upgrade
-  --version <VER>     Upgrade to a specific version (skips upstream query)
-  --dry-run           Preview changes only (no files will be modified)
-  --rollback          Restore from a previous backup
-  --list-backups      List available backups
-  --cleanup-backups   Keep only the last $KEEP_BACKUPS backups, remove older ones
-  -h, --help          Show this help message
+Commands (Stack/component version — default track):
+  (default)              Check latest Stack version and upgrade VALUES_FILE
+  --version <VER>        Upgrade Stack to a specific version
+  --dry-run              Preview Stack changes only (no files will be modified)
+
+Commands (OCI chart pin — requires CHART_SOURCE_TYPE set):
+  --check-chart          Report current chart pin vs. latest upstream (read-only)
+  --upgrade-chart        Download both chart versions, diff the rendered manifests,
+                         prompt, then bump helmfile.yaml.version
+  --chart-version <VER>  Target a specific chart version with --upgrade-chart
+
+Commands (shared):
+  --rollback             Restore from a previous backup (auto-detects stack vs chart)
+  --list-backups         List available backups
+  --cleanup-backups      Keep only the last $KEEP_BACKUPS backups, remove older ones
+  -h, --help             Show this help message
 
 Examples:
-  $(basename "$0")                                # Upgrade to latest GA
-  $(basename "$0") --dry-run                      # Preview upgrade without changes
-  $(basename "$0") --version 9.1.2                # Pin to a specific version
-  $(basename "$0") --rollback                     # Restore from backup
+  $(basename "$0")                                # Stack upgrade to latest GA
+  $(basename "$0") --dry-run                      # Preview Stack upgrade
+  $(basename "$0") --version 9.1.2                # Stack pin to a specific version
+  $(basename "$0") --check-chart                  # Report OCI chart pin status
+  $(basename "$0") --upgrade-chart --dry-run      # Preview chart bump (render diff)
+  $(basename "$0") --upgrade-chart                # Bump chart to latest publisher tag
+  $(basename "$0") --upgrade-chart --chart-version 0.1.2  # Pin chart to specific tag
+  $(basename "$0") --rollback                     # Restore from backup (Stack or chart)
 EOF
   exit 0
 }
 
-# Read the version field from a backup's values file.
-# Usage: read_backup_version <backup_dir>
+# Backup type classifier. Chart-pin bumps use `<TIMESTAMP>-chart` directories
+# and store helmfile.yaml; Stack bumps use plain `<TIMESTAMP>` and store the
+# values file. Returns: "chart" | "stack" | "unknown".
+classify_backup() {
+  local dir="$1"
+  local name
+  name=$(basename "$dir")
+  if [[ "$name" == *"-chart" ]] || [ -f "$dir/helmfile.yaml" ]; then
+    echo "chart"
+  elif [ -f "$dir/$(basename "$VALUES_FILE")" ]; then
+    echo "stack"
+  else
+    echo "unknown"
+  fi
+}
+
+# Read the tracked version from a backup, chosen by backup type.
+#   stack : reads <VALUES_FILE>.<VERSION_KEY>
+#   chart : reads helmfile.yaml's chart pin (first indented 'version:')
 read_backup_version() {
   local dir="$1"
-  local f="$dir/$(basename "$VALUES_FILE")"
-  [ -f "$f" ] || { echo ""; return; }
-  awk -v k="$VERSION_KEY" '
-    $0 ~ "^" k ":" {
-      sub("^" k ":[[:space:]]*", "")
-      gsub(/^["\x27]|["\x27]$/, "")
-      sub(/[[:space:]]+#.*$/, "")
-      print
-      exit
-    }
-  ' "$f"
+  local kind
+  kind=$(classify_backup "$dir")
+  local f=""
+  local key=""
+  case "$kind" in
+    stack)
+      f="$dir/$(basename "$VALUES_FILE")"
+      key="$VERSION_KEY"
+      [ -f "$f" ] || { echo ""; return; }
+      awk -v k="$key" '
+        $0 ~ "^" k ":" {
+          sub("^" k ":[[:space:]]*", "")
+          gsub(/^["\x27]|["\x27]$/, "")
+          sub(/[[:space:]]+#.*$/, "")
+          print
+          exit
+        }
+      ' "$f"
+      ;;
+    chart)
+      f="$dir/helmfile.yaml"
+      [ -f "$f" ] || { echo ""; return; }
+      awk '
+        /^[[:space:]]+version:[[:space:]]/ {
+          sub(/^[[:space:]]+version:[[:space:]]*/, "")
+          gsub(/["\x27]/, "")
+          sub(/[[:space:]]+#.*$/, "")
+          print
+          exit
+        }
+      ' "$f"
+      ;;
+    *)
+      echo ""
+      ;;
+  esac
 }
 
 list_backups() {
@@ -86,11 +144,19 @@ list_backups() {
 
   local i=1
   for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
-    local dirname=$(basename "$dir")
-    local ver=""
+    local dirname
+    dirname=$(basename "$dir")
+    local kind ver label
+    kind=$(classify_backup "$dir")
     ver=$(read_backup_version "$dir")
-    local files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
-    printf "  [%d] %s (%s: %s) — %s\n" "$i" "$dirname" "$VERSION_KEY" "${ver:-unknown}" "$files"
+    case "$kind" in
+      chart) label="chart" ;;
+      stack) label="$VERSION_KEY" ;;
+      *)     label="backup" ;;
+    esac
+    local files
+    files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+    printf "  [%d] %s (%s: %s) — %s\n" "$i" "$dirname" "$label" "${ver:-unknown}" "$files"
     i=$((i + 1))
   done
   echo ""
@@ -119,6 +185,25 @@ do_rollback() {
 
   local selected="${backups[$((choice - 1))]}"
   local dirname=$(basename "$selected")
+  local kind
+  kind=$(classify_backup "$selected")
+
+  # Chart-pin rollback takes a separate path: restore helmfile.yaml only,
+  # no live-CR downgrade to worry about.
+  if [ "$kind" = "chart" ]; then
+    echo ""
+    echo "Restoring chart pin from backup/$dirname..."
+    if [ -f "$selected/helmfile.yaml" ]; then
+      cp "$selected/helmfile.yaml" "$CHART_DIR/helmfile.yaml"
+      echo "  Restored helmfile.yaml"
+      echo ""
+      echo "Chart pin rollback complete! Run 'helmfile diff', then 'helmfile apply'."
+    else
+      echo "  WARN: backup does not contain helmfile.yaml; nothing to restore."
+      exit 1
+    fi
+    return
+  fi
 
   # Read the backup version to detect downgrades.
   local backup_ver=""
@@ -617,11 +702,362 @@ verify_image_exists() {
 }
 
 # -----------------------------------------------
+# OCI chart pin helpers (helmfile.yaml.version)
+# -----------------------------------------------
+
+# Read the OCI chart URL from helmfile.yaml (first 'chart:' key under releases).
+read_helmfile_chart_url() {
+  [ -f "$CHART_DIR/helmfile.yaml" ] || { echo ""; return; }
+  awk '
+    $1 == "chart:" {
+      sub(/^[[:space:]]*chart:[[:space:]]*/, "")
+      gsub(/["\x27]/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      print
+      exit
+    }
+  ' "$CHART_DIR/helmfile.yaml"
+}
+
+# Read the chart pin (first 'version:' under a release in helmfile.yaml).
+read_helmfile_chart_pin() {
+  [ -f "$CHART_DIR/helmfile.yaml" ] || { echo ""; return; }
+  awk '
+    /^[[:space:]]+version:[[:space:]]/ {
+      sub(/^[[:space:]]+version:[[:space:]]*/, "")
+      gsub(/["\x27]/, "")
+      sub(/[[:space:]]+#.*$/, "")
+      print
+      exit
+    }
+  ' "$CHART_DIR/helmfile.yaml"
+}
+
+# Replace the chart pin in helmfile.yaml, preserving the original quoting style
+# (double quotes, single quotes, or bare). Only touches the first indented
+# 'version:' line so top-level YAML keys are safe.
+update_helmfile_chart_pin() {
+  local new="$1"
+  local file="$CHART_DIR/helmfile.yaml"
+  local tmp
+  tmp=$(mktemp)
+  awk -v v="$new" '
+    BEGIN { done = 0 }
+    {
+      if (!done && $0 ~ /^[[:space:]]+version:[[:space:]]/) {
+        line = $0
+        if (match(line, /: *"[^"]*"/)) {
+          sub(/"[^"]*"/, "\"" v "\"", line)
+        } else if (match(line, /: *\x27[^\x27]*\x27/)) {
+          sub(/\x27[^\x27]*\x27/, "\x27" v "\x27", line)
+        } else {
+          sub(/version:[[:space:]]+[^[:space:]#]+/, "version: " v, line)
+        }
+        print line
+        done = 1
+        next
+      }
+      print
+    }
+  ' "$file" > "$tmp"
+  mv "$tmp" "$file"
+}
+
+# Fetch sorted list of chart versions from the publisher (newest first).
+# Filters by CHART_NAME prefix (e.g. "elasticsearch-eck-X.Y.Z").
+list_chart_versions() {
+  case "$CHART_SOURCE_TYPE" in
+    github-releases)
+      [ -z "$CHART_SOURCE_REPO" ] && return 0
+      [ -z "$CHART_NAME" ] && return 0
+      local url="https://api.github.com/repos/$CHART_SOURCE_REPO/releases?per_page=100"
+      curl -sSfL "$url" 2>/dev/null | CHART_NAME="$CHART_NAME" python3 -c "
+import json, sys, re, os
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+prefix = os.environ.get('CHART_NAME', '') + '-'
+tags = [r.get('tag_name', '') for r in d
+        if not r.get('prerelease') and not r.get('draft')]
+vers = []
+for t in tags:
+    if t.startswith(prefix):
+        v = t[len(prefix):]
+        if re.fullmatch(r'\d+\.\d+\.\d+', v):
+            vers.append(v)
+vers.sort(key=lambda v: tuple(int(p) for p in v.split('.')), reverse=True)
+for v in vers:
+    print(v)
+" 2>/dev/null
+      ;;
+    *)
+      ;;
+  esac
+}
+
+fetch_latest_chart_version() {
+  list_chart_versions | head -1
+}
+
+# Read release name from helmfile.yaml for use with `helm template`.
+read_helmfile_release_name() {
+  [ -f "$CHART_DIR/helmfile.yaml" ] || { echo ""; return; }
+  awk '/^[[:space:]]*-[[:space:]]*name:/ {
+    sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "")
+    gsub(/["\x27]/, "")
+    print
+    exit
+  }' "$CHART_DIR/helmfile.yaml"
+}
+
+# Guard: --check-chart / --upgrade-chart require CHART_SOURCE_TYPE configured.
+require_chart_source_configured() {
+  if [ -z "$CHART_SOURCE_TYPE" ]; then
+    echo "ERROR: chart pin tracking is not configured for this component."
+    echo "       Set CHART_SOURCE_TYPE / CHART_SOURCE_REPO / CHART_NAME in the"
+    echo "       CONFIG block of $(basename "$0") to enable --check-chart /"
+    echo "       --upgrade-chart."
+    exit 1
+  fi
+  if [ -z "$CHART_SOURCE_REPO" ] || [ -z "$CHART_NAME" ]; then
+    echo "ERROR: CHART_SOURCE_REPO and CHART_NAME must both be set when"
+    echo "       CHART_SOURCE_TYPE='$CHART_SOURCE_TYPE'."
+    exit 1
+  fi
+}
+
+# --check-chart: report current chart pin vs. latest publisher release.
+# Read-only; no files touched.
+do_check_chart() {
+  require_chart_source_configured
+
+  echo "================================================"
+  echo " Chart pin check — $CHART_NAME"
+  echo "================================================"
+  echo ""
+
+  local current latest
+  current=$(read_helmfile_chart_pin)
+  if [ -z "$current" ]; then
+    echo "  ERROR: could not read chart pin from helmfile.yaml."
+    exit 1
+  fi
+  echo "  Current pin (helmfile.yaml): $current"
+
+  echo "  Querying $CHART_SOURCE_TYPE for $CHART_SOURCE_REPO (prefix '$CHART_NAME-*')..."
+  latest=$(fetch_latest_chart_version)
+  if [ -z "$latest" ]; then
+    echo ""
+    echo "  ERROR: no matching release found in $CHART_SOURCE_REPO."
+    echo "  Verify CHART_NAME='$CHART_NAME' matches the release tag prefix."
+    exit 1
+  fi
+  echo "  Latest upstream:             $latest"
+  echo ""
+
+  if [ "$current" = "$latest" ]; then
+    echo "  Status: OK — chart pin is up to date."
+  else
+    local cmp
+    cmp=$(semver_compare "$current" "$latest")
+    if [ "$cmp" = "1" ]; then
+      echo "  Status: AHEAD — local pin ($current) is newer than the latest"
+      echo "          published release ($latest). Probably a manual override."
+    else
+      echo "  Status: UPDATE AVAILABLE — $current -> $latest"
+      echo "  Release notes: https://github.com/$CHART_SOURCE_REPO/releases/tag/$CHART_NAME-$latest"
+      echo ""
+      echo "  To preview:  $(basename "$0") --upgrade-chart --dry-run"
+      echo "  To apply:    $(basename "$0") --upgrade-chart"
+    fi
+  fi
+  echo ""
+}
+
+# --upgrade-chart: bump helmfile.yaml.version. Downloads current + target
+# charts, renders both with the active values file, and shows a unified diff
+# so the operator can spot values-schema breakages before applying.
+do_upgrade_chart() {
+  require_chart_source_configured
+
+  local current target
+  current=$(read_helmfile_chart_pin)
+  if [ -z "$current" ]; then
+    echo "ERROR: could not read chart pin from helmfile.yaml."
+    exit 1
+  fi
+
+  echo "================================================"
+  echo " Chart pin upgrade — $CHART_NAME"
+  if $DRY_RUN; then
+    echo " Mode: DRY-RUN (no files will be changed)"
+  fi
+  echo "================================================"
+  echo ""
+
+  echo "[Step 1/5] Resolving target chart version..."
+  if [ -n "$TARGET_CHART_VERSION" ]; then
+    target="$TARGET_CHART_VERSION"
+    echo "  Using explicit target: $target"
+  else
+    target=$(fetch_latest_chart_version)
+    if [ -z "$target" ]; then
+      echo "  ERROR: no matching release found in $CHART_SOURCE_REPO (prefix '$CHART_NAME-*')."
+      exit 1
+    fi
+    echo "  Current pin:     $current"
+    echo "  Latest upstream: $target"
+  fi
+
+  if [ "$current" = "$target" ]; then
+    echo ""
+    echo "  Already up to date. Nothing to do."
+    exit 0
+  fi
+
+  # Step 2: fetch both chart versions to a scratch dir.
+  echo ""
+  echo "[Step 2/5] Pulling charts to a scratch directory..."
+  if ! command -v helm >/dev/null 2>&1; then
+    echo "  ERROR: helm not found on PATH. Install helm to use --upgrade-chart."
+    exit 1
+  fi
+  local chart_url
+  chart_url=$(read_helmfile_chart_url)
+  if [ -z "$chart_url" ]; then
+    echo "  ERROR: could not read chart URL from helmfile.yaml."
+    exit 1
+  fi
+  echo "  Chart: $chart_url"
+
+  local scratch
+  scratch=$(mktemp -d)
+  # shellcheck disable=SC2064
+  trap "rm -rf '$scratch'" EXIT
+
+  local cur_dir="$scratch/current" tgt_dir="$scratch/target"
+  mkdir -p "$cur_dir" "$tgt_dir"
+
+  if ! helm pull "$chart_url" --version "$current" -d "$cur_dir" --untar >/dev/null 2>&1; then
+    echo "  ERROR: helm pull failed for $chart_url@$current."
+    echo "         Check that the version is published and accessible."
+    exit 1
+  fi
+  if ! helm pull "$chart_url" --version "$target" -d "$tgt_dir" --untar >/dev/null 2>&1; then
+    echo "  ERROR: helm pull failed for $chart_url@$target."
+    echo "         Check that the version is published and accessible."
+    exit 1
+  fi
+  echo "  Pulled $current and $target."
+
+  # Step 3: render both with the active values file and diff.
+  echo ""
+  echo "[Step 3/5] Rendering both charts with $VALUES_FILE and diffing..."
+  local release_name
+  release_name=$(read_helmfile_release_name)
+  [ -z "$release_name" ] && release_name="$COMPONENT_LABEL"
+
+  local cur_chart tgt_chart
+  cur_chart=$(find "$cur_dir" -maxdepth 2 -name Chart.yaml -print -quit 2>/dev/null | xargs -I{} dirname {})
+  tgt_chart=$(find "$tgt_dir" -maxdepth 2 -name Chart.yaml -print -quit 2>/dev/null | xargs -I{} dirname {})
+  if [ -z "$cur_chart" ] || [ -z "$tgt_chart" ]; then
+    echo "  ERROR: could not locate unpacked Chart.yaml. helm pull layout unexpected."
+    exit 1
+  fi
+
+  local cur_render="$scratch/current-render.yaml" tgt_render="$scratch/target-render.yaml"
+  local render_err="$scratch/render-err"
+  if ! helm template "$release_name" "$cur_chart" -f "$CHART_DIR/$VALUES_FILE" \
+      > "$cur_render" 2>"$render_err"; then
+    echo "  ERROR: helm template failed on current chart ($current)."
+    echo "  Details:"
+    sed 's/^/    /' "$render_err"
+    exit 1
+  fi
+  if ! helm template "$release_name" "$tgt_chart" -f "$CHART_DIR/$VALUES_FILE" \
+      > "$tgt_render" 2>"$render_err"; then
+    echo ""
+    echo "  ERROR: helm template failed on target chart ($target). Possible values"
+    echo "         schema breakage or a mandatory new field. Details:"
+    sed 's/^/    /' "$render_err"
+    echo ""
+    echo "  Review the chart's release notes and values changes:"
+    echo "    https://github.com/$CHART_SOURCE_REPO/releases/tag/$CHART_NAME-$target"
+    exit 1
+  fi
+
+  local diff_file="$scratch/render.diff"
+  diff -u "$cur_render" "$tgt_render" > "$diff_file" || true
+  if [ ! -s "$diff_file" ]; then
+    echo "  Rendered manifests are identical (label-only or pure refactor chart bump)."
+  else
+    local diff_lines
+    diff_lines=$(wc -l < "$diff_file" | tr -d ' ')
+    echo "  Rendered manifest diff ($diff_lines lines):"
+    echo "  ---------------------------------------------"
+    sed 's/^/  | /' "$diff_file"
+    echo "  ---------------------------------------------"
+  fi
+
+  # Step 4: dry-run exit or backup + apply.
+  echo ""
+  echo "[Step 4/5] Applying chart pin update..."
+
+  if $DRY_RUN; then
+    echo "  [DRY-RUN] Would bump helmfile.yaml.version: $current -> $target"
+    echo "  [DRY-RUN] Would back up helmfile.yaml to backup/${TIMESTAMP}-chart/"
+    echo ""
+    echo "  To apply: $(basename "$0") --upgrade-chart"
+    [ -n "$TARGET_CHART_VERSION" ] && echo "  To apply: $(basename "$0") --upgrade-chart --chart-version $TARGET_CHART_VERSION"
+    exit 0
+  fi
+
+  echo ""
+  read -rp "  Apply chart pin update $current -> $target? [y/N]: " confirm
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "  Aborted."
+    exit 1
+  fi
+
+  local bdir="$BACKUP_DIR/${TIMESTAMP}-chart"
+  mkdir -p "$bdir"
+  cp "$CHART_DIR/helmfile.yaml" "$bdir/helmfile.yaml"
+  echo "  Backed up helmfile.yaml to: backup/${TIMESTAMP}-chart/"
+
+  update_helmfile_chart_pin "$target"
+  echo "  Updated helmfile.yaml (chart version: $current -> $target)"
+
+  auto_prune_backups
+
+  # Step 5: next-steps footer.
+  echo ""
+  echo "[Step 5/5] Chart pin bump complete."
+  echo ""
+  echo "================================================"
+  echo " Chart pin bump complete! ($current -> $target)"
+  echo ""
+  echo " Release notes: https://github.com/$CHART_SOURCE_REPO/releases/tag/$CHART_NAME-$target"
+  echo ""
+  echo " Next steps:"
+  echo "   1. Run: helmfile diff"
+  echo "   2. Run: helmfile apply"
+  echo "   3. Watch CR: kubectl -n <ns> get $COMPONENT_LABEL -w"
+  echo ""
+  echo " To rollback the chart pin:"
+  echo "   $(basename "$0") --rollback   # pick the *-chart timestamp"
+  echo "================================================"
+  exit 0
+}
+
+# -----------------------------------------------
 # Argument parsing
 # -----------------------------------------------
 
 DRY_RUN=false
 TARGET_VERSION=""
+TARGET_CHART_VERSION=""
+CHART_ACTION=""   # "" | check | upgrade
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -630,6 +1066,16 @@ while [[ $# -gt 0 ]]; do
     --rollback)         do_rollback; exit 0 ;;
     --cleanup-backups)  cleanup_backups; exit 0 ;;
     --dry-run)          DRY_RUN=true; shift ;;
+    --check-chart)      CHART_ACTION="check"; shift ;;
+    --upgrade-chart)    CHART_ACTION="upgrade"; shift ;;
+    --chart-version)
+      TARGET_CHART_VERSION="${2:-}"
+      if [ -z "$TARGET_CHART_VERSION" ]; then
+        echo "ERROR: --chart-version requires a version number"
+        exit 1
+      fi
+      shift 2
+      ;;
     --version)
       TARGET_VERSION="${2:-}"
       if [ -z "$TARGET_VERSION" ]; then
@@ -641,6 +1087,12 @@ while [[ $# -gt 0 ]]; do
     *)   echo "Unknown option: $1"; echo ""; usage ;;
   esac
 done
+
+# Dispatch chart-pin subcommands before the Stack-version flow.
+case "$CHART_ACTION" in
+  check)   do_check_chart; exit 0 ;;
+  upgrade) do_upgrade_chart ;;
+esac
 
 # -----------------------------------------------
 # Main upgrade flow

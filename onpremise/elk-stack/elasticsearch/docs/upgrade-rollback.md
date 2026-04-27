@@ -4,9 +4,9 @@ Covers both Elasticsearch and Kibana. Describes the safety features in `upgrade.
 
 Both ES and Kibana use the `external-oci-cr-version` canonical template, so this guide applies to both.
 
-> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/mgmt.yaml`. That's the rolling-update path.
+> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/mgmt.yaml` (the rolling-update path), **and** bumping the **OCI chart pin** in `helmfile.yaml` via `upgrade.sh --check-chart` / `--upgrade-chart` (which absorbs chart template/values schema changes).
 >
-> **NOT in scope**: bumping the **OCI chart version** in `helmfile.yaml`. The chart pin is edited manually (see "OCI chart pin bump" in the README). Chart bumps often come with template / values-schema changes, so always review `helmfile diff` before applying.
+> Stack version and OCI chart pin are **two independent axes**. The bulk of this guide covers the Stack-version path; the final section [OCI chart pin bump](#oci-chart-pin-bump-separate-path) covers the chart-pin path separately.
 
 <br/>
 
@@ -360,30 +360,35 @@ Before rollback:
 
 ## OCI chart pin bump (separate path)
 
-`upgrade.sh` does NOT touch the chart version. Procedure to consume a new chart release:
+Tracks `helmfile.yaml`'s `version:` (publisher chart release tag) independently of the Stack version, via the `--check-chart` / `--upgrade-chart` sub-commands of `upgrade.sh`.
 
 ```bash
-# 1. Review the chart's release notes (breaking changes?)
-open https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck
-open https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck
+# 1. Compare the current pin with the latest publisher release (read-only)
+./upgrade.sh --check-chart
 
-# 2. Check the latest chart version
-helm show chart oci://ghcr.io/somaz94/charts/elasticsearch-eck | grep '^version:'
+# 2. Preview via dry-run: pull both chart versions, render each with the
+#    active values file, print a unified diff. No files touched. Values-schema
+#    breakage surfaces as a helm template failure on the target chart.
+./upgrade.sh --upgrade-chart --dry-run
 
-# 3. Edit helmfile.yaml (version: "0.1.1" → "0.2.0", etc.)
+# 3. Apply: review the diff, confirm, then back up helmfile.yaml to
+#    backup/<TIMESTAMP>-chart/ and bump the pin
+./upgrade.sh --upgrade-chart
 
-# 4. Review the actual diff
-helmfile diff
+# 4. Pin to a specific version
+./upgrade.sh --upgrade-chart --chart-version 0.1.2
 
-# 5. Apply (if the diff looks right)
-helmfile apply
+# 5. Reflect in the cluster
+helmfile diff && helmfile apply
 ```
 
-Chart version bumps may carry **values-schema changes** — scrutinize `helmfile diff` output. If the schema has changed, you may also need to adjust `values/mgmt.yaml`. Keep chart bumps in a **separate commit** from Stack bumps so you can isolate the cause if something goes wrong.
+**Why separate from Stack**: chart release cadence (~quarterly) differs from Stack release cadence (~1–2× / month), and chart bumps may carry template/values schema changes. Keep the two in **separate commits** so you can isolate the cause if something breaks.
 
-Rollback paths:
-- File level: `git revert` the `helmfile.yaml` change, then `helmfile apply`
-- Cluster level: `helm rollback elasticsearch <previous-revision> -n logging`
+**Schema-breakage preflight**: `--upgrade-chart` runs `helm template` on both the current and target chart. If the target chart's values schema changed in a way your `values/mgmt.yaml` can't satisfy, the script aborts before touching any file and prints the release notes URL.
+
+**Chart pin rollback**: `./upgrade.sh --rollback` — pick the entry whose timestamp ends in `-chart`. Only `helmfile.yaml` is restored. No live CR version change, so the webhook bypass path is skipped. Cluster-level rollback (`helm rollback elasticsearch <previous-revision> -n logging`) remains available if needed.
+
+**Fleet-wide survey**: from the repo root, `./scripts/upgrade-sync/check-versions.sh` — the bottom "OCI chart pin status" table shows chart-pin drift across elasticsearch and kibana at a glance.
 
 <br/>
 
