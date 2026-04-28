@@ -2,14 +2,14 @@ pipeline {
     agent any
     
     environment {
-        APP_NAME = 'somaz'
-        GIT_URL = 'http://10.10.10.7/client/somaz'
+        APP_NAME = 'example-user'
+        GIT_URL = 'http://192.168.1.7/client/example-user'
         UNITY_PATH = '/Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
         UNITY_FUNCTION = 'BuilderJenkins.Build'
-        PROJECT_GIT_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS'
-        PROJECT_XCODE_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS/XCode'
+        PROJECT_GIT_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/example-user_iOS'
+        PROJECT_XCODE_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/example-user_iOS/XCode'
         ORIGINAL_VERSION = ""
-        PLIST_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/Somaz_iOS/XCode/ios-build/Info.plist'
+        PLIST_PATH = '/Volumes/ExtremeSSD/JenkinsWorkspace/example-user_iOS/XCode/ios-build/Info.plist'
     }
     
     stages {
@@ -103,7 +103,7 @@ pipeline {
                 sh """
                     echo "TestFlight upload starting"
                     cd ${env.PROJECT_XCODE_PATH}/ios-build
-                    /usr/bin/xcrun altool --upload-app --type ios --file ${env.APP_NAME}.ipa --username client@somaz.link --password nxxx-axxx-gxxx-fxxx
+                    /usr/bin/xcrun altool --upload-app --type ios --file ${env.APP_NAME}.ipa --username client@example.com --password nxxx-axxx-gxxx-fxxx
                     echo "TestFlight upload completed"    
                 """
             }

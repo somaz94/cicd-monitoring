@@ -11,7 +11,7 @@ pipeline {
     // Configuration for Git, Unity, and deployment paths
     environment {
         // Git repository configuration
-        GIT_URL = 'http://10.10.10.7/client/somaz'
+        GIT_URL = 'http://192.168.1.7/client/example-user'
         UNITY_PATH = ' /Applications/Unity/Hub/Editor/2022.3.17f1/Unity.app/Contents/MacOS/Unity'
         UNITY_FUNCTION = 'BuilderJenkins.HotfixLua'
     	
@@ -21,13 +21,13 @@ pipeline {
     	PROJECT_UPLOAD_PATH_VER = "${WORKSPACE}/Assets/StreamingAssets/lua/${PROJECT_VERSION_DATA_NAME}"
     	
     	// S3 configuration for live deployment
-        S3_BUCKET = 's3://cdn.somaz'
-        S3_PATH = "/somaz-hero/Lua/${APP_VERSION}"
+        S3_BUCKET = 's3://example-cdn'
+        S3_PATH = "/example-app/Lua/${APP_VERSION}"
         PATH = "$PATH:/usr/local/bin"  // AWS CLI path
         
         // NAS configuration for development deployment
         UPLOAD_SSH_KEY = '/Volumes/ExtremeSSD/JenkinsWorkspace/NasPrivateKey'
-        UPLOAD_USER = 'somaz@somaz-cluster.somaz.link'
+        UPLOAD_USER = 'admin@example-cluster.example.com'
     }
 
     stages {
@@ -49,7 +49,7 @@ pipeline {
                     branches: [[name: "${BRANCH}"]],
                     doGenerateSubmoduleConfigurations: false,
                     extensions: [[$class: 'CloneOption', timeout: 300]],
-                    userRemoteConfigs: [[credentialsId: 'cjkang', url: "${env.GIT_URL}"]]
+                    userRemoteConfigs: [[credentialsId: 'dev', url: "${env.GIT_URL}"]]
                 ])
                 script {
                     // Update to latest version
@@ -77,8 +77,8 @@ pipeline {
             steps {
                 script {
                     def envKey = params.GAME_SERVER.toLowerCase()
-                    def UPLOAD_PATH = "/mnt/nfs/somaz/${envKey}/client/lua"
-                    def UPLOAD_SERVER_PATH = "${env.UPLOAD_USER}:/mnt/nfs/somaz/${envKey}/server/version"
+                    def UPLOAD_PATH = "/mnt/nfs/example-user/${envKey}/client/lua"
+                    def UPLOAD_SERVER_PATH = "${env.UPLOAD_USER}:/mnt/nfs/example-user/${envKey}/server/version"
 
                     // Load version information
                     echo "Json load process..."
@@ -101,7 +101,7 @@ pipeline {
                     sh """
                         echo "Server version upload process..."
                         cp "${PROJECT_UPLOAD_PATH_VER}" "${WORKSPACE}/temp.json"
-                        curl -s -f https://file-server.somaz.link/somaz/${envKey}/server/version/LuaVersion.json > "${WORKSPACE}/LuaVersion.json" || echo '[]' > "${WORKSPACE}/LuaVersion.json"
+                        curl -s -f https://file-server.example.com/example-user/${envKey}/server/version/LuaVersion.json > "${WORKSPACE}/LuaVersion.json" || echo '[]' > "${WORKSPACE}/LuaVersion.json"
                         
                         NEW_VERSION=\$(/opt/homebrew/bin/jq -r '.version' "${WORKSPACE}/temp.json")
                         NEW_APP_VERSION=\$(/opt/homebrew/bin/jq -r '.appVersion' "${WORKSPACE}/temp.json")
@@ -125,9 +125,9 @@ pipeline {
                     sh """
                         echo "Notifying admin API about new Lua version..."
                         curl -X 'POST' \\
-                          'http://${envKey}-admin.pm.somaz.link/versions/lua/publish' \\
+                          'http://${envKey}-admin.pm.example.com/versions/lua/publish' \\
                           -H 'accept: application/json' \\
-                          -H 'X-API-KEY: somaz-super-user'
+                          -H 'X-API-KEY: example-user-super-user'
                         echo "API notification complete"
                     """
                 }

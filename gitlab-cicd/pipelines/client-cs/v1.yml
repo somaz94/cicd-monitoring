@@ -10,7 +10,7 @@ variables:
     value: "admin"
     description: "Select admin or etc"
 
-  IMAGE_PROJECT: souls
+  IMAGE_PROJECT: secondary-project
   CI_REGISTRY_IMAGE: $CI_REGISTRY/$IMAGE_PROJECT/$SERVICE
   BUILD_TAG: $CI_COMMIT_SHORT_SHA
   BUILD_TAG_LATEST: latest
