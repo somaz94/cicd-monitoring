@@ -117,10 +117,27 @@ read_template_header() {
 # Used by --insert-headers and --check --no-header.
 detect_template() {
   local f="$1"
-  if grep -q '^GITHUB_REPO=' "$f"; then
+  # external-oci must precede ansible-github-release: both define GITHUB_REPO=,
+  # but only OCI charts have HELM_CHART starting with oci://.
+  # Within OCI: external-oci-with-mirror is a superset that defines a
+  # `do_mirror()` Bash function for image mirroring; without it, the file
+  # uses the plain external-oci body.
+  if grep -qE '^HELM_CHART=("|'"'"')?oci://' "$f"; then
+    if grep -qE '^do_mirror\(\)' "$f"; then
+      echo "external-oci-with-mirror"
+    else
+      echo "external-oci"
+    fi
+  elif grep -q '^GITHUB_REPO=' "$f"; then
     echo "ansible-github-release"
   elif grep -q '^VERSION_SOURCE=' "$f"; then
-    echo "local-cr-version"
+    # local-cr-version owns Chart.yaml (and therefore has MIRROR_CHART_VERSION=);
+    # external-oci-cr-version consumes an upstream OCI chart and has no Chart.yaml.
+    if grep -q '^MIRROR_CHART_VERSION=' "$f"; then
+      echo "local-cr-version"
+    else
+      echo "external-oci-cr-version"
+    fi
   elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
     echo "local-with-templates"
   elif grep -q 'Update image tags in values files' "$f"; then
