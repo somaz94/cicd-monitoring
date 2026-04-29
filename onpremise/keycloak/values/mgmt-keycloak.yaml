@@ -1,0 +1,68 @@
+# Keycloak CR + HTTPRoute on the mgmt (example dev) cluster.
+# Consumed by the helmfile release `keycloak` (oci://ghcr.io/somaz94/charts/keycloak-cr@0.1.0).
+# Operator + CRDs must already be installed via ../keycloak-operator/.
+
+# Keycloak CR — primary resource.
+keycloak:
+  # Single instance for mgmt (dev cluster, no HA). HA opt-in requires distributed cache config — out of scope.
+  instances: 1
+
+  # Hostname for client redirects + admin console. Required when proxy.headers != "" to avoid admin redirect loops.
+  hostname:
+    hostname: auth.example.com
+    strict: true
+
+  # NGF terminates TLS at the gateway. Keycloak runs HTTP only behind NGF.
+  proxy:
+    headers: xforwarded
+
+  http:
+    httpEnabled: true
+
+  # DB connection — references the Secret rendered by the keycloak-postgresql release (= chart fullname `keycloak-postgresql`).
+  # Keys default to username
+  db:
+    vendor: postgres
+    host: keycloak-postgresql.keycloak.svc
+    database: keycloak
+    existingSecret: keycloak-postgresql
+
+  # Resources for the Keycloak server Pods (operator-spawned StatefulSet).
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# Realm import — disabled at first apply. Phase 3 (UI
+realmImport:
+  enabled: false
+
+# HTTPRoute attached to NGF `ngf` Gateway https listener (wildcard-example-tls).
+# Same pattern as cicd/argo-cd, security/vaultwarden, ghost.
+httproute:
+  enabled: true
+  parentRefs:
+    - name: ngf
+      namespace: nginx-gateway
+      sectionName: https
+  hostnames:
+    - auth.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - port: 8080                 # name defaults to "<release>-service" / name default = "<release>-service"
+
+  # Companion HTTPRoute that 301-redirects HTTP → HTTPS on the http listener.
+  httpsRedirect:
+    enabled: true
+    statusCode: 301
+    parentRefs:
+      - name: ngf
+        namespace: nginx-gateway
+        sectionName: http

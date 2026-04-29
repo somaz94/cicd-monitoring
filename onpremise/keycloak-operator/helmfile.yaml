@@ -1,0 +1,20 @@
+# Keycloak Operator install via somaz94/helm-charts OCI chart.
+# Operator 한 개만 띄우고 실 Keycloak 인스턴스는 ../keycloak/ 컴포넌트가 담당. / Operator only; the actual Keycloak instance is provisioned by the sibling ../keycloak/ component.
+# Chart version pinned. Bump via ./upgrade.sh (external-oci template).
+releases:
+  - name: keycloak-operator
+    namespace: keycloak-system
+    chart: oci://ghcr.io/somaz94/charts/keycloak-operator
+    version: "0.1.1"
+    values:
+      - values/mgmt.yaml
+
+# Ensure target namespace exists before sync (idempotent no-op when present).
+# kubectl args 는 shell 해석이 안 되어 sh -c 로 || true 가 유효. / kubectl args do not get shell-interpreted, so sh -c is required for `|| true` to work.
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - "kubectl create namespace keycloak-system 2>/dev/null || true"

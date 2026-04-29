@@ -11,19 +11,60 @@ configs:
     # Hard reconciliation timeout (default: 0s, disabled)
     # Setting to 0 prevents forced termination of reconciliation operations
     timeout.hard.reconciliation: 0s
-    # Add account settings
+    # =============================================================================
+    # SSO — Keycloak OpenID Connect (Phase 6, 2026-04-29+)
+    #
+    # ArgoCD dex 가 Keycloak `example` realm 의 `argocd` 클라이언트로 OIDC 연결. / ArgoCD dex talks OIDC to Keycloak `example` realm `argocd` client.
+    # Keycloak 이 GitLab 을 IdP brokering → 사용자 자격증명은 기존 GitLab 그대로.
+    # group claim 이름 (`server`, `global-admin`) 동일 유지 → 아래 policy.csv 무수정.
+    # insecureSkipVerify: wildcard self-signed cert 신뢰 우회 (cert-manager 도입 전까지). / bypass wildcard self-signed cert trust (until cert-manager).
+    # 마이그레이션 절차: security/keycloak/docs/argocd-migration.md / Migration procedure: security/keycloak/docs/argocd-migration.md
+    # =============================================================================
     dex.config: |
       connectors:
-        - type: gitlab
-          id: gitlab
-          name: GitLab
+        - type: oidc
+          id: keycloak
+          name: Keycloak
           config:
-            baseURL: http://gitlab.example.com
-            clientID: <GITLAB_CLIENT_ID>
-            clientSecret: <GITLAB_CLIENT_SECRET>
+            issuer: https://auth.example.com/realms/example
+            clientID: argocd
+            clientSecret: G821cLHAGckf46ZP8VIynmvpL5EO1vVT
             redirectURI: https://argocd.example.com/api/dex/callback
-            groups:
-              - server
+            # scopes 명시 안 함 — dex default (openid + profile + email) 사용.
+            # Keycloak `example` realm 에 별도 `groups` client-scope 가 없고, argocd 클라이언트의 / The `example` realm has no separate `groups` client-scope; the argocd client's
+            # client 직속 protocol-mapper (oidc-group-membership-mapper) 가 token 에 groups claim / direct protocol-mapper (oidc-group-membership-mapper) injects the groups claim
+            # 을 자동 추가하므로 scope 요청 불필요. scopes: [openid groups] 명시 시 Keycloak 이 / into the token, so requesting it as a scope is unnecessary. Specifying scopes:
+            # `Invalid scopes: openid openid ... groups` 로 reject (groups 는 unknown scope, openid 는 dex 자동 prepend 와 중복).
+            insecureSkipVerify: true
+            # Keycloak 이 default mapper config 로 groups claim 을 ID token 에는 안 넣고 userinfo / Keycloak's default mapper config does not put groups claim into the ID token,
+            # endpoint 에서만 리턴 → dex 가 userinfo endpoint 도 호출해서 groups claim 을 가져오도록.
+            # 미설정 시 ArgoCD JWT 의 groups claim 이 [] 가 되어 policy.csv 의 g, server,... 매칭 / Without this, the ArgoCD JWT's groups claim becomes [], breaking policy.csv `g, server, ...`
+            # 실패 → 권한 0 → 무한 로딩.
+            getUserInfo: true
+            # dex 의 oidc connector 는 default 로 groups claim 을 무시 (security default). / dex's oidc connector ignores the groups claim by default (security default).
+            # 본 옵션 활성 시 dex 가 upstream 의 groups claim 을 ArgoCD JWT 에 forward. / When enabled, dex forwards the upstream's groups claim into the ArgoCD JWT.
+            # 미설정 시 Keycloak token 에 groups: [server] 가 있어도 dex 로그에 groups=[] 로 / Without this, dex shows groups=[] in logs even when the Keycloak token contains
+            # 표시되어 RBAC 매칭 실패. / groups: [server], breaking RBAC matching.
+            insecureEnableGroups: true
+
+    # -----------------------------------------------------------------------------
+    # Legacy: GitLab-direct dex connector (pre-Phase 6) — preserved for rollback only
+    # -----------------------------------------------------------------------------
+    # 2026-04-29 까지 ArgoCD 는 GitLab 을 dex connector 로 직결 사용. / Until 2026-04-29 ArgoCD used GitLab directly as dex connector.
+    # 롤백 시: 위 dex.config 의 oidc 블록을 아래 GitLab 블록으로 교체 + secrets 의 dex.gitlab.* 활성. / Rollback: swap the oidc block above with the GitLab block below + re-enable dex.gitlab.* secrets.
+    #
+    # dex.config: |
+    #   connectors:
+    #     - type: gitlab
+    #       id: gitlab
+    #       name: GitLab
+    #       config:
+    #         baseURL: http://gitlab.example.com
+    #         clientID: <GITLAB_CLIENT_ID>
+    #         clientSecret: <GITLAB_CLIENT_SECRET>
+    #         redirectURI: https://argocd.example.com/api/dex/callback
+    #         groups:
+    #           - server
   params:
     create: true
     server.insecure: true
@@ -102,8 +143,39 @@ configs:
 
       g, server, role:server-admin
   
+  # NOTE (2026-04-29 Phase 6 cutover): argo-cd chart 9.x 는 configs.secret.extra.<key> path 만
+  # 인식 — 아래의 옛 `secrets:` 블록은 chart 가 무시. 따라서 dex client secret 은 / the legacy `secrets:` block below is ignored. So dex client secret is
+  # 위의 dex.config 에 평문 인라인 (이전 GitLab 시기와 동일 컨벤션). 본 블록은 미사용. / inlined as plaintext in dex.config above (same convention as the previous GitLab era). This block is unused.
   secrets:
-    # GitLab SSO Configuration
-    dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
-    dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
+    # Legacy: dex.* secrets — chart 9.x 가 인식 안 하는 옛 path. 평문 인라인으로 대체됨.
+    # dex.keycloak.clientSecret: "G821cLHAGckf46ZP8VIynmvpL5EO1vVT"
+    # dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
+    # dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
 
+# =============================================================================
+# Extra K8s manifests rendered by the chart (templates/extra-manifests.yaml).
+#
+# Phase 6 (2026-04-29+) — sibling HTTPRoute for HTTP→HTTPS 301 redirect.
+# argo-cd chart 의 server.httproute 옵션은 단일 HTTPRoute 만 생성 → redirect sibling 은
+# extraObjects 로 주입하여 helm chart lifecycle 에 통합 (install/upgrade/uninstall 자동). / sibling via extraObjects to integrate with the helm chart lifecycle (install/upgrade/uninstall handled automatically).
+# Harbor (manifests/+postsync hook) 와 다른 패턴 — vaultwarden 와 동일 (extraObjects 인라인).
+# =============================================================================
+extraObjects:
+  - apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: argocd-https-redirect
+      namespace: argocd
+    spec:
+      parentRefs:
+        - name: ngf
+          namespace: nginx-gateway
+          sectionName: http
+      hostnames:
+        - argocd.example.com
+      rules:
+        - filters:
+            - type: RequestRedirect
+              requestRedirect:
+                scheme: https
+                statusCode: 301

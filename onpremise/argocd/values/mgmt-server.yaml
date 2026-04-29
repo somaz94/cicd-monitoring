@@ -66,13 +66,16 @@ server:
   # Gateway API HTTPRoute — Phase 3.5 (ingress-nginx → NGF) parallel deployment
   # - Upstream chart natively supports server.httproute: block (templates/argocd-server/httproute.yaml)
   # - backendRefs are auto-wired by the chart: configs.params["server.insecure"]=true → service port 80 (HTTP)
-  # - Omitting sectionName attaches the route to both HTTP/HTTPS listeners (preserves existing force-ssl-redirect: false behavior)
+  # - sectionName: https — Phase 6 (2026-04-29) 변경. argocd-https-redirect HTTPRoute (sectionName: http) 와 충돌
+  #   회피 위해 메인 route 를 HTTPS listener 만 부착. 이전 옛 코멘트 (양쪽 listener attach) 는
+  #   force-ssl-redirect: false 가정. 현재는 redirect 강제로 컨벤션 변경됨. / Old comment (attach both listeners) assumed force-ssl-redirect: false; now redirect is enforced.
   # - At Phase 6 cutover, NginxProxy loadBalancerIP swap (.69 → .55) automatically shifts real traffic
   httproute:
     enabled: true
     parentRefs:
       - name: ngf
         namespace: nginx-gateway
+        sectionName: https
     hostnames:
       - argocd.example.com
     rules:

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: keycloak-operator
+description: Keycloak Operator (somaz94 OCI chart wrapping the upstream keycloak/keycloak-k8s-resources raw YAML) — installs the Keycloak / KeycloakRealmImport CRDs, ServiceAccount, RBAC, Deployment and metrics Service. Pair with the keycloak component which renders Keycloak / KeycloakRealmImport CRs.
+type: application
+version: 0.1.0
+appVersion: "26.6.1"
+kubeVersion: ">=1.25.0-0"
+keywords:
+  - keycloak
+  - keycloak-operator
+  - sso
+  - oidc
+  - oauth2
+  - identity
+  - security
+home: https://github.com/somaz94/helm-charts
+sources:
+  - https://github.com/somaz94/helm-charts
+  - https://github.com/keycloak/keycloak-k8s-resources
+maintainers:
+  - name: somaz94
+    url: https://github.com/somaz94

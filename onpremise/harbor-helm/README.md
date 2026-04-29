@@ -26,7 +26,8 @@ harbor-helm/
 | Document | Description |
 |----------|-------------|
 | [TLS Setup](docs/tls-setup-en.md) | Self-signed cert issuance, renewal, client trust configuration |
-| [OIDC SSO](docs/oidc-setup-en.md) | GitLab OAuth integration, `server` group filter / admin promotion policy |
+| [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak-en.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin-en.sh set-oidc` |
+| [OIDC SSO — GitLab (legacy, pre-Phase 4)](docs/legacy/oidc-setup-gitlab-en.md) | Full GitLab-direct procedure preserved (rollback / fresh-environment reproduction) |
 
 <br/>
 
@@ -201,13 +202,16 @@ Full procedure (issuance
 
 <br/>
 
-## SSO — GitLab OIDC
+## SSO — Keycloak OIDC (Phase 4, 2026-04-28+)
 
-Harbor uses **GitLab OIDC** instead of `db_auth` (shares GitLab with ArgoCD, `server` group filter, admin manually promoted for `admin@example.com` only).
+Harbor uses **Keycloak OIDC** instead of `db_auth` (Phase 4 replaced the previous GitLab-direct setup). Keycloak's Identity Provider brokers to GitLab, so existing user accounts/groups are preserved (`server` group filter, admin manually promoted for `admin@example.com` only).
 
-OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The API injection procedure is the standard: **[`docs/oidc-setup-en.md`](./docs/oidc-setup-en.md)** ([한국어](./docs/oidc-setup.md)).
+OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The standard procedure:
+- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak-en.md) ([한국어](./docs/oidc-setup-keycloak.md))
+- **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration-en.md`](../../security/keycloak/docs/harbor-migration-en.md)
+- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab-en.md) ([한국어](./docs/legacy/oidc-setup-gitlab.md))
 
-⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. Follow the pre-flight checks in `docs/oidc-setup-en.md`.
+⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. This cluster already flipped during the GitLab-direct era — no extra flip needed for the Keycloak switch.
 
 ### Permissions Helper Script
 

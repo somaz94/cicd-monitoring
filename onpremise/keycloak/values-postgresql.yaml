@@ -1,0 +1,283 @@
+# Default values for postgresql.
+#
+# The chart renders a single-node PostgreSQL Deployment + ConfigMap
+# (postgresql.conf + pg_hba.conf) + Secret + PVC + Service, plus optional
+# backup CronJob, NetworkPolicy, ServiceAccount and a chart-managed image
+# pull Secret. An emptyDir for `/var/log/postgresql` is mounted when
+# `logCollector.enabled` is true (postgres `logging_collector = on`).
+#
+# Minimum required values:
+#   - `auth.user`, `auth.password` (when `auth.existingSecret` is empty)
+#
+# Topology: single-replica with `Recreate` update strategy. PVC RWO. Suits dev /
+# staging / single-replica installs and legacy raw-YAML migrations (use
+# `fullnameOverride` + `existingClaim` + `existingSecret` for in-place adoption).
+# For HA prefer an external managed DB (RDS
+#
+# Extensibility: every resource has a `specExtra` / `podTemplateExtra` escape
+# hatch for fields not surfaced in this file. `kubernetesExtra` lets you render
+# arbitrary additional manifests with the same release.
+
+# ---------------------------------------------------------------------------
+# Resource metadata
+# ---------------------------------------------------------------------------
+commonLabels: {}
+commonAnnotations: {}
+
+resourceMetadata:
+  deployment:
+    labels: {}
+    annotations: {}
+  service:
+    labels: {}
+    annotations: {}
+  pvc:
+    labels: {}
+    annotations: {}
+  configMap:
+    labels: {}
+    annotations: {}
+  secret:
+    labels: {}
+    annotations: {}
+  backupCronJob:
+    labels: {}
+    annotations: {}
+  backupPvc:
+    labels: {}
+    annotations: {}
+  serviceAccount:
+    labels: {}
+    annotations: {}
+  networkPolicy:
+    labels: {}
+    annotations: {}
+
+# ---------------------------------------------------------------------------
+# Naming
+# ---------------------------------------------------------------------------
+nameOverride: ""
+
+# Override the base name for the Deployment / Service / default PVC / default
+# Secret / (when configMap.nameOverride is empty) the ConfigMap. Use this to
+# adopt pre-existing resources whose names do not match the default
+# `<release>-postgresql` pattern.
+fullnameOverride: ""
+
+configMap:
+  # Override only the ConfigMap name. When empty, defaults to
+  # `<fullname>-config`. Useful when the legacy ConfigMap uses a different
+  # naming pattern.
+  nameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Image
+# ---------------------------------------------------------------------------
+image:
+  repository: postgres
+  tag: ""                         # empty → defaults to .Chart.AppVersion (18-alpine)
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+imagePullSecret:
+  create: false
+  name: ""
+  dockerconfigjson: ""
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 5432
+  nodePort: null
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Persistence (PVC)
+# ---------------------------------------------------------------------------
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+  existingClaim: ""
+  annotations: {}
+
+# Postgres data directory inside the PVC. Default `/var/lib/postgresql/data/pgdata`
+# matches the official `postgres` image's `PGDATA` convention (subdirectory of
+# the volume root, so initdb does not collide with `lost+found` on certain
+# storageclasses).
+pgData: "/var/lib/postgresql/data/pgdata"
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+# When `existingSecret` is empty, the chart renders a Secret containing the
+# three POSTGRES_* keys (or whatever keys are configured under `secretKeys`).
+# When `existingSecret` is set, no Secret is rendered and the Deployment reads
+# from the named Secret using the keys configured under `secretKeys`.
+auth:
+  user: ""
+  password: ""
+  database: ""                    # optional — when empty, POSTGRES_DB env not injected (postgres defaults to user-named DB)
+  existingSecret: ""
+
+  # Key names inside the rendered or referenced Secret. Defaults follow the
+  # postgres container's documented env var names. Override when adopting a
+  # legacy Secret that uses different key names (e.g. `DB_USERNAME` instead of
+  # `POSTGRES_USER`) — env var names on the container stay the same; only the
+  # `secretKeyRef.key` lookup changes.
+  # Note: `auth.database` is rendered as a plain `value:` env, never stored in
+  # the Secret — database name is generally not sensitive.
+  secretKeys:
+    user: POSTGRES_USER
+    password: POSTGRES_PASSWORD
+
+# ---------------------------------------------------------------------------
+# Postgres configuration (mounted at /etc/postgresql)
+# ---------------------------------------------------------------------------
+# Both files are rendered into a single ConfigMap and mounted at
+# `/etc/postgresql`. The container will not pick up `postgresql.conf` from this
+# location automatically — pass `-c config_file=/etc/postgresql/postgresql.conf`
+# via container args, or rely on `include_dir` from the default config. The
+# safer default is to set `args: ["-c", "config_file=/etc/postgresql/postgresql.conf",
+# "-c", "hba_file=/etc/postgresql/pg_hba.conf"]` via `containerArgs` below.
+customConfig:
+  # postgresql.conf — main settings.
+  postgresqlConf: |
+    listen_addresses = '*'
+    max_connections = 200
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    work_mem = 4MB
+
+    wal_buffers = 16MB
+    max_wal_size = 1GB
+    min_wal_size = 80MB
+    checkpoint_completion_target = 0.9
+
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+
+    log_destination = 'stderr'
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_min_duration_statement = 2000
+
+    tcp_keepalives_idle = 600
+    tcp_keepalives_interval = 30
+    tcp_keepalives_count = 10
+
+  # pg_hba.conf — client authentication. Default permits internal trust + md5
+  # over IPv4/IPv6. Tighten for production.
+  pgHbaConf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    local   all             all                                     trust
+    host    all             all             0.0.0.0/0               md5
+    host    all             all             ::0/0                   md5
+
+# Container args. Set `useCustomConfig: true` to point Postgres at the mounted
+# customConfig files via `-c config_file=...` + `-c hba_file=...`. When false,
+# the chart-rendered customConfig is mounted but Postgres uses its built-in
+# defaults — useful for one-off `helm template`-only rendering without forcing
+# the container behavior.
+useCustomConfig: true
+
+# ---------------------------------------------------------------------------
+# Log emptyDir (logging_collector)
+# ---------------------------------------------------------------------------
+# When `logging_collector = on` is set in `customConfig.postgresqlConf` (and
+# the container is started with `-c logging_collector=on` or it inherits from
+# the file), Postgres writes log files to `log_directory`. Mount an emptyDir
+# at `/var/log/postgresql` to keep the writable directory inside the Pod
+# without persisting (logs are typically scraped by a sidecar / fluent-bit /
+# DaemonSet, not retained in the DB volume).
+logCollector:
+  enabled: false
+  mountPath: "/var/log/postgresql"
+
+# ---------------------------------------------------------------------------
+# Pod scheduling + Resources
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "2Gi"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+podSecurityContext: {}
+securityContext: {}
+
+# Probe defaults — disabled by default (initdb on first install can take longer
+# than the default initialDelaySeconds and trigger flapping). Enable after the
+# first successful install.
+livenessProbe: {}
+readinessProbe: {}
+
+specExtra: {}
+podTemplateExtra: {}
+kubernetesExtra: {}
+
+# ---------------------------------------------------------------------------
+# Backup CronJob
+# ---------------------------------------------------------------------------
+# Daily pg_dump with configurable retention. Disabled by default — enable and
+# set backup.persistence to retain backups. The CronJob mounts a dedicated
+# backup PVC and reads the same auth Secret as the Postgres Pod.
+backup:
+  enabled: false
+  schedule: "0 18 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  retentionDays: 30
+  image:
+    # By default reuses `.image.*` for `pg_dump` (empty = inherit). Override to
+    # pin a specific client image.
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources: {}
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+    existingClaim: ""
+    annotations: {}
+  specExtra: {}
+  jobTemplateExtra: {}
+
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: false
+  name: ""
+  annotations: {}
+  imagePullSecrets: []
+  automountServiceAccountToken: true
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+  podSelector: {}

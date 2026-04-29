@@ -12,6 +12,56 @@ domain: "https://vault.example.com"
 fullnameOverride: "vaultwarden"
 
 # =============================================================================
+# Phase 5 retry attempted + rolled back to clean baseline (2026-04-29)
+# =============================================================================
+# Two Keycloak SSO cutover attempts on 2026-04-29 (morning + evening). All
+# rolled back. Active config below = pre-Phase-5 baseline (chart default
+# image, GitLab direct SSO, no cert mount, no SSRF override). Phase 5 trace
+# kept entirely in plan + git history (commits f71e183 + this commit).
+#
+# Three hypotheses tested in the second attempt — ALL NEGATIVE:
+#
+#   1. hickory-resolver DNS fix (1.35.7 → 1.35.8 PR #7108) — same drop on
+#      ALPN h2, hickory has nothing to fix in our case (DNS/TCP both OK).
+#   2. SSRF guard (RFC1918 block) — set ICON_BLACKLIST_NON_GLOBAL_IPS=false,
+#      same drop. SSRF would reject in CustomDnsResolver::post_resolve, but
+#      our connection reaches TCP/TLS handshake.
+#   3. Keycloak proxy header
+#      access log show ZERO trace of vaultwarden's discovery attempt.
+#      Server is innocent; vaultwarden's H2 client aborts the connection
+#      AFTER ALPN h2 negotiation but BEFORE sending any HTTP/2 frame.
+#
+# Real root cause = client-side race in vaultwarden's reqwest 0.12.28 +
+# hyper-util + h2 + rustls-tls stack with HTTP/2.
+# `src/sso_client.rs::_get_client()` builds a fresh reqwest::Client per
+# discovery call (no pool sharing with the SSRF-guarded CustomDnsResolver
+# client). Re-attempt requires either:
+#   a) vaultwarden upstream patch to add http1_only() option to sso_client
+#   b) NGF/Keycloak ALPN tuning to drop h2 (impacts ArgoCD/Harbor too, risky)
+#   c) Build vaultwarden from source with http1_only patch
+#
+# Re-attempt procedure (after upstream fix lands or H1 workaround chosen):
+#   1. Bump image (preferred: chart catches up; fallback: image override).
+#   2. Uncomment Keycloak `sso:` block, comment GitLab `sso:` block.
+#   3. (optional) Re-enable debug logging block below for trace capture.
+#   4. (optional) Re-enable cert trust patch (initContainer + ConfigMap +
+#      extraVolumes/extraVolumeMounts) — required for self-signed
+#      auth.example.com until cert-manager / Cloudflare DNS delegation lands.
+#   5. (optional) Set iconBlacklistNonGlobalIps: "false" — required because
+#      auth.example.com resolves to 192.168.1.55 (NGF MetalLB, RFC1918).
+#   6. helmfile -f security/vaultwarden/helmfile.yaml apply
+# =============================================================================
+
+# Debug logging (only re-enable for SSO re-attempt; produces high log volume):
+# logging:
+#   logLevel: "info,vaultwarden::sso_client=trace,reqwest=trace,hyper=trace,hyper_util=trace,h2=trace,openidconnect=trace,rustls=debug"
+
+# Image override — kept commented for Phase 5 re-attempt only. Tag MUST equal
+# the `initContainers[0].image` below if both are re-enabled together.
+# image:
+#   tag: "1.35.8-alpine"
+
+# =============================================================================
 # Admin Portal
 # =============================================================================
 # Access: https://vault.example.com/admin
@@ -21,9 +71,15 @@ adminToken:
   value: "exampleAdminPassword"
 
 # =============================================================================
-# SSO — GitLab OpenID Connect
+# SSO — GitLab OpenID Connect (active, post Phase 5 retry rollback 2026-04-29)
 # =============================================================================
-# Prerequisites:
+# Phase 5 attempted twice to cut over to Keycloak; rolled back both times.
+# See the "Phase 5 retry" header at the top of this file for the 3 hypotheses
+# tested and the real root cause (vaultwarden 1.35.x H2 client race). Active
+# config below is the original pre-Phase-5 baseline — GitLab direct OIDC. The
+# Keycloak block is preserved commented-out for the next attempt.
+#
+# Original setup steps:
 #   1. GitLab Admin → Applications → New Application
 #      - Name: Vaultwarden
 #      - Redirect URI: https://vault.example.com/identity/connect/oidc-signin
@@ -31,10 +87,6 @@ adminToken:
 #      - Scopes: openid, email, profile
 #   2. Copy Application ID → clientId.value
 #   3. Copy Secret → clientSecret.value
-#
-# Note: Vaultwarden SSO does NOT support group-based access control.
-#       All SSO-authenticated users get the same permissions.
-#       Use allowSignups/signupDomains to restrict who can register.
 # =============================================================================
 sso:
   enabled: true
@@ -47,6 +99,40 @@ sso:
     value: "<GITLAB_CLIENT_ID>"
   clientSecret:
     value: "<GITLAB_CLIENT_SECRET>"
+
+# =============================================================================
+# SSO — Keycloak OpenID Connect (commented — re-attempt after upstream fix)
+# =============================================================================
+# IdP: Keycloak `example` realm at auth.example.com
+# Backend: Keycloak Identity Brokering → GitLab (login screen shows "Sign in with GitLab")
+#
+# Prerequisites (all handled by Phase 3 bootstrap — security/keycloak/scripts/kcadm-bootstrap.sh):
+#   1. Keycloak `vaultwarden` client (confidential, Standard Flow + PKCE)
+#      Redirect URI: https://vault.example.com/identity/connect/oidc-signin
+#   2. Groups protocol-mapper on the client (oidc-group-membership-mapper)
+#   3. Client secret reclaimed via kcadm-bootstrap output → clientSecret.value below
+#
+# To rotate the client secret:
+#   kubectl -n keycloak exec keycloak-0 -- /opt/keycloak/bin/kcadm.sh \
+#     create clients/<id>/client-secret -r example
+#
+# Note: signupsMatchEmail=true links Keycloak-brokered tokens (sub differs from
+#       previous GitLab-direct sub) to the existing user by email — protects
+#       master password / vault data through cutover. Vaultwarden SSO does NOT
+#       support group-based access control; use allowSignups/signupDomains
+#       to restrict who can register.
+# =============================================================================
+# sso:
+#   enabled: true
+#   authority: "https://auth.example.com/realms/example"
+#   scopes: "openid email profile"
+#   signupsMatchEmail: true
+#   ignoreEmailVerification: true
+#   pkce: true
+#   clientId:
+#     value: "vaultwarden"
+#   clientSecret:
+#     value: "HajIjzZPmjcshFx5hZAYI3dWCTHJ9NLc"
 
 # =============================================================================
 # Database (SQLite default)
@@ -138,6 +224,68 @@ serviceAccount:
   create: true
 
 # =============================================================================
+# Trust the self-signed wildcard cert (`wildcard-example-tls`) for SSO discovery
+# =============================================================================
+# Commented out — only required for the Phase 5 Keycloak SSO retry. VERIFIED
+# working at the TLS layer in two prior attempts (vaultwarden's rustls
+# completes the handshake with our wildcard cert; curl from inside the pod
+# fetches the OIDC discovery JSON over both HTTP/1.1 and HTTP/2).
+#
+# Mechanism (re-enable together with the wildcard-example-ca ConfigMap below):
+#   1. ConfigMap holds the wildcard cert (public material — ConfigMap, not Secret).
+#   2. initContainer combines Alpine system CA bundle + wildcard cert into a
+#      shared emptyDir volume (consumed by /etc/ssl/certs/ca-certificates.crt
+#      mount below — for OpenSSL-based clients like wget that read the bundle).
+#   3. Main container ALSO mounts the wildcard cert as a standalone .pem file
+#      at /etc/ssl/certs/wildcard-example.pem. This is what vaultwarden's Rust
+#      binary actually trusts — the image bakes SSL_CERT_DIR=/etc/ssl/certs so
+#      rustls-native-certs scans the DIRECTORY for individual *.pem files and
+#      ignores the bundle file.
+#
+# Long-term fix: cert-manager + ACME for a real cert on auth.example.com. Blocked
+# by the domain registrar (Wix) not exposing a DNS API for DNS-01 challenge,
+# and HTTP-01 not viable for an internal-only host. Revisit when DNS is
+# delegated to a public-DNS provider (Cloudflare/Route53).
+# =============================================================================
+# initContainers:
+#   - name: ca-bundle-builder
+#     image: docker.io/vaultwarden/server:1.35.8-alpine    # MUST match `image.tag` above
+#     imagePullPolicy: IfNotPresent
+#     command:
+#       - sh
+#       - -c
+#       - |
+#         set -e
+#         cp /etc/ssl/certs/ca-certificates.crt /shared/ca-certificates.crt
+#         cat /custom-ca/wildcard.crt >> /shared/ca-certificates.crt
+#         echo "ca-bundle: $(wc -l < /shared/ca-certificates.crt) lines"
+#     volumeMounts:
+#       - name: wildcard-ca
+#         mountPath: /custom-ca
+#         readOnly: true
+#       - name: shared-ca-bundle
+#         mountPath: /shared
+#
+# extraVolumes:
+#   - name: wildcard-ca
+#     configMap:
+#       name: wildcard-example-ca
+#   - name: shared-ca-bundle
+#     emptyDir: {}
+#
+# extraVolumeMounts:
+#   # 1) Bundle override — for OpenSSL clients (wget, curl) that read the single ca-certificates.crt file.
+#   - name: shared-ca-bundle
+#     mountPath: /etc/ssl/certs/ca-certificates.crt
+#     subPath: ca-certificates.crt
+#     readOnly: true
+#   # 2) Individual cert file — for vaultwarden's Rust rustls-native-certs (SSL_CERT_DIR scan picks up *.pem files).
+#   - name: wildcard-ca
+#     mountPath: /etc/ssl/certs/wildcard-example.pem
+#     subPath: wildcard.crt
+#     readOnly: true
+
+# =============================================================================
 # Backup CronJob (via extraObjects)
 #
 # Backup Strategy:
@@ -152,6 +300,50 @@ extraObjects:
   # Note: 2026-04-17 self-signed `vaultwarden-tls` Secret removed (unused after Phase 6 cutover).
   # HTTPS termination is handled by `wildcard-example-tls` on NGF ngf Gateway (nginx-gateway ns).
   # If re-introduction is needed: see Git history or `network/nginx-gateway-fabric/docs/tls-wildcard-setup.md`.
+
+  # Wildcard cert ConfigMap — commented out (Phase 5 baseline rollback). Re-enable together with the initContainer/extraVolumes/extraVolumeMounts blocks above when retrying Keycloak SSO.
+  # Source: `kubectl -n nginx-gateway get secret wildcard-example-tls -o jsonpath='{.data.tls\.crt}' | base64 -d`.
+  # Refresh whenever the wildcard cert is rotated (current cert valid until 2036-04-14).
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: wildcard-example-ca
+  #     namespace: vaultwarden
+  #   data:
+  #     wildcard.crt: |
+  #       -----BEGIN CERTIFICATE-----
+  #       MIIFozCCA4ugAwIBAgIUKCe1JAcLF3o/gZNu/ocm6l9lgyYwDQYJKoZIhvcNAQEL
+  #       BQAwNjEVMBMGA1UEAwwMKi5jb25jcml0LnVzMRAwDgYDVQQKDAdjb25jcml0MQsw
+  #       CQYDVQQGEwJLUjAeFw0yNjA0MTcwMzAyMDlaFw0zNjA0MTQwMzAyMDlaMDYxFTAT
+  #       BgNVBAMMDCouY29uY3JpdC51czEQMA4GA1UECgwHY29uY3JpdDELMAkGA1UEBhMC
+  #       S1IwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCjAFO4Es5jaUCBgJ5E
+  #       BABmUXR9m8B9IkJzeVcyhimUUxJkrEDeeeIaZCPJ4rChbSzyrk/F5SF30EJSgXO8
+  #       P0nNkeFqhDDc6ts2TEUvaOSUwLgb4oF5+uvJHd565MNp7wjGBjNknk5nQQk9gfx2
+  #       VE/xezTf/EEXHwJjMhUCW2VZEA8/4d20/5z578f4Pc7EPwR3vscW8FqL5IS52hbD
+  #       EjOO0A7kChmC/d9uQ4kbvjyS8g1SCY0V0fVUhWBiUWchY+Kaada7fmhJR29JKHEz
+  #       zbrh2gWIdiQAV7NwenW8wwFPdxchCH3wSiGDtQBs129I/KLBKT2CP3gJWGuYCB30
+  #       z55xMTyOcPmFJAGngcF9UV+H7o1yaWgfDsEmOn9eyLNmxSsTiyORqi/k4XXOio7C
+  #       rV0O2wNmraW/j4YN3mHYiCm5oi64AXNElbgfUs6UeovBTJsYCJHQmkVi0XqmzHDY
+  #       P+yUvTDy3rYkRgTX4CyfACcwDEoFI1rZxWOZ9DmaLytyQVyffh7AwL7Wf0ohw8A9
+  #       ODssWmRY1I+/M/e6EaD0hlsnwEDYszISNHkVEPRdEtydrmTSZYMyAQ8L/ADxNtqc
+  #       rZqR0xpnQnvpHcjYAHChSz/2lMQhI/b0AHeKk0SGJnwOOI/G5sve87Mt0CoQUY0n
+  #       iae2NOigbztE1tfrqmNyVmg0aQIDAQABo4GoMIGlMB0GA1UdDgQWBBTD1TBnH0qZ
+  #       u0IOd9cfzHMpR62XFzAfBgNVHSMEGDAWgBTD1TBnH0qZu0IOd9cfzHMpR62XFzAP
+  #       BgNVHRMBAf8EBTADAQH/MCMGA1UdEQQcMBqCCmNvbmNyaXQudXOCDCouY29uY3Jp
+  #       dC51czAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUF
+  #       BwMCMA0GCSqGSIb3DQEBCwUAA4ICAQAnoihln7gPh81sH8bLEWp51N8Umx0ZThzI
+  #       GcBQKZVWlqr51pPUrgxRT/L1QjKKUpg+D4m8jKpdDoeulRO/aN1o+7v5Fq34yhzm
+  #       UK7FnPeUxw7GP4qd/y9WRrUPAZqwZR2uiuHHdIzQFyMSYr+JRGYKr0OSbrNARojl
+  #       ACbXqosj+0hCp87Jt2pnFf5cZr8iyRZCt0CY8OQ3ic2nLMpARP8zU80PByRiM+E0
+  #       E2081UUhlKEXEpIkZO/ILUMzSHVB+G0P4IzVT9MFWyIICFpIJBUWHEQMUk4kaCbm
+  #       KTuSTf/57qCsstGiFLCEVmF2EYKcaDvli/QaUIcNKHwGejX/GmP29WrawkF/GaEE
+  #       xAIPqVCkvF0rk+2fR8C7IlE3MNii4XrdvJmruebpYBezK6n//vXTTpOIawZTr6ua
+  #       tXYvAwPnPTowcj2QWwMXDxshPwInAp2wzFUu8Zzb5BLlaQdKTlItm7udGwxCH49U
+  #       HEvaBpJli417SX6u71VbfT9b/GDcJ4QE3DfHZMMvRie0Wu9t2OL+a28NnECGJsCm
+  #       atrk4El2qoXR5qgJ2u4mETyhpkALsxOgOoPi+hut7ubjkS3jJXYCkE2W2aDjQXTD
+  #       rOmBrPKT758bHtrNYdVBOo1hTVaKZsKuji0yLdqKt9LQhOM9xJiBFPVj0Io5ubzk
+  #       AUOdmp9VpA==
+  #       -----END CERTIFICATE-----
 
   # Backup PVC
   - apiVersion: v1

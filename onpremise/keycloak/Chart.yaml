@@ -1,0 +1,21 @@
+apiVersion: v2
+name: keycloak
+description: Keycloak instance + bundled PostgreSQL via somaz94 OCI charts (postgresql + keycloak-cr). Pair with the keycloak-operator component which installs the Operator and CRDs.
+type: application
+version: 0.1.0
+appVersion: "26.6.1"
+kubeVersion: ">=1.25.0-0"
+keywords:
+  - keycloak
+  - sso
+  - oidc
+  - oauth2
+  - identity
+  - security
+home: https://github.com/somaz94/helm-charts
+sources:
+  - https://github.com/somaz94/helm-charts
+  - https://github.com/keycloak/keycloak-k8s-resources
+maintainers:
+  - name: somaz94
+    url: https://github.com/somaz94

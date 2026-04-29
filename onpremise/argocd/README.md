@@ -34,6 +34,7 @@ argo-cd/
 
 | Topic | Document |
 |---|---|
+| SSO — Keycloak OIDC migration (Phase 6, 2026-04-29). dex.config replacement / argocd-https-redirect HTTPRoute / 5 pitfalls lessons learned | [security/keycloak/docs/argocd-migration-en.md](../../security/keycloak/docs/argocd-migration-en.md) |
 | 2026-04-23 ghost-alarm incident analysis, Notification rules (Option A/B) design, Alertmanager role split | [docs/ghost-alarm-incident-2026-04-23-en.md](docs/ghost-alarm-incident-2026-04-23-en.md) |
 | Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook-en.md](docs/notification-rule-change-playbook-en.md) |
 | Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt-en.md](docs/ghost-alarm-followup-prompt-en.md) |
@@ -207,6 +208,31 @@ stringData:
 ```bash
 kubectl apply -f gitlab-appset-repo-secret.yaml -n argocd
 ```
+
+<br/>
+
+## SSO — Keycloak OIDC (Phase 6, 2026-04-29+)
+
+ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy GitLab dex connector (Phase 6 cutover). Keycloak's Identity Provider brokers GitLab, so user accounts and groups are preserved (`server` group → `role:server-admin`, `admin@example.com` → `role:global-admin`).
+
+OIDC config is managed in two blocks of [`values/mgmt.yaml`](values/mgmt.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
+
+- **Migration procedure + 5 pitfalls lessons learned**: [`security/keycloak/docs/argocd-migration-en.md`](../../security/keycloak/docs/argocd-migration-en.md) ([Korean](../../security/keycloak/docs/argocd-migration.md))
+- **Realm/Client/Mapper setup (kcadm-bootstrap.sh automation + 38/38 verify)**: [`security/keycloak/docs/realm-setup-en.md`](../../security/keycloak/docs/realm-setup-en.md) ([Korean](../../security/keycloak/docs/realm-setup.md))
+
+### 5 Pitfalls (discovered during Phase 6 cutover, all fixed)
+
+1. **Dex boots with `no signing key found`** — argo-cd chart 9.x secrets path is `configs.secret.extra` (not legacy `configs.secrets`). Worked around by inlining client secret as plaintext in dex.config.
+2. **HTTP→HTTPS 301 redirect not working** — chart-native `argocd-server` HTTPRoute attaches to both listeners. Force HTTPS-only via `server.httproute.parentRefs[0].sectionName: https`.
+3. **Keycloak rejects `Invalid scopes: openid openid profile email groups`** — dex auto-prepends `openid` to connector scopes → duplicate. Omit `scopes:` block + add `groups` client-scope to realm.
+4. **Token missing groups claim (silent)** — bootstrap's `-s 'config."key"=value'` syntax partially failed for nested config → mapper config created with `{}` empty. Fixed by JSON file (`-f`) approach + 6-field explicit spec.
+5. **Dex receives `groups=[]` only** — dex `oidc` connector ignores groups claim by default. Set `insecureEnableGroups: true` + `getUserInfo: true`.
+
+### RBAC enforcement verification (recommended after every cutover)
+
+1. Comment out `g, admin@example.com, role:global-admin` temporarily → apply → user logout/login → verify it still works via server-admin only (proves server group claim works)
+2. Comment out `secondary-project/*` 4 permission lines temporarily → apply → verify secondary-project apps disappear from UI immediately (proves server-admin policy enforcement)
+3. Restore both immediately after verification — **NEVER commit temporary policy.csv changes**
 
 <br/>
 

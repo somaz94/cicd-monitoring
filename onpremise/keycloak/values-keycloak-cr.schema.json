@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "keycloak-cr values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string" },
+    "commonLabels": { "$ref": "#/$defs/stringMap" },
+    "commonAnnotations": { "$ref": "#/$defs/stringMap" },
+    "resourceMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keycloak": { "$ref": "#/$defs/metadataBlock" },
+        "realmImport": { "$ref": "#/$defs/metadataBlock" },
+        "httproute": { "$ref": "#/$defs/metadataBlock" },
+        "ingress": { "$ref": "#/$defs/metadataBlock" },
+        "dbSecret": { "$ref": "#/$defs/metadataBlock" },
+        "adminSecret": { "$ref": "#/$defs/metadataBlock" }
+      }
+    },
+    "keycloak": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "instances": { "type": "integer", "minimum": 1 },
+        "image": { "type": "string" },
+        "startOptimized": {
+          "oneOf": [
+            { "type": "string", "enum": ["", "true", "false"] },
+            { "type": "boolean" }
+          ]
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": { "name": { "type": "string" } }
+          }
+        },
+        "hostname": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hostname": { "type": "string" },
+            "admin": { "type": "string" },
+            "strict": { "type": "boolean" },
+            "backchannelDynamic": { "type": "boolean" }
+          }
+        },
+        "http": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "httpEnabled": { "type": "boolean" },
+            "httpPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "tlsSecret": { "type": "string" },
+            "annotations": { "$ref": "#/$defs/stringMap" },
+            "labels": { "$ref": "#/$defs/stringMap" }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "headers": { "type": "string", "enum": ["", "xforwarded", "forwarded"] }
+          }
+        },
+        "db": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "vendor": { "type": "string", "enum": ["postgres", "mariadb", "mysql", "mssql", "oracle", "h2"] },
+            "host": { "type": "string" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "database": { "type": "string" },
+            "schema": { "type": "string" },
+            "url": { "type": "string" },
+            "existingSecret": { "type": "string" },
+            "usernameSecretKey": { "type": "string", "minLength": 1 },
+            "passwordSecretKey": { "type": "string", "minLength": 1 },
+            "poolMinSize": { "type": "integer", "minimum": 0 },
+            "poolInitialSize": { "type": "integer", "minimum": 0 },
+            "poolMaxSize": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "bootstrapAdmin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "userSecret": { "type": "string" },
+            "serviceSecret": { "type": "string" }
+          }
+        },
+        "resources": { "$ref": "#/$defs/resources" },
+        "scheduling": { "type": "object" },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "array", "items": { "type": "string" } },
+            "disabled": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "className": { "type": "string" },
+            "annotations": { "$ref": "#/$defs/stringMap" },
+            "labels": { "$ref": "#/$defs/stringMap" }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "tracing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "endpoint": { "type": "string" },
+            "protocol": { "type": "string" },
+            "samplerType": { "type": "string" },
+            "samplerRatio": { "type": ["number", "null"] }
+          }
+        },
+        "transaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "xaEnabled": { "type": ["boolean", "null"] }
+          }
+        },
+        "truststores": { "type": "object" },
+        "additionalOptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" },
+              "secret": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": { "type": "string" },
+                  "key": { "type": "string" },
+                  "optional": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "env": { "type": "array" },
+        "specExtra": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "realmImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "keycloakCRName": { "type": "string" },
+        "realm": { "type": "object", "additionalProperties": true },
+        "placeholders": { "type": "object" },
+        "resources": { "$ref": "#/$defs/resources" },
+        "specExtra": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "dbSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "usernameKey": { "type": "string", "minLength": 1 },
+        "passwordKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "adminSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "usernameKey": { "type": "string", "minLength": 1 },
+        "passwordKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" },
+        "path": { "type": "string" },
+        "pathType": { "type": "string", "enum": ["Prefix", "Exact", "ImplementationSpecific"] },
+        "annotations": { "$ref": "#/$defs/stringMap" },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hosts": { "type": "array", "items": { "type": "string" } },
+              "secretName": { "type": "string" }
+            }
+          }
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "serviceName": { "type": "string" },
+            "servicePort": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "extraPaths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "pathType": { "type": "string" },
+              "serviceName": { "type": "string" },
+              "servicePort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            }
+          }
+        }
+      }
+    },
+    "httproute": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "parentRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "namespace": { "type": "string" },
+              "sectionName": { "type": "string" },
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            }
+          }
+        },
+        "hostnames": { "type": "array", "items": { "type": "string" } },
+        "rules": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "httpsRedirect": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "statusCode": { "type": "integer" },
+            "parentRefs": { "type": "array" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "metadataBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "labels": { "$ref": "#/$defs/stringMap" },
+        "annotations": { "$ref": "#/$defs/stringMap" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limits": { "type": "object" },
+        "requests": { "type": "object" },
+        "claims": { "type": "array" }
+      }
+    }
+  }
+}

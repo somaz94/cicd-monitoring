@@ -1,0 +1,31 @@
+# Override the upstream chart defaults for the mgmt (example dev) cluster.
+# Vendor reference: ../values.yaml (chart default). Diff this file with values.yaml on chart bumps to spot drift.
+
+# Watch the keycloak namespace (where the sibling ../keycloak/ component installs Keycloak
+# Explicit list (comma-separated) avoids the JOSDK special-constant ambiguity — chart README's "JOSDK_WATCH_ALL" is not a valid Quarkus Operator SDK constant (the real one is `JOSDK_ALL_NAMESPACES`, but cluster-wide watch is wider scope than we need here).
+watchNamespaces: "keycloak,keycloak-system"
+
+# Cluster-scoped RBAC required for the explicit watchNamespaces list above plus operator's CRD/networkpolicy management.
+# useClusterBindings=true switches `keycloakcontroller-cluster-role` and `keycloakrealmimportcontroller-cluster-role` from in-namespace RoleBindings (chart default, mirrors upstream single-ns operator) to ClusterRoleBindings — required for cross-namespace list/watch on Keycloak
+rbac:
+  create: true
+  useClusterBindings: true
+
+# CRDs in templates/. Keep them on chart uninstall so existing Keycloak/Realm CRs survive a chart-level rollback.
+crds:
+  install: true
+  keep: true
+
+# Resource sizing for mgmt — single operator pod, modest workload (one Keycloak CR).
+# Operator may briefly spike on first reconcile; do not lower memory below the upstream default (450Mi).
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Operator metrics Service is on by default — kept enabled for kube-prometheus-stack ServiceMonitor discovery (handled out-of-band).
+service:
+  enabled: true

@@ -1,4 +1,12 @@
-# Harbor GitLab SSO (OIDC) Setup
+# Harbor GitLab SSO (OIDC) Setup — Archived (pre-Phase 4)
+
+> ⚠️ **Archived (as of 2026-04-28)**: Harbor's OIDC IdP was switched from GitLab to Keycloak in Phase 4.
+> - Current standard procedure: [`../oidc-setup-keycloak-en.md`](../oidc-setup-keycloak-en.md) ([한국어](../oidc-setup-keycloak.md))
+> - Migration history / rollback: [`security/keycloak/docs/harbor-migration-en.md`](../../../../security/keycloak/docs/harbor-migration-en.md)
+>
+> This document preserves the GitLab-direct procedure verbatim as a reference. Use it only when reproducing a GitLab-direct setup elsewhere or temporarily rolling back during a Keycloak outage.
+
+<br/>
 
 Harbor ships with a native OIDC client, so **no Dex is needed** (difference from ArgoCD).
 OIDC settings are not exposed through Helm values; they live in the **Harbor core database** and must be injected via the **Harbor REST API or the Web UI**.

@@ -12,9 +12,11 @@ releases:
       - values/mgmt.yaml
 
     hooks:
-      # postsync: apply raw Gateway API resources (HTTPRoute + ClientSettingsPolicy) after chart upgrade.
-      # The Harbor 1.18.3 chart only generates an HTTPRoute when expose.type=route, but that mode
-      # cannot run alongside Ingress → managed separately as raw manifests to guarantee parallel operation.
+      # postsync: apply raw Gateway API resources after chart upgrade.
+      # The Harbor 1.18.3 chart with expose.type=route auto-generates the main HTTPRoute (harbor-route,
+      # path routing core/portal). Two siblings the chart does not cover are kept as raw in manifests/:
+      #   1. harbor-https-redirect HTTPRoute (HTTP listener → 301 → HTTPS)
+      #   2. harbor-route ClientSettingsPolicy (body.maxSize:"0", unlimited docker push)
       # Note: helmfile apply skips hooks when there is no chart diff. Use helmfile sync for the first hook
       # application or when only manifests/ changes.
       - events: ["postsync"]

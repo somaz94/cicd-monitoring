@@ -11,7 +11,7 @@ releases:
     chart: argo/argo-cd
     version: 9.5.4
     values:
-      - values/mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets)
+      - values/mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
       - values/mgmt-redis.yaml         # redis, redis-ha, redisSecretInit
       - values/mgmt-notifications.yaml # notifications controller (Slack templates/triggers)

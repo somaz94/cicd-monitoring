@@ -1,0 +1,194 @@
+# Default values for keycloak-operator.
+#
+# Wraps the upstream keycloak-k8s-resources raw YAML — the CRDs (Keycloak,
+# KeycloakRealmImport), ServiceAccount, ClusterRoles / ClusterRoleBindings /
+# Role / RoleBindings, the operator Deployment and its Service. `upgrade.sh`
+# tracks new keycloak-k8s-resources releases and refreshes the templates in
+# place.
+#
+# Default install: one operator pod in the release namespace, no override.
+# The operator watches its own namespace by default — set watchNamespaces to
+# ["JOSDK_WATCH_ALL"] to watch every namespace, or to a specific namespace
+# name to scope reconciliation.
+
+# Pinned upstream version. Mirrors Chart.yaml `appVersion` and is rewritten by
+# upgrade.sh on a successful bump. Used to render the operator image tag and
+# the RELATED_IMAGE_KEYCLOAK env value below when their corresponding tag
+# fields are left empty.
+version: "26.6.1"
+
+# ---------------------------------------------------------------------------
+# Resource metadata
+# ---------------------------------------------------------------------------
+commonLabels: {}
+commonAnnotations: {}
+
+# Per-resource label/annotation overrides. Keys: serviceAccount, deployment,
+# service, role, clusterRoles, roleBinding, clusterRoleBindings.
+resourceMetadata:
+  serviceAccount:
+    labels: {}
+    annotations: {}
+  deployment:
+    labels: {}
+    annotations: {}
+  service:
+    labels: {}
+    annotations: {}
+  role:
+    labels: {}
+    annotations: {}
+  clusterRoles:
+    labels: {}
+    annotations: {}
+  roleBinding:
+    labels: {}
+    annotations: {}
+  clusterRoleBindings:
+    labels: {}
+    annotations: {}
+
+# ---------------------------------------------------------------------------
+# Image
+# ---------------------------------------------------------------------------
+image:
+  repository: quay.io/keycloak/keycloak-operator
+  # Empty tag → uses .Values.version. Override to pin a different image
+  # without bumping the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Image pulled by the operator-spawned Keycloak server pods (the operator
+# passes this to RELATED_IMAGE_KEYCLOAK so reconciliation always uses the
+# matching server image). Empty repository → quay.io/keycloak/keycloak.
+# Empty tag → .Values.version. Useful when running an air-gapped registry.
+serverImage:
+  repository: quay.io/keycloak/keycloak
+  tag: ""
+
+# Pull secrets attached to the operator Pods.
+imagePullSecrets: []
+  # - name: ghcr-credentials
+
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+replicas: 1
+
+# Container resources. Defaults match the upstream manifest at version 26.6.1
+# (request == limit on memory, generous CPU bursting).
+resources:
+  requests:
+    cpu: 300m
+    memory: 450Mi
+  limits:
+    cpu: 700m
+    memory: 450Mi
+
+# Pod scheduling.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""
+topologySpreadConstraints: []
+
+# Pod template overrides.
+podLabels: {}
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+# Operator-only env vars. Each entry: { name, value } or { name, valueFrom: {...} }.
+# Use `extraEnv` for additions; this chart already wires KUBERNETES_NAMESPACE
+# (downward API), RELATED_IMAGE_KEYCLOAK and the watch-namespace env vars.
+extraEnv: []
+
+# Watch-namespace scope. The two env vars
+#   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKCONTROLLER_NAMESPACES
+#   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKREALMIMPORTCONTROLLER_NAMESPACES
+# are derived from this value:
+#   "JOSDK_WATCH_CURRENT" — watch only the operator's own namespace (default)
+#   "JOSDK_WATCH_ALL"     — watch every namespace
+#   "ns-a,ns-b"           — comma-separated namespace list
+watchNamespaces: "JOSDK_WATCH_CURRENT"
+
+# Probe overrides. Set per-probe knobs to override the upstream defaults.
+probes:
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 10
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 10
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 10
+
+# Volume mounts / volumes for the operator container.
+volumeMounts: []
+volumes: []
+
+# Escape hatch — arbitrary YAML merged into spec of the operator Deployment.
+# Useful for things like spec.strategy, spec.minReadySeconds, ... that this
+# chart does not surface.
+deploymentExtra: {}
+
+# Escape hatch — arbitrary YAML merged into the operator container spec
+# (spec.template.spec.containers[0]). Use sparingly; prefer first-class fields.
+containerExtra: {}
+
+# ---------------------------------------------------------------------------
+# Service (operator metrics / health)
+# ---------------------------------------------------------------------------
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  name: http
+  annotations: {}
+  labels: {}
+
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
+serviceAccount:
+  # Create the operator ServiceAccount. Disable to wire an externally-managed
+  # SA via .name (the operator Deployment still references this name).
+  create: true
+  name: keycloak-operator
+  annotations: {}
+  labels: {}
+
+# ---------------------------------------------------------------------------
+# RBAC
+# ---------------------------------------------------------------------------
+# The operator needs both namespace-scoped (Role/RoleBinding) and
+# cluster-scoped (ClusterRole/ClusterRoleBinding) permissions. Disable RBAC
+# only when policies are managed externally; the upstream rules are required.
+rbac:
+  create: true
+  # Namespace where the bootstrap ClusterRoleBinding subject lives. Defaults
+  # to .Release.Namespace. The upstream manifest hard-codes "keycloak" here —
+  # this value is what makes the chart portable.
+  subjectNamespace: ""
+
+# ---------------------------------------------------------------------------
+# CRDs
+# ---------------------------------------------------------------------------
+# CRDs ship inside templates/ so they upgrade with the chart. Disable this
+# only when CRDs are managed out-of-band (e.g. by a cluster-wide GitOps
+# controller). When disabled, the CR-consuming charts (keycloak-cr) still
+# require the CRDs to exist before apply.
+crds:
+  install: true
+  # Add `helm.sh/resource-policy: keep` to the CRDs so they survive a chart
+  # uninstall. Recommended in production — Keycloak/Realm CRs depend on the
+  # CRDs and accidental removal would break reconciliation everywhere.
+  keep: true

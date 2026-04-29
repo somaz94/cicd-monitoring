@@ -1,0 +1,40 @@
+# Keycloak instance + bundled PostgreSQL via somaz94/helm-charts OCI charts.
+#
+# Two releases in the `keycloak` namespace:
+#   1. keycloak-postgresql — somaz94/postgresql chart, dedicated to Keycloak
+#   2. keycloak             — somaz94/keycloak-cr chart, renders Keycloak CR + (optional) HTTPRoute.
+#
+# Operator + CRDs must be installed first via ../keycloak-operator/.
+# Chart versions pinned. Bump via ./upgrade.sh (external-oci template, manages keycloak-cr only).
+
+releases:
+  # PostgreSQL — single-node, NFS PVC, dedicated to Keycloak.
+  # `keycloak-postgresql` 이 chart fullnameOverride 를 통해 service hostname 으로 결정.
+  - name: keycloak-postgresql
+    namespace: keycloak
+    chart: oci://ghcr.io/somaz94/charts/postgresql
+    version: "0.1.0"
+    values:
+      - values/mgmt-postgresql.yaml
+
+  # Keycloak CR — depends on postgresql being ready (operator reconciles when DB is reachable).
+  # `needs:` enforces helmfile apply ordering only; runtime DB readiness is the operator's job.
+  - name: keycloak
+    namespace: keycloak
+    chart: oci://ghcr.io/somaz94/charts/keycloak-cr
+    version: "0.1.0"
+    needs:
+      - keycloak/keycloak-postgresql
+    values:
+      - values/mgmt-keycloak.yaml
+
+# Ensure target namespace exists before sync (idempotent no-op when present).
+# DB credentials Secret is chart-managed by the keycloak-postgresql release (auth.user/password/secretKeys in values/mgmt-postgresql.yaml).
+# Realm import is handled in Phase 3 via UI/kcadm — not auto-applied here.
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - "kubectl create namespace keycloak 2>/dev/null || true"

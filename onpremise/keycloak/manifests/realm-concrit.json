@@ -1,0 +1,4 @@
+{
+  "_comment_": "Placeholder. Phase 3 will overwrite this with `kcadm.sh get realms/example > realm-example.json` (full export). Until then, realmImport.enabled remains false in values/mgmt-keycloak.yaml — the realm is created via UI/kcadm out-of-band.",
+  "realm": "example"
+}

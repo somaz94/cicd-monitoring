@@ -1,0 +1,312 @@
+# Default values for keycloak-cr.
+#
+# This chart wraps the Keycloak Operator's CRDs (Keycloak, KeycloakRealmImport)
+# plus a few peripheral resources (HTTPRoute, DB-credentials Secret, bootstrap
+# admin Secret). It does NOT install the Keycloak Operator itself — install the
+# `keycloak-operator` chart (or the upstream raw YAML) first so the CRDs and
+# operator Deployment are present before this chart is applied.
+#
+# Default `helm install` is a NEAR-no-op:
+#   - One Keycloak CR is rendered (the chart's primary resource).
+#   - Optional resources (realm import, HTTPRoute, secrets) are gated by
+#     `*.enabled` and stay off until you turn them on.
+
+# ---------------------------------------------------------------------------
+# Resource metadata
+# ---------------------------------------------------------------------------
+# Labels and annotations applied to EVERY resource created by this chart.
+# Useful for org-wide ownership labels, cost-allocation tags, etc.
+commonLabels: {}
+commonAnnotations: {}
+
+# Per-resource label/annotation overrides. Keys: keycloak, realmImport,
+# httproute, ingress, dbSecret, adminSecret.
+resourceMetadata:
+  keycloak:
+    labels: {}
+    annotations: {}
+  realmImport:
+    labels: {}
+    annotations: {}
+  httproute:
+    labels: {}
+    annotations: {}
+  ingress:
+    labels: {}
+    annotations: {}
+  dbSecret:
+    labels: {}
+    annotations: {}
+  adminSecret:
+    labels: {}
+    annotations: {}
+
+# Override the chart-derived resource name. Defaults to the Helm release name.
+name: ""
+
+# ---------------------------------------------------------------------------
+# Keycloak CR (k8s.keycloak.org/v2beta1)
+# ---------------------------------------------------------------------------
+keycloak:
+  # Number of Keycloak server pods. Use 2+ for HA (requires the Keycloak cache
+  # to be configured for distributed mode — see the Keycloak operator docs).
+  instances: 1
+
+  # Container image override. Leave empty to use the operator's default image
+  # for the bundled Keycloak version. When pinning a custom image, set
+  # `startOptimized: true` only if your image was pre-augmented with `kc.sh build`.
+  image: ""
+  startOptimized: ""             # "" | true | false  (string-or-bool: empty omits the field)
+
+  # Pull secrets attached to the Keycloak server Pods (NOT the operator).
+  imagePullSecrets: []           # e.g. [{ name: my-registry }]
+
+  # Hostname configuration. Required for proxy=edge to avoid admin redirect loops.
+  # Example: hostname.hostname=auth.example.com when fronting Keycloak with TLS.
+  hostname:
+    hostname: ""                 # FQDN clients use to reach Keycloak
+    admin: ""                    # Optional separate admin hostname
+    strict: true                 # Disable header-based hostname resolution
+    backchannelDynamic: false    # Hostname v2 — set true for split private network access
+
+  # HTTP / HTTPS listener config. The operator-rendered Service exposes the
+  # ports below. With proxy=edge you typically want only HTTP enabled and let
+  # the gateway terminate TLS.
+  http:
+    httpEnabled: true            # Enable plaintext HTTP listener (recommended behind a TLS gateway)
+    httpPort: 8080
+    httpsPort: 8443
+    tlsSecret: ""                # Secret holding tls.crt + tls.key for HTTPS termination
+    annotations: {}              # Service-level annotations
+    labels: {}                   # Service-level labels
+
+  # Reverse-proxy mode. `edge` = TLS terminated at the gateway. `reencrypt`
+  # = TLS terminated at the gateway and re-encrypted to Keycloak. `passthrough`
+  # = TLS terminated at Keycloak. Empty = operator default (none).
+  proxy:
+    headers: ""                  # "" | "xforwarded" | "forwarded"
+
+  # Database connection. Set `existingSecret` to point at a pre-existing Secret
+  # (e.g. one created by the `dbSecret` block below or by an external operator)
+  # OR set `username`/`password` inline (NOT recommended).
+  db:
+    vendor: postgres             # postgres | mariadb | mysql | mssql | oracle | h2
+    host: ""                     # PostgreSQL service hostname (required for vendor != h2)
+    port: 5432
+    database: keycloak
+    schema: ""                   # Optional schema name
+    # Secret holding the DB credentials. The chart can render this Secret for
+    # you via the `.Values.dbSecret` block below; otherwise set existingSecret.
+    existingSecret: ""           # Used as the source for both username + password
+    usernameSecretKey: username  # Key in existingSecret (or chart-rendered Secret)
+    passwordSecretKey: password  # Key in existingSecret (or chart-rendered Secret)
+    poolMinSize: 0
+    poolInitialSize: 0
+    poolMaxSize: 0
+    # url: ""                    # Full JDBC URL (overrides host/port/database)
+
+  # Bootstrap admin user / service-account credentials (used only on first
+  # cluster creation). Set `userSecret` and `serviceSecret` to pre-existing
+  # Secrets, or use `.Values.adminSecret.enabled: true` to render one here.
+  bootstrapAdmin:
+    userSecret: ""               # Secret with keys: username, password
+    serviceSecret: ""            # Secret with keys: client-id, client-secret
+
+  # Compute resources for the Keycloak server Pods. Match the operator's
+  # default unless you have profiled your workload.
+  resources: {}
+    # requests:
+    #   cpu: 500m
+    #   memory: 1Gi
+    # limits:
+    #   cpu: 2000m
+    #   memory: 2Gi
+
+  # Pod scheduling. Passed through to spec.scheduling unchanged.
+  scheduling: {}
+    # nodeSelector: {}
+    # tolerations: []
+    # affinity: {}
+    # priorityClassName: ""
+
+  # Enable/disable Keycloak server features (comma-separated lists).
+  # Leave empty to use the operator's defaults.
+  features:
+    enabled: []                  # e.g. [ "preview", "token-exchange" ]
+    disabled: []                 # e.g. [ "impersonation" ]
+
+  # Operator-managed Ingress (rendered by the Keycloak Operator from spec.ingress).
+  # Disabled by default — this chart's top-level `ingress` block (below) gives
+  # finer control. Only enable ONE of {keycloak.ingress, top-level ingress}.
+  ingress:
+    enabled: false               # When true, the operator creates an Ingress
+    className: ""
+    annotations: {}
+    labels: {}
+
+  # Operator-managed NetworkPolicy. Off by default; turn on if you do not run
+  # a global NetworkPolicy already.
+  networkPolicy:
+    enabled: false
+
+  # OpenTelemetry tracing. Disabled by default.
+  tracing:
+    enabled: false
+    endpoint: ""
+    protocol: ""                 # "" | grpc | http/protobuf
+    samplerType: ""              # "" | traceidratio | always_on | always_off | parentbased_*
+    samplerRatio: null           # 0.0 — 1.0
+
+  # Transaction settings.
+  transaction:
+    xaEnabled: null              # null = operator default; bool to override
+
+  # Truststores for outbound TLS (e.g. Identity Provider TLS, LDAP TLS).
+  # Map of name → { secret: { name, optional }, configMap: { name, optional } }.
+  # Pass through unchanged.
+  truststores: {}
+
+  # `additionalOptions` — pass-through for `KC_*` flags not surfaced above.
+  # Each entry: { name: "<keycloak option>", value: "<string>" } OR
+  # { name: "<keycloak option>", secret: { name, key, optional } }.
+  additionalOptions: []
+    # - name: log-level
+    #   value: INFO
+    # - name: spi-truststore-file-file
+    #   secret:
+    #     name: keycloak-truststore
+    #     key: truststore.jks
+
+  # `env` — environment variables on the Keycloak Pods. Prefer `additionalOptions`
+  # for Keycloak config flags; this is for arbitrary env (e.g. JAVA_OPTS_APPEND).
+  env: []
+
+  # Escape hatch. Arbitrary YAML merged into spec at the top level for fields
+  # this chart does not surface. Use sparingly.
+  specExtra: {}                  # merged into spec (top level) of the Keycloak CR
+
+# ---------------------------------------------------------------------------
+# KeycloakRealmImport CR (k8s.keycloak.org/v2beta1)
+# ---------------------------------------------------------------------------
+realmImport:
+  # Render a KeycloakRealmImport CR. Leave disabled when bootstrapping the
+  # realm via the Keycloak admin UI / kcadm.sh and committing the export later.
+  enabled: false
+
+  # Name of the Keycloak CR this realm targets. Defaults to the chart's main
+  # Keycloak CR name (Release.Name or .Values.name).
+  keycloakCRName: ""
+
+  # Inline RealmRepresentation. The Keycloak Operator's KeycloakRealmImport
+  # CRD only accepts the realm inline — there is no native ConfigMap source.
+  # For large realm exports, prefer one of:
+  #   - helm install ... --set-file realmImport.realm=path/to/realm.json
+  #   - load realm.json with $(cat realm.json | yq -p=json) into your values
+  #   - leave this empty and run `kcadm.sh create realms` out-of-band
+  realm: {}
+
+  # Job placeholders — substituted into the realm import at apply time.
+  # Each entry: { secret: { name, key, optional } } — typed map, see CRD.
+  placeholders: {}
+
+  # Compute resources for the import Job (not for Keycloak itself).
+  resources: {}
+
+  # Escape hatch. Arbitrary YAML merged into spec at the top level.
+  specExtra: {}
+
+# ---------------------------------------------------------------------------
+# DB credentials Secret (rendered)
+# ---------------------------------------------------------------------------
+# Convenience helper: render the DB credentials Secret that `keycloak.db.existingSecret`
+# points at. Skip this block (enabled=false) when the Secret is provisioned
+# elsewhere (e.g. ExternalSecrets, Vault, the postgresql chart's own Secret).
+dbSecret:
+  enabled: false
+  name: ""                       # defaults to "<release>-db-credentials"
+  username: ""
+  password: ""                   # WARNING: plaintext. Prefer ExternalSecrets or rotate after install.
+  usernameKey: username
+  passwordKey: password
+
+# ---------------------------------------------------------------------------
+# Bootstrap admin Secret (rendered)
+# ---------------------------------------------------------------------------
+# Convenience helper: render the bootstrap admin user Secret (username +
+# password). Used only on first cluster creation; the operator stops reading
+# this Secret once the realm-master admin exists.
+adminSecret:
+  enabled: false
+  name: ""                       # defaults to "<release>-bootstrap-admin"
+  username: admin
+  password: ""                   # WARNING: plaintext. Rotate immediately via the admin UI / kcadm.sh.
+  usernameKey: username
+  passwordKey: password
+
+# ---------------------------------------------------------------------------
+# Ingress (chart-rendered, standalone — networking.k8s.io/v1)
+# ---------------------------------------------------------------------------
+# Use this block when the cluster does NOT have Gateway API installed and the
+# operator's built-in `keycloak.ingress` (above) is too restrictive (e.g. you
+# need annotation-driven controllers, custom TLS, multi-path rules).
+#
+# Disabled by default. Choose ONE of:
+#   1. httproute.enabled: true       (Gateway API — recommended for new clusters)
+#   2. ingress.enabled: true         (standalone Ingress — full control)
+#   3. keycloak.ingress.enabled: true (operator-rendered Ingress — minimal)
+ingress:
+  enabled: false
+  className: ""                    # e.g. nginx, traefik, alb
+  host: ""                         # FQDN clients use to reach Keycloak
+  path: /
+  pathType: Prefix
+  annotations: {}                  # e.g. cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: []                          # [{ hosts: [auth.example.com], secretName: keycloak-tls }]
+
+  # Backend override. Empty defaults to the operator-rendered Service
+  # ("<release>-service") and port 8080.
+  backend:
+    serviceName: ""
+    servicePort: null              # null → 8080
+
+  # Additional path entries appended to the rule for the same host. Useful for
+  # routing /admin or /metrics to a different Service.
+  extraPaths: []
+    # - path: /
+    #   pathType: Prefix
+    #   serviceName: alt-service
+    #   servicePort: 8080
+
+# ---------------------------------------------------------------------------
+# HTTPRoute (Gateway API)
+# ---------------------------------------------------------------------------
+# Routes traffic from a Gateway to the Keycloak Service the operator renders
+# (named `<keycloak-name>-service` by default — see `keycloak.http.serviceName`
+# in the upstream CRD).
+httproute:
+  enabled: false
+  parentRefs: []
+    # - name: gateway
+    #   namespace: nginx-gateway
+    #   sectionName: https
+  hostnames: []
+    # - auth.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: ""               # empty -> defaults to "<keycloak-name>-service"
+          port: 8080
+          # weight: 100
+      # filters: []
+      # timeouts: {}
+
+  # Optional companion HTTPRoute that 301-redirects HTTP → HTTPS. Enable when
+  # the parent Gateway listens on both 80 (HTTP) and 443 (HTTPS).
+  httpsRedirect:
+    enabled: false
+    statusCode: 301
+    parentRefs: []               # falls back to parentRefs above when empty
+    # port: 443

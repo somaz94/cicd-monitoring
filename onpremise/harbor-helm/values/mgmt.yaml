@@ -83,34 +83,65 @@ externalURL: https://harbor.example.com
 # externalURL: http://harbor.example.com
 
 # =============================================================================
-# SSO — GitLab OpenID Connect
+# SSO — Keycloak OpenID Connect (Phase 4, 2026-04-28+)
 #
 # Harbor does NOT expose OIDC settings as Helm values — they are stored in
-# Harbor's core database. Configure via Administration → Configuration →
-# Authentication AFTER `helmfile apply` succeeds and HTTPS is reachable.
+# Harbor's core database. Configure via API/UI AFTER `helmfile apply` succeeds.
 #
-# Prerequisites:
-#   1. GitLab Admin → Applications → New Application
-#      - Name: Harbor
-#      - Redirect URI: https://harbor.example.com/c/oidc/callback
-#      - Confidential: Yes
-#      - Scopes: openid, profile, email
-#   2. Copy Application ID and Secret.
+# Standard procedure (recommended automation):
+#   ./scripts/harbor/admin/harbor-admin.sh set-oidc \
+#       --name Keycloak \
+#       --endpoint https://auth.example.com/realms/example \
+#       --client-id harbor \
+#       --client-secret '<phase-3 secret>' \
+#       [--dry-run] [-y]
 #
-# Harbor UI settings:
-#   - Auth Mode:           OIDC        (one-way — cannot revert to DB mode)
-#   - OIDC Provider Name:  GitLab
-#   - OIDC Endpoint:       http://gitlab.example.com
-#   - Client ID / Secret:  from step 2 above
-#   - Group Claim Name:    groups      (try groups_direct on GitLab 17+ if empty)
-#   - OIDC Admin Group:    <empty>     (admin@example.com promoted manually via Users menu)
-#   - OIDC Group Filter:   server      (only GitLab `server` group members may sign in)
+# Harbor UI
+#   - Auth Mode:           oidc_auth   (one-way — already flipped on this cluster)
+#   - OIDC Provider Name:  Keycloak
+#   - OIDC Endpoint:       https://auth.example.com/realms/example
+#   - Client ID:           harbor
+#   - Client Secret:       (Phase 3 kcadm-bootstrap.sh output, see harbor-migration.md)
+#   - Group Claim Name:    groups      (matches harbor client mapper)
+#   - OIDC Admin Group:    <empty>     (admin@example.com promoted manually)
+#   - OIDC Group Filter:   server      (only Keycloak `server` group members may sign in)
 #   - OIDC Scope:          openid,profile,email
 #   - Username Claim:      preferred_username
-#   - Verify Certificate:  OFF         (GitLab is HTTP — cannot verify)
+#   - Verify Certificate:  ON          (HTTPS + wildcard cert is trusted)
 #   - Automatic onboarding: ON         (only users passing Group Filter are created)
 #
-# Reference: cicd/argo-cd/values/mgmt.yaml (uses the same GitLab + `server` group).
+# Migration history & user re-mapping:
+#   security/keycloak/docs/harbor-migration.md (Phase 4 step-by-step)
+# Detailed reference: cicd/harbor-helm/docs/oidc-setup-keycloak.md
+# Legacy GitLab full procedure: cicd/harbor-helm/docs/legacy/oidc-setup-gitlab.md
+# Permissions helper: scripts/harbor/admin/harbor-admin.sh
+#
+# -----------------------------------------------------------------------------
+# Legacy: GitLab-direct OIDC (pre-Phase 4) — preserved for rollback only
+# -----------------------------------------------------------------------------
+# Until 2026-04-28 Harbor used GitLab as its OIDC IdP directly. To roll back:
+#
+#   Prerequisites:
+#     1. GitLab Admin → Applications → New Application
+#        - Name: Harbor
+#        - Redirect URI: https://harbor.example.com/c/oidc/callback
+#        - Confidential: Yes
+#        - Scopes: openid, profile, email
+#     2. Copy Application ID and Secret.
+#
+#   Apply via harbor-admin.sh:
+#     ./scripts/harbor/admin/harbor-admin.sh set-oidc \
+#         --name GitLab \
+#         --endpoint http://gitlab.example.com \
+#         --client-id '<gitlab application id>' \
+#         --client-secret '<gitlab application secret>' \
+#         --verify-cert false
+#
+#   GitLab-era field deltas vs Keycloak:
+#     - oidc_name:          GitLab          (vs Keycloak)
+#     - oidc_endpoint:      http://gitlab.example.com  (vs https://auth.example.com/realms/example)
+#     - oidc_verify_cert:   false (HTTP)    (vs true on HTTPS)
+#     - oidc_groups_claim:  groups (try groups_direct on GitLab 17+)  (vs groups)
 # =============================================================================
 
 persistence:

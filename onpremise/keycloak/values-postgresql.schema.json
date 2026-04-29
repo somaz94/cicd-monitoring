@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "postgresql values",
+  "description": "Schema for the postgresql Helm chart values.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "commonLabels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "commonAnnotations": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "resourceMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deployment":     { "$ref": "#/$defs/metadataBlock" },
+        "service":        { "$ref": "#/$defs/metadataBlock" },
+        "pvc":            { "$ref": "#/$defs/metadataBlock" },
+        "configMap":      { "$ref": "#/$defs/metadataBlock" },
+        "secret":         { "$ref": "#/$defs/metadataBlock" },
+        "backupCronJob":  { "$ref": "#/$defs/metadataBlock" },
+        "backupPvc":      { "$ref": "#/$defs/metadataBlock" },
+        "serviceAccount": { "$ref": "#/$defs/metadataBlock" },
+        "networkPolicy":  { "$ref": "#/$defs/metadataBlock" }
+      }
+    },
+    "nameOverride":     { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "configMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nameOverride": { "type": "string" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag":        { "type": "string" },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "imagePullSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create":           { "type": "boolean" },
+        "name":             { "type": "string" },
+        "dockerconfigjson": { "type": "string" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type":        { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port":        { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "nodePort":    { "type": ["integer", "null"] },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "persistence": { "$ref": "#/$defs/persistence" },
+    "pgData":      { "type": "string", "minLength": 1 },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user":           { "type": "string" },
+        "password":       { "type": "string" },
+        "database":       { "type": "string" },
+        "existingSecret": { "type": "string" },
+        "secretKeys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "user":     { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "customConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "postgresqlConf": { "type": "string" },
+        "pgHbaConf":      { "type": "string" }
+      }
+    },
+    "useCustomConfig": { "type": "boolean" },
+    "logCollector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled":   { "type": "boolean" },
+        "mountPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "resources":    { "$ref": "#/$defs/resources" },
+    "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+    "tolerations":  { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "affinity":     { "type": "object", "additionalProperties": true },
+    "topologySpreadConstraints": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "priorityClassName":    { "type": "string" },
+    "podSecurityContext":   { "type": "object", "additionalProperties": true },
+    "securityContext":      { "type": "object", "additionalProperties": true },
+    "livenessProbe":        { "type": "object", "additionalProperties": true },
+    "readinessProbe":       { "type": "object", "additionalProperties": true },
+    "specExtra":            { "type": "object", "additionalProperties": true },
+    "podTemplateExtra":     { "type": "object", "additionalProperties": true },
+    "kubernetesExtra":      { "type": "object", "additionalProperties": true },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled":                    { "type": "boolean" },
+        "schedule":                   { "type": "string" },
+        "concurrencyPolicy":          { "type": "string", "enum": ["Allow", "Forbid", "Replace"] },
+        "successfulJobsHistoryLimit": { "type": "integer", "minimum": 0 },
+        "failedJobsHistoryLimit":     { "type": "integer", "minimum": 0 },
+        "retentionDays":              { "type": "integer", "minimum": 1 },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": { "type": "string" },
+            "tag":        { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "resources":        { "$ref": "#/$defs/resources" },
+        "persistence":      { "$ref": "#/$defs/persistence" },
+        "specExtra":        { "type": "object", "additionalProperties": true },
+        "jobTemplateExtra": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create":                       { "type": "boolean" },
+        "name":                         { "type": "string" },
+        "annotations":                  { "type": "object", "additionalProperties": { "type": "string" } },
+        "imagePullSecrets":             { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "automountServiceAccountToken": { "type": "boolean" }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled":     { "type": "boolean" },
+        "policyTypes": { "type": "array", "items": { "type": "string", "enum": ["Ingress", "Egress"] } },
+        "ingress":     { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "egress":      { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "podSelector": { "type": "object", "additionalProperties": true }
+      }
+    }
+  },
+
+  "$defs": {
+    "metadataBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "labels":      { "type": "object", "additionalProperties": { "type": "string" } },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu":    { "type": ["string", "number"] },
+            "memory": { "type": "string" }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu":    { "type": ["string", "number"] },
+            "memory": { "type": "string" }
+          }
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled":        { "type": "boolean" },
+        "storageClass":   { "type": "string" },
+        "accessModes":    { "type": "array", "items": { "type": "string" } },
+        "size":           { "type": "string" },
+        "existingClaim":  { "type": "string" },
+        "annotations":    { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}

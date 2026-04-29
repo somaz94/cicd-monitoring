@@ -1,0 +1,47 @@
+# Keycloak-dedicated PostgreSQL on the mgmt (example dev) cluster.
+# Consumed by the helmfile release `keycloak-postgresql` (oci://ghcr.io/somaz94/charts/postgresql@0.1.0).
+# Service hostname: `keycloak-postgresql.keycloak.svc` — referenced from values/mgmt-keycloak.yaml `keycloak.db.host`.
+
+# Force the Deployment
+fullnameOverride: keycloak-postgresql
+
+# postgres image — pinned to PostgreSQL 17 (latest officially supported by Keycloak 26.x at https://www.keycloak.org/server/db).
+# Chart default is 18-alpine which works (JDBC compatible) but is not on the Keycloak supported matrix.
+# alpine variant: ~80MB image, musl libc. Sufficient for Keycloak's UTF-8 user data.
+image:
+  repository: postgres
+  tag: "17-alpine"
+
+# Persistence on NFS — same storageClass as other components in this cluster.
+persistence:
+  enabled: true
+  storageClass: nfs-client-server
+  accessModes:
+    - ReadWriteOnce
+  size: 20Gi
+
+# Chart-managed credential Secret. The chart renders a Secret named `keycloak-postgresql` (= fullname) holding the credentials below.
+# secretKeys override changes the keys inside the Secret from POSTGRES_USER
+# Why: Keycloak CR's default secret key names are `username`
+# Container env names (POSTGRES_USER
+auth:
+  user: keycloak
+  password: exampleAdminPassword
+  database: keycloak
+  secretKeys:
+    user: username
+    password: password
+
+# Service is internal-only (Keycloak server pod connects via cluster DNS).
+service:
+  type: ClusterIP
+  port: 5432
+
+# Resource sizing — small Keycloak workload (~hundreds of users, dev cluster).
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
