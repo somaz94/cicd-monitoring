@@ -78,6 +78,18 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # Number of backups to retain. Override via env: `KEEP_BACKUPS=1 ./upgrade.sh`.
 KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
 
+# Detect helmfile flavor (helmfile.yaml or helmfile.yaml.gotmpl).
+# Prefer .gotmpl when both exist (.gotmpl is the templated source of truth).
+HELMFILE_PATH=""
+HELMFILE_NAME=""
+if [ -f "$CHART_DIR/helmfile.yaml.gotmpl" ]; then
+  HELMFILE_PATH="$CHART_DIR/helmfile.yaml.gotmpl"
+  HELMFILE_NAME="helmfile.yaml.gotmpl"
+elif [ -f "$CHART_DIR/helmfile.yaml" ]; then
+  HELMFILE_PATH="$CHART_DIR/helmfile.yaml"
+  HELMFILE_NAME="helmfile.yaml"
+fi
+
 # -----------------------------------------------
 # Functions
 # -----------------------------------------------
@@ -117,14 +129,17 @@ list_backups() {
   fi
 
   local i=1
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
-    local dirname=$(basename "$dir")
+  # Reverse-sorted glob via sort -r: name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    local dirname=""; dirname=$(basename "$dir")
     local chart_ver="unknown"
     [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^appVersion:' "$dir/Chart.yaml" | awk '{print $2}' | tr -d '"')
-    local files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+    local files=""; files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
     printf "  [%d] %s (appVersion: %s) — %s\n" "$i" "$dirname" "$chart_ver" "$files"
     i=$((i + 1))
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
   echo ""
 }
 
@@ -137,9 +152,12 @@ do_rollback() {
   list_backups
 
   local backups=()
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
+  # Reverse-sorted glob via sort -r: name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
     backups+=("$dir")
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
 
   read -rp "Select backup number to restore [1]: " choice
   choice=${choice:-1}
@@ -150,7 +168,7 @@ do_rollback() {
   fi
 
   local selected="${backups[$((choice - 1))]}"
-  local dirname=$(basename "$selected")
+  local dirname=""; dirname=$(basename "$selected")
 
   # Read the backup version to detect downgrades.
   local backup_ver=""
@@ -163,8 +181,8 @@ do_rollback() {
   local is_downgrade=false
   if command -v kubectl >/dev/null 2>&1 && [ -n "$COMPONENT_LABEL" ]; then
     local ns=""
-    if [ -f "$CHART_DIR/helmfile.yaml" ]; then
-      ns=$(awk '/namespace:/ {print $2; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'")
+    if [ -n "$HELMFILE_PATH" ]; then
+      ns=$(awk '/namespace:/ {print $2; exit}' "$HELMFILE_PATH" | tr -d '"' | tr -d "'")
     fi
     if [ -n "$ns" ]; then
       live_ver=$(kubectl -n "$ns" get "$COMPONENT_LABEL" "$COMPONENT_LABEL" \
@@ -173,7 +191,7 @@ do_rollback() {
   fi
 
   if [ -n "$live_ver" ] && [ -n "$backup_ver" ] && [ "$live_ver" != "$backup_ver" ]; then
-    local live_tuple backup_tuple
+    local live_tuple="" backup_tuple=""
     live_tuple=$(echo "$live_ver" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
     backup_tuple=$(echo "$backup_ver" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
     if [ "$backup_tuple" -lt "$live_tuple" ]; then
@@ -224,11 +242,11 @@ do_rollback() {
 # Handles the full rollback cycle when a version downgrade requires
 # bypassing the operator admission webhook.
 rollback_with_webhook_handling() {
-  # Read release name and namespace from helmfile.yaml for Helm state recovery.
+  # Read release name and namespace from helmfile for Helm state recovery.
   local release_name="" release_ns=""
-  if [ -f "$CHART_DIR/helmfile.yaml" ]; then
-    release_name=$(awk '/- name:/ {print $3; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'")
-    release_ns=$(awk '/namespace:/ {print $2; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'")
+  if [ -n "$HELMFILE_PATH" ]; then
+    release_name=$(awk '/- name:/ {print $3; exit}' "$HELMFILE_PATH" | tr -d '"' | tr -d "'")
+    release_ns=$(awk '/namespace:/ {print $2; exit}' "$HELMFILE_PATH" | tr -d '"' | tr -d "'")
   fi
 
   echo ""
@@ -247,12 +265,12 @@ rollback_with_webhook_handling() {
   # Roll back to the last successful revision so helmfile can detect the diff.
   echo "  [3/7] Recovering Helm release state..."
   if [ -n "$release_name" ] && [ -n "$release_ns" ]; then
-    local helm_status
+    local helm_status=""
     helm_status=$(helm status "$release_name" -n "$release_ns" -o json 2>/dev/null \
       | python3 -c "import json,sys; print(json.load(sys.stdin).get('info',{}).get('status',''))" 2>/dev/null) || true
     if [ "$helm_status" = "failed" ]; then
       echo "    Helm release '$release_name' is in 'failed' state. Rolling back to last successful revision..."
-      local last_good
+      local last_good=""
       last_good=$(helm history "$release_name" -n "$release_ns" -o json 2>/dev/null \
         | python3 -c "
 import json, sys
@@ -274,7 +292,7 @@ except Exception:
       echo "    Helm release is clean (status: ${helm_status:-unknown})."
     fi
   else
-    echo "    WARN: could not read release info from helmfile.yaml. Skipping Helm recovery."
+    echo "    WARN: could not read release info from helmfile. Skipping Helm recovery."
   fi
 
   echo "  [4/7] Applying rollback via helmfile..."
@@ -287,7 +305,7 @@ except Exception:
   if [ -n "$CR_OPERATOR_CHART_DIR" ]; then
     local search_base="$CHART_DIR"
     while [ "$search_base" != "/" ]; do
-      if [ -f "$search_base/$CR_OPERATOR_CHART_DIR/helmfile.yaml" ]; then
+      if [ -f "$search_base/$CR_OPERATOR_CHART_DIR/helmfile.yaml" ] || [ -f "$search_base/$CR_OPERATOR_CHART_DIR/helmfile.yaml.gotmpl" ]; then
         operator_dir="$search_base/$CR_OPERATOR_CHART_DIR"
         break
       fi
@@ -320,7 +338,7 @@ cleanup_backups() {
     exit 0
   fi
 
-  local total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
+  local total=""; total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   echo "Total backups: $total (keeping last $KEEP_BACKUPS)"
 
   if [ "$total" -le "$KEEP_BACKUPS" ]; then
@@ -332,7 +350,7 @@ cleanup_backups() {
   echo "Removing $to_delete old backup(s)..."
 
   ls -dt "$BACKUP_DIR"/2*/ | tail -n "$to_delete" | while read -r dir; do
-    local dirname=$(basename "$dir")
+    local dirname=""; dirname=$(basename "$dir")
     rm -rf "$dir"
     echo "  Removed: $dirname"
   done
@@ -344,7 +362,7 @@ cleanup_backups() {
 # backups to KEEP_BACKUPS without verbose output when there is nothing to do.
 auto_prune_backups() {
   [ -d "$BACKUP_DIR" ] || return 0
-  local total
+  local total=""
   total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   [ "$total" -le "$KEEP_BACKUPS" ] && return 0
   local to_delete=$((total - KEEP_BACKUPS))
@@ -376,7 +394,7 @@ update_yaml_value() {
   local file="$1"
   local key="$2"
   local new="$3"
-  local tmp
+  local tmp=""
   tmp=$(mktemp)
   awk -v k="$key" -v v="$new" '
     BEGIN { done = 0 }
@@ -503,7 +521,7 @@ find_latest_available_version() {
 
 # Compare two semver strings. Echoes -1 if a<b, 0 if a=b, 1 if a>b.
 semver_compare() {
-  local a_tuple b_tuple
+  local a_tuple="" b_tuple=""
   a_tuple=$(echo "$1" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
   b_tuple=$(echo "$2" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
   if [ "$a_tuple" -lt "$b_tuple" ]; then
@@ -515,10 +533,10 @@ semver_compare() {
   fi
 }
 
-# Resolve the release namespace from helmfile.yaml. Empty if not found.
+# Resolve the release namespace from helmfile (yaml or gotmpl). Empty if not found.
 get_release_namespace() {
-  [ -f "$CHART_DIR/helmfile.yaml" ] || return 0
-  awk '/namespace:/ {print $2; exit}' "$CHART_DIR/helmfile.yaml" | tr -d '"' | tr -d "'"
+  [ -n "$HELMFILE_PATH" ] || return 0
+  awk '/namespace:/ {print $2; exit}' "$HELMFILE_PATH" | tr -d '"' | tr -d "'"
 }
 
 # Best-effort cluster health check. Returns 0 if safe to upgrade, 1 otherwise.
@@ -529,17 +547,17 @@ check_cluster_health() {
     return 0
   fi
   [ -z "$COMPONENT_LABEL" ] && return 0
-  local ns
+  local ns=""
   ns=$(get_release_namespace)
   if [ -z "$ns" ]; then
-    echo "  Skipped (namespace not readable from helmfile.yaml)."
+    echo "  Skipped (namespace not readable from helmfile)."
     return 0
   fi
   if ! kubectl -n "$ns" get "$COMPONENT_LABEL" "$COMPONENT_LABEL" >/dev/null 2>&1; then
     echo "  CR not found in ns/$ns (first install?). Skipping health check."
     return 0
   fi
-  local phase health
+  local phase="" health=""
   phase=$(kubectl -n "$ns" get "$COMPONENT_LABEL" "$COMPONENT_LABEL" -o jsonpath='{.status.phase}' 2>/dev/null)
   health=$(kubectl -n "$ns" get "$COMPONENT_LABEL" "$COMPONENT_LABEL" -o jsonpath='{.status.health}' 2>/dev/null)
   echo "  CR phase:  ${phase:-unknown}"
@@ -576,15 +594,15 @@ check_dependency_version() {
   [ -z "$DEPENDENCY_CR_KIND" ] || [ -z "$DEPENDENCY_CR_NAME" ] && return 0
   command -v kubectl >/dev/null 2>&1 || return 0
   local target="$1"
-  local ns
+  local ns=""
   ns=$(get_release_namespace)
   [ -z "$ns" ] && return 0
-  local dep_ver
+  local dep_ver=""
   dep_ver=$(kubectl -n "$ns" get "$DEPENDENCY_CR_KIND" "$DEPENDENCY_CR_NAME" \
     -o jsonpath='{.spec.version}' 2>/dev/null) || return 0
   [ -z "$dep_ver" ] && return 0
   echo "  Dependency $DEPENDENCY_CR_KIND/$DEPENDENCY_CR_NAME version: $dep_ver"
-  local cmp
+  local cmp=""
   cmp=$(semver_compare "$target" "$dep_ver")
   if [ "$cmp" = "1" ]; then
     echo ""
@@ -601,7 +619,7 @@ check_dependency_version() {
 wait_for_cr_ready() {
   command -v kubectl >/dev/null 2>&1 || return 0
   [ -z "$COMPONENT_LABEL" ] && return 0
-  local ns
+  local ns=""
   ns=$(get_release_namespace)
   [ -z "$ns" ] && return 0
   local timeout="${1:-300}"
@@ -648,20 +666,20 @@ verify_image_exists() {
   local manifest_url="https://${registry}/v2/${repo}/manifests/${tag}"
 
   # Step 1: Unauthenticated probe to get the WWW-Authenticate challenge.
-  local auth_header
+  local auth_header=""
   auth_header=$(curl -sSL -I "$manifest_url" 2>/dev/null \
     | grep -i '^www-authenticate:' | head -1) || true
 
   local http_code
   if [ -n "$auth_header" ]; then
     # Parse realm, service, and scope from the challenge header.
-    local realm service scope
+    local realm="" service="" scope=""
     realm=$(echo "$auth_header" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
     service=$(echo "$auth_header" | sed -n 's/.*service="\([^"]*\)".*/\1/p')
     scope=$(echo "$auth_header" | sed -n 's/.*scope="\([^"]*\)".*/\1/p')
     if [ -n "$realm" ]; then
       local token_url="${realm}?service=${service}&scope=${scope}"
-      local token
+      local token=""
       token=$(curl -sSL "$token_url" 2>/dev/null \
         | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null) || true
       if [ -n "$token" ]; then

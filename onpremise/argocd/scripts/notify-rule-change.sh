@@ -16,7 +16,10 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Resolve script path portably across bash and zsh
+_SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$( cd "$( dirname "$_SCRIPT_PATH" )" && pwd )"
+unset _SCRIPT_PATH
 VALUES_FILE="${SCRIPT_DIR}/../values/mgmt-notifications.yaml"
 NS_ARGOCD=argocd
 CONTROLLER_POD=argocd-application-controller-0

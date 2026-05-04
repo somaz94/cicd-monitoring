@@ -153,9 +153,10 @@ fi
 # Resolve file list
 if [[ "$MODE" == "all" ]]; then
   [[ -d "$DASHBOARDS_DIR" ]] || die "dashboards directory not found: $DASHBOARDS_DIR"
-  shopt -s nullglob
-  FILES=("$DASHBOARDS_DIR"/*.json)
-  shopt -u nullglob
+  # Build FILES tolerating an empty match. Uses find instead of bash-only `shopt -s nullglob` so the script works under zsh too
+  FILES=()
+  while IFS= read -r _f; do FILES+=("$_f"); done < <(find "$DASHBOARDS_DIR" -maxdepth 1 -type f -name '*.json' 2>/dev/null | sort)
+  unset _f
 
   if [[ -n "$EXCEPT" ]]; then
     IFS=',' read -r -a except_pats <<< "$EXCEPT"

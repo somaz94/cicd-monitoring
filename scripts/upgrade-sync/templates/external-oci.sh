@@ -44,6 +44,18 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # Number of backups to retain. Override via env: `KEEP_BACKUPS=1 ./upgrade.sh`.
 KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
 
+# Detect helmfile flavor (helmfile.yaml or helmfile.yaml.gotmpl).
+# Prefer .gotmpl when both exist (.gotmpl is the templated source of truth).
+HELMFILE_PATH=""
+HELMFILE_NAME=""
+if [ -f "$CHART_DIR/helmfile.yaml.gotmpl" ]; then
+  HELMFILE_PATH="$CHART_DIR/helmfile.yaml.gotmpl"
+  HELMFILE_NAME="helmfile.yaml.gotmpl"
+elif [ -f "$CHART_DIR/helmfile.yaml" ]; then
+  HELMFILE_PATH="$CHART_DIR/helmfile.yaml"
+  HELMFILE_NAME="helmfile.yaml"
+fi
+
 # -----------------------------------------------
 # Functions
 # -----------------------------------------------
@@ -88,14 +100,17 @@ list_backups() {
   fi
 
   local i=1
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
-    local dirname=$(basename "$dir")
+  # Reverse-sorted glob via sort -r: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    local dirname=""; dirname=$(basename "$dir")
     local chart_ver="unknown"
     [ -f "$dir/Chart.yaml" ] && chart_ver=$(grep '^version:' "$dir/Chart.yaml" | awk '{print $2}')
-    local files=$(ls "$dir" | tr '\n' ', ' | sed 's/,$//')
+    local files=""; files=$(ls "$dir" | tr '\n' ', ' | sed 's/,$//')
     printf "  [%d] %s (Chart: %s) — %s\n" "$i" "$dirname" "$chart_ver" "$files"
     i=$((i + 1))
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
   echo ""
 }
 
@@ -108,9 +123,12 @@ do_rollback() {
   list_backups
 
   local backups=()
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
+  # Reverse-sorted glob: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
     backups+=("$dir")
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
 
   read -rp "Select backup number to restore [1]: " choice
   choice=${choice:-1}
@@ -121,16 +139,22 @@ do_rollback() {
   fi
 
   local selected="${backups[$((choice - 1))]}"
-  local dirname=$(basename "$selected")
+  local dirname=""; dirname=$(basename "$selected")
   echo ""
   echo "Restoring from backup/$dirname..."
 
   [ -f "$selected/Chart.yaml" ] && cp "$selected/Chart.yaml" "$CHART_DIR/Chart.yaml" && echo "  Restored Chart.yaml"
   [ -f "$selected/values.yaml" ] && cp "$selected/values.yaml" "$CHART_DIR/values.yaml" && echo "  Restored values.yaml"
-  [ -f "$selected/helmfile.yaml" ] && cp "$selected/helmfile.yaml" "$CHART_DIR/helmfile.yaml" && echo "  Restored helmfile.yaml"
+  if [ -f "$selected/helmfile.yaml.gotmpl" ]; then
+    cp "$selected/helmfile.yaml.gotmpl" "$CHART_DIR/helmfile.yaml.gotmpl"
+    echo "  Restored helmfile.yaml.gotmpl"
+  elif [ -f "$selected/helmfile.yaml" ]; then
+    cp "$selected/helmfile.yaml" "$CHART_DIR/helmfile.yaml"
+    echo "  Restored helmfile.yaml"
+  fi
 
   for f in "$selected"/*.yaml; do
-    local fname=$(basename "$f")
+    local fname=""; fname=$(basename "$f")
     if [ "$fname" != "Chart.yaml" ] && [ "$fname" != "values.yaml" ] && [ "$fname" != "helmfile.yaml" ]; then
       cp "$f" "$VALUES_DIR/$fname"
       echo "  Restored values/$fname"
@@ -147,7 +171,7 @@ cleanup_backups() {
     exit 0
   fi
 
-  local total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
+  local total=""; total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   echo "Total backups: $total (keeping last $KEEP_BACKUPS)"
 
   if [ "$total" -le "$KEEP_BACKUPS" ]; then
@@ -159,7 +183,7 @@ cleanup_backups() {
   echo "Removing $to_delete old backup(s)..."
 
   ls -dt "$BACKUP_DIR"/2*/ | tail -n "$to_delete" | while read -r dir; do
-    local dirname=$(basename "$dir")
+    local dirname=""; dirname=$(basename "$dir")
     rm -rf "$dir"
     echo "  Removed: $dirname"
   done
@@ -171,7 +195,7 @@ cleanup_backups() {
 # backups to KEEP_BACKUPS without verbose output when there is nothing to do.
 auto_prune_backups() {
   [ -d "$BACKUP_DIR" ] || return 0
-  local total
+  local total=""
   total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   [ "$total" -le "$KEEP_BACKUPS" ] && return 0
   local to_delete=$((total - KEEP_BACKUPS))
@@ -254,10 +278,10 @@ CURRENT_VERSION=$(grep '^version:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
 CURRENT_APP_VERSION=$(grep '^appVersion:' "$CHART_DIR/Chart.yaml" | awk '{print $2}')
 echo "  Installed - Chart: $CURRENT_VERSION / App: $CURRENT_APP_VERSION"
 
-if [ -f "$CHART_DIR/helmfile.yaml" ]; then
+if [ -n "$HELMFILE_PATH" ]; then
   echo ""
-  echo "  Helmfile releases:"
-  awk '/^releases:/,0' "$CHART_DIR/helmfile.yaml" | grep -v '#' | awk '
+  echo "  Helmfile releases ($HELMFILE_NAME):"
+  awk '/^releases:/,0' "$HELMFILE_PATH" | grep -v '#' | awk '
     /- name:/ { name=$3 }
     /version:/ { if (name != "") { printf "    - %-30s version: %s\n", name, $2; name="" } }
   '
@@ -265,15 +289,43 @@ fi
 
 # Step 2: Fetch latest version from GitHub Releases API (OCI charts have no
 # `helm search repo` equivalent, so we read the upstream release feed instead).
+# Multi-chart repos (e.g. somaz94/helm-charts) tag releases as
+# "<chart>-<version>"; in that case GITHUB_TAG_PREFIX is non-empty and we
+# pick the newest release whose tag starts with that prefix. Single-chart
+# repos leave GITHUB_TAG_PREFIX as the default "v" and we just take the
+# repo's `releases/latest` tag.
 echo ""
 echo "[Step 2/7] Checking latest version (GitHub Releases: $GITHUB_REPO)..."
 
-GH_API="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-LATEST_TAG=$(curl -fsSL \
-  ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
-  -H 'Accept: application/vnd.github+json' \
-  "$GH_API" 2>/dev/null \
-  | python3 -c "
+# When the prefix matches a chart name (anything other than "v" / ""), the
+# repo is multi-chart and `releases/latest` is meaningless for our chart →
+# scan up to 30 recent releases and pick the newest matching the prefix.
+if [ -n "$GITHUB_TAG_PREFIX" ] && [ "$GITHUB_TAG_PREFIX" != "v" ]; then
+  GH_API="https://api.github.com/repos/$GITHUB_REPO/releases?per_page=30"
+  LATEST_TAG=$(curl -fsSL \
+    ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
+    -H 'Accept: application/vnd.github+json' \
+    "$GH_API" 2>/dev/null \
+    | python3 -c "
+import json, sys
+prefix = '$GITHUB_TAG_PREFIX'
+try:
+    rels = json.load(sys.stdin)
+    for r in rels:
+        tag = r.get('tag_name', '')
+        if tag.startswith(prefix):
+            print(tag)
+            sys.exit(0)
+except Exception:
+    pass
+" 2>/dev/null || true)
+else
+  GH_API="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+  LATEST_TAG=$(curl -fsSL \
+    ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
+    -H 'Accept: application/vnd.github+json' \
+    "$GH_API" 2>/dev/null \
+    | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -281,10 +333,14 @@ try:
 except Exception:
     pass
 " 2>/dev/null || true)
+fi
 
 if [ -z "$LATEST_TAG" ]; then
   echo "  ERROR: Failed to fetch latest release from GitHub: $GITHUB_REPO"
   echo "  API: $GH_API"
+  if [ -n "$GITHUB_TAG_PREFIX" ] && [ "$GITHUB_TAG_PREFIX" != "v" ]; then
+    echo "  (No release within last 30 matched prefix '$GITHUB_TAG_PREFIX'.)"
+  fi
   echo "  (If rate-limited, set GITHUB_TOKEN=ghp_... in your environment.)"
   exit 1
 fi
@@ -432,7 +488,7 @@ echo "[Step 7/7] Applying upgrade..."
 # Create backup
 mkdir -p "$BACKUP_DIR/$TIMESTAMP"
 cp "$CHART_DIR/Chart.yaml" "$BACKUP_DIR/$TIMESTAMP/Chart.yaml"
-[ -f "$CHART_DIR/helmfile.yaml" ] && cp "$CHART_DIR/helmfile.yaml" "$BACKUP_DIR/$TIMESTAMP/helmfile.yaml"
+[ -n "$HELMFILE_PATH" ] && cp "$HELMFILE_PATH" "$BACKUP_DIR/$TIMESTAMP/$HELMFILE_NAME"
 if [ -f "$CHART_DIR/values.yaml" ]; then
   cp "$CHART_DIR/values.yaml" "$BACKUP_DIR/$TIMESTAMP/values.yaml"
 fi
@@ -462,13 +518,20 @@ if [ -f "$TEMP_DIR/values.schema.json" ]; then
   echo "  Updated values.schema.json"
 fi
 
-# Update helmfile.yaml version (portable sed: works on macOS BSD sed and GNU sed)
-if [ -f "$CHART_DIR/helmfile.yaml" ]; then
-  UPDATED_COUNT=$(grep -c "version: $CURRENT_VERSION" "$CHART_DIR/helmfile.yaml" || true)
+# Update helmfile (portable sed: works on macOS BSD sed and GNU sed).
+# Handles three pin forms: literal `version: X.Y.Z`, quoted `version: "X.Y.Z"`,
+# and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`. / gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
+if [ -n "$HELMFILE_PATH" ]; then
+  UPDATED_COUNT=$(grep -cE "(version:[[:space:]]+\"?${CURRENT_VERSION}\"?([[:space:]]|$)|\\\$chartVersion[[:space:]]*:=[[:space:]]+\"${CURRENT_VERSION}\")" "$HELMFILE_PATH" || true)
   HELMFILE_TMP=$(mktemp)
-  sed "s/version: $CURRENT_VERSION/version: $LATEST_VERSION/g" "$CHART_DIR/helmfile.yaml" > "$HELMFILE_TMP"
-  mv "$HELMFILE_TMP" "$CHART_DIR/helmfile.yaml"
-  echo "  Updated helmfile.yaml ($UPDATED_COUNT release(s): $CURRENT_VERSION -> $LATEST_VERSION)"
+  sed -E \
+    -e "s|(version:[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
+    -e "s|(version:[[:space:]]+)${CURRENT_VERSION}([[:space:]]+)|\1${LATEST_VERSION}\2|g" \
+    -e "s|(version:[[:space:]]+)${CURRENT_VERSION}\$|\1${LATEST_VERSION}|g" \
+    -e "s|(\\\$chartVersion[[:space:]]*:=[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
+    "$HELMFILE_PATH" > "$HELMFILE_TMP"
+  mv "$HELMFILE_TMP" "$HELMFILE_PATH"
+  echo "  Updated $HELMFILE_NAME ($UPDATED_COUNT pin(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi
 
 # Auto-prune backups to KEEP_BACKUPS (silent on no-op).

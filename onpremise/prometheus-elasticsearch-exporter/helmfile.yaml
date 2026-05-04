@@ -1,3 +1,7 @@
+# Deploy prometheus-elasticsearch-exporter via helmfile, consuming upstream prometheus-community chart.
+# Scrapes the sibling Elasticsearch cluster (../../logging/elasticsearch/).
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: prometheus-community
     url: https://prometheus-community.github.io/helm-charts

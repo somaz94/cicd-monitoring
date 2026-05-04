@@ -98,7 +98,7 @@ find_unmanaged_charts() {
     -not -path '*/_deprecated/*' \
     -not -path '*/templates/*' \
     | while read -r chart; do
-        local dir; dir=$(dirname "$chart")
+        local dir=""; dir=$(dirname "$chart")
         if [ ! -f "$dir/upgrade.sh" ]; then
           # Strip repo root prefix for cleaner output
           echo "${dir#$REPO_ROOT/}"
@@ -197,7 +197,7 @@ extract_body() {
 build_expected() {
   local target="$1"
   local template="$2"
-  local canonical
+  local canonical=""
   canonical=$(canonical_path "$template")
 
   printf '#!/bin/bash\n'
@@ -213,7 +213,7 @@ build_expected() {
 build_expected_no_header() {
   local target="$1"
   local template="$2"
-  local canonical
+  local canonical=""
   canonical=$(canonical_path "$template")
 
   printf '#!/bin/bash\n'
@@ -231,7 +231,7 @@ resolve_template() {
   if [ "$mode" = "detect" ]; then
     detect_template "$f"
   else
-    local tpl
+    local tpl=""
     tpl=$(read_template_header "$f")
     if [ -z "$tpl" ]; then
       echo "ERROR: $f has no '# upgrade-template:' header on line 2" >&2
@@ -262,7 +262,7 @@ cmd_check() {
     # skipped (not an error). This lets a repo partially adopt the sync system
     # without forcing all upgrade.sh files to be managed at once.
     if [ "$mode" = "header" ]; then
-      local hdr; hdr=$(read_template_header "$f")
+      local hdr=""; hdr=$(read_template_header "$f")
       if [ -z "$hdr" ]; then
         skipped=$((skipped + 1))
         local rel="${f#$REPO_ROOT/}"
@@ -271,7 +271,7 @@ cmd_check() {
       fi
     fi
 
-    local tpl
+    local tpl=""
     tpl=$(resolve_template "$f" "$mode")
     local expected
     if [ "$mode" = "detect" ]; then
@@ -326,15 +326,15 @@ cmd_apply() {
 
     # Skip files without a `# upgrade-template:` header (they are intentionally
     # not managed by sync — e.g., charts with incompatible chart types).
-    local hdr; hdr=$(read_template_header "$f")
+    local hdr=""; hdr=$(read_template_header "$f")
     if [ -z "$hdr" ]; then
       skipped=$((skipped + 1))
       continue
     fi
 
-    local tpl
+    local tpl=""
     tpl=$(resolve_template "$f" "header")
-    local expected
+    local expected=""
     expected=$(build_expected "$f" "$tpl")
     if ! diff -q <(printf '%s\n' "$expected") "$f" > /dev/null 2>&1; then
       printf '%s\n' "$expected" > "$f"
@@ -357,7 +357,7 @@ cmd_status() {
   local templates_seen=""
   while IFS= read -r f; do
     total=$((total + 1))
-    local tpl
+    local tpl=""
     tpl=$(read_template_header "$f")
     [ -z "$tpl" ] && tpl="(no header)"
     templates_seen="$templates_seen$tpl"$'\n'
@@ -378,7 +378,7 @@ cmd_status() {
 
   echo ""
   echo "Unmanaged chart directories (have Chart.yaml but no upgrade.sh):"
-  local unmanaged
+  local unmanaged=""
   unmanaged=$(find_unmanaged_charts)
   if [ -z "$unmanaged" ]; then
     echo "  (none)"
@@ -395,7 +395,7 @@ cmd_print_expected() {
   fi
   # Convert relative path to absolute
   f=$(cd "$(dirname "$f")" && pwd)/$(basename "$f")
-  local tpl
+  local tpl=""
   tpl=$(resolve_template "$f" "header")
   build_expected "$f" "$tpl"
 }
@@ -408,10 +408,10 @@ cmd_insert_headers() {
       skipped=$((skipped + 1))
       continue
     fi
-    local tpl
+    local tpl=""
     tpl=$(detect_template "$f")
     # Insert "# upgrade-template: <tpl>" after line 1 (after shebang)
-    local tmp
+    local tmp=""
     tmp=$(mktemp)
     awk -v tpl="$tpl" 'NR==1 {print; print "# upgrade-template: " tpl; next} {print}' "$f" > "$tmp"
     mv "$tmp" "$f"

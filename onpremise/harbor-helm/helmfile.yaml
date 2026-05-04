@@ -1,3 +1,8 @@
+# Deploy Harbor (private container registry) via helmfile, consuming upstream harbor/harbor chart.
+# Namespace creation handled by `createNamespace: true` on the release (G11 — no duplicate presync hook).
+# Lifecycle hooks: postsync apply Gateway-API raw manifests; preuninstall clean up HTTPRoutes.
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: harbor
     url: https://helm.goharbor.io
@@ -39,28 +44,12 @@ releases:
 #   atomic: true
 #   cleanupOnFail: true
 
-# Hooks to ensure proper installation and upgrades
+# Pre-flight assertion: warn if no StorageClass available (Harbor needs PVC for DB + storage).
+# Soft check — `|| true` keeps sync flowing even on empty cluster bootstrap.
 hooks:
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "harbor"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
-
-  # Harbor needs a database and storage, so verify that a PVC exists
-  - events: ["presync"]
-    showlogs: true
-    command: "kubectl"
-    args:
-      - "get"
-      - "sc"
-      - "--no-headers"
-      - "||"
-      - "true" 
+      - "-c"
+      - "kubectl get sc --no-headers 2>/dev/null || true"

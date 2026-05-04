@@ -88,13 +88,16 @@ chart_backup_stats() {
   local oldest=""
   local newest=""
 
-  for d in $(ls -d "$backup_dir"/2*/ 2>/dev/null | sort); do
+  # Glob is asc by name; backup dirs use YYYYMMDD_HHMMSS so name == time order.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름순 == 시간순.
+  for d in "$backup_dir"/2*/; do
+    [ -d "$d" ] || continue
     count=$((count + 1))
-    local name
+    local name=""
     name=$(basename "$d")
     [ -z "$oldest" ] && oldest="$name"
     newest="$name"
-    local size
+    local size=""
     size=$(du -sk "$d" 2>/dev/null | awk '{print $1}')
     total_bytes=$((total_bytes + size * 1024))
   done
@@ -110,7 +113,7 @@ chart_prune() {
   local backup_dir="$chart_dir/backup"
   [ -d "$backup_dir" ] || { echo -e "0\t0"; return; }
 
-  local total
+  local total=""
   total=$(ls -d "$backup_dir"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   if [ "$total" -le "$keep" ]; then
     echo -e "0\t0"
@@ -119,7 +122,7 @@ chart_prune() {
   local to_delete=$((total - keep))
   local freed_bytes=0
   ls -dt "$backup_dir"/2*/ | tail -n "$to_delete" | while read -r d; do
-    local size
+    local size=""
     size=$(du -sk "$d" 2>/dev/null | awk '{print $1}')
     rm -rf "$d"
     echo "$size"
@@ -141,8 +144,9 @@ chart_purge() {
 
   local count=0
   local freed_bytes=0
-  for d in $(ls -d "$backup_dir"/2*/ 2>/dev/null); do
-    local size
+  for d in "$backup_dir"/2*/; do
+    [ -d "$d" ] || continue
+    local size=""
     size=$(du -sk "$d" 2>/dev/null | awk '{print $1}')
     rm -rf "$d"
     count=$((count + 1))
@@ -165,10 +169,10 @@ cmd_list() {
   local grand_count=0
   local grand_bytes=0
   while IFS= read -r f; do
-    local chart_dir; chart_dir=$(dirname "$f")
+    local chart_dir=""; chart_dir=$(dirname "$f")
     local rel="${chart_dir#$REPO_ROOT/}"
-    local stats; stats=$(chart_backup_stats "$chart_dir")
-    local count bytes oldest newest
+    local stats=""; stats=$(chart_backup_stats "$chart_dir")
+    local count="" bytes="" oldest="" newest=""
     IFS=$'\t' read -r count bytes oldest newest <<< "$stats"
     [ "$count" -eq 0 ] && continue
     grand_count=$((grand_count + count))
@@ -186,9 +190,9 @@ cmd_total_size() {
   local grand_bytes=0
   local chart_count=0
   while IFS= read -r f; do
-    local chart_dir; chart_dir=$(dirname "$f")
-    local stats; stats=$(chart_backup_stats "$chart_dir")
-    local count bytes _ _
+    local chart_dir=""; chart_dir=$(dirname "$f")
+    local stats=""; stats=$(chart_backup_stats "$chart_dir")
+    local count="" bytes="" _="" _=""
     IFS=$'\t' read -r count bytes _ _ <<< "$stats"
     [ "$count" -eq 0 ] && continue
     chart_count=$((chart_count + 1))
@@ -211,10 +215,10 @@ cmd_cleanup() {
   local total_removed=0
   local total_freed=0
   while IFS= read -r f; do
-    local chart_dir; chart_dir=$(dirname "$f")
+    local chart_dir=""; chart_dir=$(dirname "$f")
     local rel="${chart_dir#$REPO_ROOT/}"
-    local result; result=$(chart_prune "$chart_dir" "$keep")
-    local removed freed
+    local result=""; result=$(chart_prune "$chart_dir" "$keep")
+    local removed="" freed=""
     IFS=$'\t' read -r removed freed <<< "$result"
     [ "$removed" -eq 0 ] && continue
     total_removed=$((total_removed + removed))
@@ -245,10 +249,10 @@ cmd_purge() {
   local total_removed=0
   local total_freed=0
   while IFS= read -r f; do
-    local chart_dir; chart_dir=$(dirname "$f")
+    local chart_dir=""; chart_dir=$(dirname "$f")
     local rel="${chart_dir#$REPO_ROOT/}"
-    local result; result=$(chart_purge "$chart_dir")
-    local removed freed
+    local result=""; result=$(chart_purge "$chart_dir")
+    local removed="" freed=""
     IFS=$'\t' read -r removed freed <<< "$result"
     [ "$removed" -eq 0 ] && continue
     total_removed=$((total_removed + removed))

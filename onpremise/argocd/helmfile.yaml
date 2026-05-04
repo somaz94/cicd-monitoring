@@ -1,3 +1,8 @@
+# Deploy Argo CD via helmfile, consuming upstream argo/argo-cd chart.
+# Multi-file values split: global
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+# Lifecycle hooks: presync → helm dep update + ensure namespace.
+
 repositories:
   - name: argo
     url: https://argoproj.github.io/argo-helm
@@ -9,7 +14,7 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 9.5.4
+    version: 9.5.9
     values:
       - values/mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
@@ -22,8 +27,9 @@ releases:
 #   atomic: true
 #   cleanupOnFail: true
 
-# Hooks to ensure proper installation and upgrades
+# presync hooks: refresh chart deps then ensure namespace exists (idempotent).
 hooks:
+  # helm dependency update — pulls subchart tarballs declared in Chart.yaml.
   - events: ["presync"]
     showlogs: true
     command: "helm"
@@ -32,15 +38,10 @@ hooks:
       - "update"
       - "."
 
+  # Ensure namespace before sync (kubectl args aren't shell-parsed → use sh -c).
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "argocd"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true" 
+      - "-c"
+      - "kubectl create namespace argocd 2>/dev/null || true"

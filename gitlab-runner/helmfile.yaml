@@ -1,30 +1,47 @@
+# Deploy GitLab Runners (build
+# Three releases share the namespace and chart, differing in role-specific values.
+# Selector: helmfile -l role=build|deploy|legacy <cmd>. / Selector: helmfile -l role=build|deploy|legacy <cmd>.
+# Chart versions pinned per release. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: gitlab
     url: https://charts.gitlab.io
 
 releases:
+  # Build runner — handles CI build jobs.
   - name: build-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
     version: 0.88.1
+    labels:
+      role: build
+      app: gitlab-runner
     values:
       - values/build.yaml
 
+  # Deploy runner — handles CD deploy jobs.
   - name: deploy-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
     version: 0.88.1
+    labels:
+      role: deploy
+      app: gitlab-runner
     values:
       - values/deploy.yaml
 
+  # Legacy runner pinned to chart 0.70.3 — kept for projects still on the old executor config.
   - name: old-build-deploy-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
     version: 0.70.3
+    labels:
+      role: legacy
+      app: gitlab-runner
     values:
-      - values/old-gitlab-runner.yaml 
+      - values/old-gitlab-runner.yaml
 
-  # # test
+  # 2025-XX disabled — example-project client build runner test slot, never wired up.
   # - name: example-project-client-build-image
   #   namespace: gitlab-runner
   #   chart: . # Use local Chart directory

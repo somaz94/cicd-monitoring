@@ -100,7 +100,7 @@ update_yaml_value() {
   local file="$1"
   local key="$2"
   local new="$3"
-  local tmp
+  local tmp=""
   tmp=$(mktemp)
   awk -v k="$key" -v v="$new" '
     BEGIN { done = 0 }
@@ -133,17 +133,20 @@ list_backups() {
   fi
 
   local i=1
-  local vfile_base
+  local vfile_base=""
   vfile_base=$(basename "$VERSION_FILE")
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
-    local dirname=$(basename "$dir")
+  # Reverse-sorted glob via sort -r: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    local dirname=""; dirname=$(basename "$dir")
     local ver="unknown"
     [ -f "$dir/$vfile_base" ] && ver=$(read_yaml_value "$dir/$vfile_base" "$VERSION_KEY")
-    local files
+    local files=""
     files=$(ls "$dir" 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
     printf "  [%d] %s (version: %s) — %s\n" "$i" "$dirname" "$ver" "$files"
     i=$((i + 1))
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
   echo ""
 }
 
@@ -156,9 +159,12 @@ do_rollback() {
   list_backups
 
   local backups=()
-  for dir in $(ls -dt "$BACKUP_DIR"/2*/); do
+  # Reverse-sorted glob: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
+  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
     backups+=("$dir")
-  done
+  done < <(printf "%s\n" "$BACKUP_DIR"/2*/ | sort -r)
 
   read -rp "Select backup number to restore [1]: " choice
   choice=${choice:-1}
@@ -169,12 +175,12 @@ do_rollback() {
   fi
 
   local selected="${backups[$((choice - 1))]}"
-  local dirname
+  local dirname=""
   dirname=$(basename "$selected")
   echo ""
   echo "Restoring from backup/$dirname..."
 
-  local vfile_base
+  local vfile_base=""
   vfile_base=$(basename "$VERSION_FILE")
   if [ -f "$selected/$vfile_base" ]; then
     cp "$selected/$vfile_base" "$CHART_DIR/$VERSION_FILE"
@@ -195,7 +201,7 @@ cleanup_backups() {
     exit 0
   fi
 
-  local total
+  local total=""
   total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   echo "Total backups: $total (keeping last $KEEP_BACKUPS)"
 
@@ -208,7 +214,7 @@ cleanup_backups() {
   echo "Removing $to_delete old backup(s)..."
 
   ls -dt "$BACKUP_DIR"/2*/ | tail -n "$to_delete" | while read -r dir; do
-    local dirname
+    local dirname=""
     dirname=$(basename "$dir")
     rm -rf "$dir"
     echo "  Removed: $dirname"
@@ -220,7 +226,7 @@ cleanup_backups() {
 # Silent variant called at the end of a successful upgrade.
 auto_prune_backups() {
   [ -d "$BACKUP_DIR" ] || return 0
-  local total
+  local total=""
   total=$(ls -d "$BACKUP_DIR"/2*/ 2>/dev/null | wc -l | tr -d ' ')
   [ "$total" -le "$KEEP_BACKUPS" ] && return 0
   local to_delete=$((total - KEEP_BACKUPS))

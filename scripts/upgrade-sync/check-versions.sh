@@ -95,7 +95,7 @@ extract_config_block() {
 # to pull those vars into its own scope.
 dump_config_vars() {
   local f="$1"
-  local block
+  local block=""
   block=$(extract_config_block "$f")
   (
     set +u
@@ -272,15 +272,34 @@ if vers:
 " 2>/dev/null
 }
 
-# Read the OCI chart pin from a helmfile.yaml (first indented 'version:' line).
+# Read the OCI chart pin from a helmfile (yaml or gotmpl).
+# For .gotmpl with `{{- $chartVersion := "X" }}` hoist, prefers the hoist;
+# falls back to the first indented release-level 'version:' (skipping templated values).
 read_helmfile_chart_pin() {
-  local file="$1"
-  [ -f "$file" ] || return 0
+  local dir="$1"
+  local file=""
+  if [ -f "$dir/helmfile.yaml.gotmpl" ]; then
+    file="$dir/helmfile.yaml.gotmpl"
+  elif [ -f "$dir/helmfile.yaml" ]; then
+    file="$dir/helmfile.yaml"
+  else
+    return 0
+  fi
   awk '
+    /\$chartVersion[[:space:]]*:=[[:space:]]/ {
+      line = $0
+      if (match(line, /:= *"[^"]*"/)) {
+        sub(/.*:= *"/, "", line)
+        sub(/".*/, "", line)
+        print line
+        exit
+      }
+    }
     /^[[:space:]]+version:[[:space:]]/ {
       sub(/^[[:space:]]+version:[[:space:]]*/, "")
       gsub(/["\x27]/, "")
       sub(/[[:space:]]+#.*$/, "")
+      if (index($0, "{{") > 0) next
       print
       exit
     }
@@ -313,17 +332,17 @@ verify_image_exists() {
   local registry="${image%%/*}"
   local repo="${image#*/}"
   local manifest_url="https://${registry}/v2/${repo}/manifests/${tag}"
-  local auth_header
+  local auth_header=""
   auth_header=$(curl -sSL -I "$manifest_url" 2>/dev/null \
     | grep -i '^www-authenticate:' | head -1) || true
   local http_code
   if [ -n "$auth_header" ]; then
-    local realm service scope
+    local realm="" service="" scope=""
     realm=$(echo "$auth_header" | sed -n 's/.*realm="\([^"]*\)".*/\1/p')
     service=$(echo "$auth_header" | sed -n 's/.*service="\([^"]*\)".*/\1/p')
     scope=$(echo "$auth_header" | sed -n 's/.*scope="\([^"]*\)".*/\1/p')
     if [ -n "$realm" ]; then
-      local token
+      local token=""
       token=$(curl -sSL "${realm}?service=${service}&scope=${scope}" 2>/dev/null \
         | python3 -c "import json,sys; print(json.load(sys.stdin).get('token',''))" 2>/dev/null) || true
       if [ -n "$token" ]; then
@@ -480,7 +499,7 @@ while IFS= read -r f; do
 
   # Collect OCI chart-pin tracking rows (only external-oci-cr-version today).
   if [ -n "${CHART_SOURCE_TYPE:-}" ] && [ -n "${CHART_SOURCE_REPO:-}" ] && [ -n "${CHART_NAME:-}" ]; then
-    chart_current=$(read_helmfile_chart_pin "$chart_dir/helmfile.yaml")
+    chart_current=$(read_helmfile_chart_pin "$chart_dir")
     CHART_ROWS+=("$rel$ROW_SEP$CHART_NAME$ROW_SEP${chart_current:-}$ROW_SEP$CHART_SOURCE_TYPE$ROW_SEP$CHART_SOURCE_REPO")
   fi
 done < <(find_managed_files)
@@ -691,7 +710,7 @@ if [ "${#CHART_ROWS[@]}" -gt 0 ]; then
       c_latest="${c_latest:-—}"
     elif [ -z "$c_current" ]; then
       c_status="ERROR"
-      c_err="could not read chart pin from helmfile.yaml"
+      c_err="could not read chart pin from helmfile (yaml or gotmpl)"
       chart_error=$((chart_error + 1))
       chart_any_error=1
       c_current="—"

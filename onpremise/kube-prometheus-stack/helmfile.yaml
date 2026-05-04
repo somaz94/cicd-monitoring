@@ -1,3 +1,8 @@
+# Deploy kube-prometheus-stack (Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics)
+# via helmfile, consuming upstream prometheus-community chart.
+# Multi-file values split: core
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: prometheus-community
     url: https://prometheus-community.github.io/helm-charts
@@ -6,22 +11,18 @@ releases:
   - name: kube-prometheus-stack
     chart: prometheus-community/kube-prometheus-stack
     namespace: monitoring
-    version: 83.6.0
+    version: 84.4.0
     values:
       - values/mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
       - values/mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
       - values/mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
 hooks:
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "monitoring"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+      - "-c"
+      - "kubectl create namespace monitoring 2>/dev/null || true"
