@@ -60,6 +60,7 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
+    -not -path '*/_optional/*' \
     -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
