@@ -3,7 +3,7 @@
 # kube-prometheus-stack Custom Values — base infrastructure
 #
 # Component layout across values files:
-#   mgmt.yaml          — Grafana, Prometheus, node-exporter, kube-state-metrics
+#   dev.yaml          — Grafana, Prometheus, node-exporter, kube-state-metrics
 #   alertmanager.yaml  — Alertmanager routing, inhibit_rules, Slack receiver
 #   alerts.yaml        — defaultRules.disabled + custom PrometheusRule groups
 # =============================================================================

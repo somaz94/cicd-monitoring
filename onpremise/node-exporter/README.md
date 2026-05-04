@@ -192,7 +192,7 @@ journalctl -u node_exporter -f
 
 ## Prometheus Integration
 
-Add server IPs to `kube-prometheus-stack/values/mgmt.yaml`:
+Add server IPs to `kube-prometheus-stack/values/dev.yaml`:
 
 ```yaml
 prometheus:
@@ -205,7 +205,7 @@ prometheus:
               - "192.168.1.12:9100"
 ```
 
-Both `inventory.ini` and `mgmt.yaml` must be updated when adding new servers.
+Both `inventory.ini` and `dev.yaml` must be updated when adding new servers.
 
 <br/>
 

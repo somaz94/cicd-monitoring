@@ -4,7 +4,7 @@ Covers both Elasticsearch and Kibana. Describes the safety features in `upgrade.
 
 Both ES and Kibana use the `external-oci-cr-version` canonical template, so this guide applies to both.
 
-> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/mgmt.yaml` (the rolling-update path), **and** bumping the **OCI chart pin** in `helmfile.yaml` via `upgrade.sh --check-chart` / `--upgrade-chart` (which absorbs chart template/values schema changes).
+> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/dev.yaml` (the rolling-update path), **and** bumping the **OCI chart pin** in `helmfile.yaml` via `upgrade.sh --check-chart` / `--upgrade-chart` (which absorbs chart template/values schema changes).
 >
 > Stack version and OCI chart pin are **two independent axes**. The bulk of this guide covers the Stack-version path; the final section [OCI chart pin bump](#oci-chart-pin-bump-separate-path) covers the chart-pin path separately.
 
@@ -78,7 +78,7 @@ cd observability/logging/elasticsearch
 # 1. Dry-run (checks health + image availability + dependencies)
 ./upgrade.sh --dry-run
 
-# 2. Apply (updates values/mgmt.yaml; there is no local Chart.yaml)
+# 2. Apply (updates values/dev.yaml; there is no local Chart.yaml)
 ./upgrade.sh
 
 # 3. Push to cluster
@@ -171,7 +171,7 @@ cd observability/logging/elasticsearch   # or kibana
 Script behavior:
 
 1. Lists backups → pick a number
-2. Restores `values/mgmt.yaml` (if a pre-OCI-migration backup also contains `Chart.yaml`, it is ignored)
+2. Restores `values/dev.yaml` (if a pre-OCI-migration backup also contains `Chart.yaml`, it is ignored)
 3. **Downgrade detection**: compares backup version with live cluster CR version via `kubectl`
 4. If downgrade detected:
    ```
@@ -384,7 +384,7 @@ helmfile diff && helmfile apply
 
 **Why separate from Stack**: chart release cadence (~quarterly) differs from Stack release cadence (~1–2× / month), and chart bumps may carry template/values schema changes. Keep the two in **separate commits** so you can isolate the cause if something breaks.
 
-**Schema-breakage preflight**: `--upgrade-chart` runs `helm template` on both the current and target chart. If the target chart's values schema changed in a way your `values/mgmt.yaml` can't satisfy, the script aborts before touching any file and prints the release notes URL.
+**Schema-breakage preflight**: `--upgrade-chart` runs `helm template` on both the current and target chart. If the target chart's values schema changed in a way your `values/dev.yaml` can't satisfy, the script aborts before touching any file and prints the release notes URL.
 
 **Chart pin rollback**: `./upgrade.sh --rollback` — pick the entry whose timestamp ends in `-chart`. Only `helmfile.yaml` is restored. No live CR version change, so the webhook bypass path is skipped. Cluster-level rollback (`helm rollback elasticsearch <previous-revision> -n logging`) remains available if needed.
 

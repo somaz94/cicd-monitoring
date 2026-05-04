@@ -101,7 +101,7 @@ spec:
               key: api-token
 EOF
 
-# 3. Update values/mgmt.yaml ingress annotations
+# 3. Update values/dev.yaml ingress annotations
 # ingress:
 #   additionalAnnotations:
 #     cert-manager.io/cluster-issuer: "cloudflare-issuer"

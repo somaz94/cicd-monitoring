@@ -12,7 +12,7 @@ fluentd/
 ├── helmfile.yaml       # Helmfile release definition (uses remote chart)
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
 ├── values/
-│   └── mgmt.yaml       # Custom values (manually managed)
+│   └── dev.yaml       # Custom values (manually managed)
 ├── upgrade.sh          # Version upgrade script
 ├── backup/             # Auto-backup during upgrades
 └── README.md
@@ -81,11 +81,11 @@ This chart manages the **chart version** and the **container image tag** separat
 | Target | Managed by | Reason |
 |---|---|---|
 | Helm chart version (`fluent/fluentd`) | `./upgrade.sh` (automated) | Standard flow |
-| Container image (`fluent/fluentd-kubernetes-daemonset:<tag>`) | `image.tag` in `values/mgmt.yaml` (manual) | Upstream chart's default image uses `-elasticsearch7-*` / `-elasticsearch8-*` variants; ES 9 operation requires a specific compatible image. `-elasticsearch9-*` variant is not yet published upstream. |
+| Container image (`fluent/fluentd-kubernetes-daemonset:<tag>`) | `image.tag` in `values/dev.yaml` (manual) | Upstream chart's default image uses `-elasticsearch7-*` / `-elasticsearch8-*` variants; ES 9 operation requires a specific compatible image. `-elasticsearch9-*` variant is not yet published upstream. |
 
 **image.tag upgrade procedure** (manual):
 1. Check new tag — [Docker Hub tags](https://hub.docker.com/r/fluent/fluentd-kubernetes-daemonset/tags) or [GitHub releases](https://github.com/fluent/fluentd-kubernetes-daemonset/releases).
-2. Edit `image.tag` (and `variant` if applicable) in `values/mgmt.yaml`.
+2. Edit `image.tag` (and `variant` if applicable) in `values/dev.yaml`.
 3. `helmfile diff` → `helmfile apply`.
 
 **When to bump**:
@@ -123,7 +123,7 @@ kubectl get pods -n logging -l app.kubernetes.io/name=fluentd
 
 ## Configuration
 
-Custom settings are managed in `values/mgmt.yaml`. Key settings:
+Custom settings are managed in `values/dev.yaml`. Key settings:
 
 - **fileConfigs**: Fluentd pipeline configuration (sources → filters → outputs)
 - **volumeMounts / volumes**: Log path mounts
@@ -155,7 +155,7 @@ helmfile status         # Check status
 | Error | Solution |
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
-| Elasticsearch connection failure | Check host/port/credentials in `values/mgmt.yaml` |
+| Elasticsearch connection failure | Check host/port/credentials in `values/dev.yaml` |
 | Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluentd` |
 
 <br/>

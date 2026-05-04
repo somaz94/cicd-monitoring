@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # ============================================================
-# Configuration — keycloak (mgmt cluster, somaz94 OCI chart)
+# Configuration — keycloak (dev cluster, somaz94 OCI chart)
 # - Tracks the somaz94/keycloak-cr OCI chart version (helmfile.yaml.version of the `keycloak` release).
 # - The sibling postgresql release is bumped via the db-redis cycle (out of scope here).
 # - Body is canonical-managed via scripts/upgrade-sync/sync.sh --apply.

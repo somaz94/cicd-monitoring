@@ -281,7 +281,7 @@ New variants must follow the same convention (e.g., `external-multi-release.sh`,
 - **Extra variables**:
   - `COMPONENT_LABEL`: label shown in output (e.g., `elasticsearch`, `kibana`)
   - `VERSION_SOURCE`: version feed type (currently supported: `elastic-artifacts`)
-  - `VALUES_FILE`: path to the values file holding the version (e.g., `values/mgmt.yaml`)
+  - `VALUES_FILE`: path to the values file holding the version (e.g., `values/dev.yaml`)
   - `VERSION_KEY`: top-level YAML key name (usually `version`)
   - `MAJOR_PIN`: major line lock (e.g., `"9"` → track 9.x only). Empty = track all majors
   - `CHANGELOG_URL`

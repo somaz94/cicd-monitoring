@@ -15,7 +15,7 @@ releases:
     chart: oci://ghcr.io/somaz94/charts/postgresql
     version: "0.1.0"
     values:
-      - values/mgmt-postgresql.yaml
+      - values/dev-postgresql.yaml
 
   # Keycloak CR — depends on postgresql being ready (operator reconciles when DB is reachable).
   # `needs:` enforces helmfile apply ordering only; runtime DB readiness is the operator's job.
@@ -26,10 +26,10 @@ releases:
     needs:
       - keycloak/keycloak-postgresql
     values:
-      - values/mgmt-keycloak.yaml
+      - values/dev-keycloak.yaml
 
 # Ensure target namespace exists before sync (idempotent no-op when present).
-# DB credentials Secret is chart-managed by the keycloak-postgresql release (auth.user/password/secretKeys in values/mgmt-postgresql.yaml).
+# DB credentials Secret is chart-managed by the keycloak-postgresql release (auth.user/password/secretKeys in values/dev-postgresql.yaml).
 # Realm import is handled in Phase 3 via UI/kcadm — not auto-applied here.
 hooks:
   - events: ["presync"]

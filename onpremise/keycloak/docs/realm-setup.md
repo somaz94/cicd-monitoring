@@ -8,7 +8,7 @@ Both the UI and `kcadm.sh` paths are supported. Prefer `kcadm.sh` for repeatabil
 
 ## Prerequisites
 
-- `helmfile -f helmfile.yaml -e mgmt apply` completed
+- `helmfile -f helmfile.yaml -e dev apply` completed
 - Keycloak Pod Ready: `kubectl -n keycloak get pod keycloak-0` → `1/1 Running`
 - Initial admin credentials (auto-rendered by the operator on first boot):
   ```bash
@@ -152,7 +152,7 @@ After UI/kcadm setup, capture the realm declaratively:
 ./scripts/realm-export.sh                                    # writes manifests/realm-example.json
 git add manifests/realm-example.json && git commit -m "feat(keycloak): export example realm"
 
-helmfile -f helmfile.yaml -e mgmt apply \
+helmfile -f helmfile.yaml -e dev apply \
   --set realmImport.enabled=true \
   --set-file realmImport.realm=manifests/realm-example.json
 ```

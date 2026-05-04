@@ -34,7 +34,7 @@ Operator + CR are split into separate helmfiles (G14). This component is the las
 kibana/
 ├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/kibana-eck, version: <pin>
 ├── values/
-│   └── mgmt.yaml               # Kibana CR values (`version` = Stack version)
+│   └── dev.yaml               # Kibana CR values (`version` = Stack version)
 ├── upgrade.sh                  # external-oci-cr-version based Stack version tracker
 ├── docs/
 │   ├── upgrade-rollback.md     # Kibana-specific notes + link to shared guide (Korean)
@@ -63,14 +63,14 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 
 | Version | Where it lives | How to bump |
 |---|---|---|
-| **Stack version** | `values/mgmt.yaml` `.version` | `./upgrade.sh` |
+| **Stack version** | `values/dev.yaml` `.version` | `./upgrade.sh` |
 | **OCI chart version** | `helmfile.yaml` `.releases[0].version` | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 <br/>
 
 ## Stack Version Upgrades
 
-`upgrade.sh` is based on the [external-oci-cr-version](../../../scripts/upgrade-sync/templates/external-oci-cr-version.sh) canonical template. It queries the Elastic artifacts API for the latest GA and updates `values/mgmt.yaml` `version` (9.x major line pinned).
+`upgrade.sh` is based on the [external-oci-cr-version](../../../scripts/upgrade-sync/templates/external-oci-cr-version.sh) canonical template. It queries the Elastic artifacts API for the latest GA and updates `values/dev.yaml` `version` (9.x major line pinned).
 
 ```bash
 ./upgrade.sh --dry-run              # show latest only
@@ -131,7 +131,7 @@ With CR name `kibana`:
 | Deployment | `kibana-kb` |
 | ConfigMap/Secret (config) | `kibana-kb-config` |
 
-`elasticsearchRef` makes ECK auto-inject `elasticsearch.hosts`, `elasticsearch.username/password`, and the CA — you should not set those manually in `values/mgmt.yaml`.
+`elasticsearchRef` makes ECK auto-inject `elasticsearch.hosts`, `elasticsearch.username/password`, and the CA — you should not set those manually in `values/dev.yaml`.
 
 <br/>
 

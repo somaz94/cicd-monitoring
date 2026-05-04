@@ -46,7 +46,7 @@ resources:
 #   http.tls.selfSignedCertificate.disabled: true  → pod serves plain HTTP.
 #     Cookie secureCookies/sameSiteCookies auto-injected by the chart.
 #   http.tls.selfSignedCertificate: {}            → ECK self-signed HTTPS (default when block omitted).
-# Current mgmt mode: plain HTTP (migration from legacy `tls.enabled: false`).
+# Current dev mode: plain HTTP (migration from legacy `tls.enabled: false`).
 http:
   tls:
     selfSignedCertificate:

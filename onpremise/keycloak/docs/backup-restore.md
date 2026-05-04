@@ -29,7 +29,7 @@ ls -lh backup/${TS}-keycloak-pgdump.dump
 Enable the postgresql chart's CronJob:
 
 ```yaml
-# Add to values/mgmt-postgresql.yaml
+# Add to values/dev-postgresql.yaml
 backup:
   enabled: true
   schedule: "0 18 * * *"          # KST 03:00 = UTC 18:00
@@ -107,7 +107,7 @@ git add manifests/realm-example.json && git commit -m "feat(keycloak): export ex
 Restore (declarative re-deploy):
 
 ```bash
-helmfile -f helmfile.yaml -e mgmt apply \
+helmfile -f helmfile.yaml -e dev apply \
   --set realmImport.enabled=true \
   --set-file realmImport.realm=manifests/realm-example.json
 ```
@@ -122,8 +122,8 @@ Whole cluster is gone, recover on a fresh cluster:
 
 1. Apply the operator + this component
    ```bash
-   helmfile -f ../keycloak-operator/helmfile.yaml -e mgmt apply
-   helmfile -f helmfile.yaml -e mgmt apply
+   helmfile -f ../keycloak-operator/helmfile.yaml -e dev apply
+   helmfile -f helmfile.yaml -e dev apply
    ```
 2. Wait for PostgreSQL Pod Ready (`kubectl -n keycloak rollout status deploy/keycloak-postgresql`)
 3. Scale Keycloak instances to 0 (pre-flight, above)

@@ -37,7 +37,7 @@ This component (`security/keycloak/`) and the sibling [`security/keycloak-operat
 - Change triggers:
   - keycloak-cr chart bump (HTTPRoute / Keycloak CR template improvements)
   - postgresql chart bump (DB image / config)
-  - `mgmt-keycloak.yaml` / `mgmt-postgresql.yaml` overrides
+  - `dev-keycloak.yaml` / `dev-postgresql.yaml` overrides
 
 <br/>
 
@@ -62,7 +62,7 @@ Helmfile does not enforce cross-component dependencies — order is documented i
 | Issue | Which component? |
 |---|---|
 | Keycloak CR not reconciled, no events | Operator (`security/keycloak-operator/`) — check Pod logs / RBAC |
-| Keycloak Pod starts but admin console redirect-loops | This component — review `keycloak.hostname.hostname` / `proxy.headers` (`values/mgmt-keycloak.yaml`) |
+| Keycloak Pod starts but admin console redirect-loops | This component — review `keycloak.hostname.hostname` / `proxy.headers` (`values/dev-keycloak.yaml`) |
 | HTTPRoute does not attach to the NGF Gateway | This component — `httproute.parentRefs` (Gateway name/namespace) |
 | `pg_dump: connection refused` | This component — PostgreSQL Pod / Secret / Service |
 | Operator: `forbidden: cannot list resource "keycloaks"` | Operator component — check RBAC ClusterRole |

@@ -447,8 +447,8 @@ notifications:
   # Option A (optional): move Degraded/Missing/Unknown to Alertmanager for auto-RESOLVED,
   #   silencing, and inhibit rules. To switch to A:
   #     1) comment out the 3 triggers below (on-health-degraded/missing/unknown)
-  #     2) enable the 3 commented-out alerts in observability/.../mgmt-alerts.yaml
-  #     3) enable the ArgoCD inhibit_rule in observability/.../mgmt-alertmanager.yaml
+  #     2) enable the 3 commented-out alerts in observability/.../dev-alerts.yaml
+  #     3) enable the ArgoCD inhibit_rule in observability/.../dev-alertmanager.yaml
   #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
   subscriptions:
     - recipients:

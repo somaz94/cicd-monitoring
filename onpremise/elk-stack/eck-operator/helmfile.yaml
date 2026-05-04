@@ -14,7 +14,7 @@ releases:
     # Chart version reference (keep in sync with upgrade.sh output).
     version: 3.3.2
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

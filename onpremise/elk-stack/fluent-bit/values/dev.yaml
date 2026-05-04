@@ -1,5 +1,5 @@
 ---
-# Fluent Bit configuration for mgmt environment
+# Fluent Bit configuration for dev environment
 kind: Deployment
 replicaCount: 1
 

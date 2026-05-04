@@ -50,7 +50,7 @@ VERSION_SOURCE="__VERSION_SOURCE__"
 #   github-releases   : "<owner>/<repo>" (e.g. "cloudnative-pg/cloudnative-pg")
 #   docker-hub-tags   : "<namespace>/<repository>" (e.g. "bitnami/redis")
 VERSION_SOURCE_ARG="__VERSION_SOURCE_ARG__"
-# Path relative to CHART_DIR holding the version field (e.g. values/mgmt.yaml)
+# Path relative to CHART_DIR holding the version field (e.g. values/dev.yaml)
 VALUES_FILE="__VALUES_FILE__"
 # Top-level YAML key holding the version string (e.g. version)
 VERSION_KEY="__VERSION_KEY__"

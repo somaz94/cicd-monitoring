@@ -98,7 +98,7 @@ kubectl scale deploy vaultwarden --replicas=1 -n vaultwarden
 
 ## Switching to HTTPS
 
-After installing cert-manager, update `values/mgmt.yaml`:
+After installing cert-manager, update `values/dev.yaml`:
 
 ```yaml
 # 1. Update domain

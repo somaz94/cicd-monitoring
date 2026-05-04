@@ -34,7 +34,7 @@ Operator + CR are split into separate helmfiles (G14). This component is the CR 
 elasticsearch/
 ├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/elasticsearch-eck, version: <pin>
 ├── values/
-│   └── mgmt.yaml               # Elasticsearch CR values (`version` = Stack version)
+│   └── dev.yaml               # Elasticsearch CR values (`version` = Stack version)
 ├── upgrade.sh                  # external-oci-cr-version based Stack version tracker
 ├── docs/
 │   ├── upgrade-rollback.md     # Upgrade/rollback guide (Korean, shared with Kibana)
@@ -62,7 +62,7 @@ After the OCI migration, **two independent version pins** live in this directory
 
 | Version | Where it lives | Tracks | Frequency | Who bumps | How |
 |---|---|---|---|---|---|
-| **Stack version** (Elasticsearch image) | `values/mgmt.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.sh` |
+| **Stack version** (Elasticsearch image) | `values/dev.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.sh` |
 | **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 The two are **independent**: you can bump Stack to 9.3.4 without touching the chart pin, or vice versa.
@@ -89,14 +89,14 @@ With CR name `elasticsearch`, ECK creates:
 
 ## Setting the elastic Password
 
-The `elasticPassword` field in `values/mgmt.yaml` is rendered into the `{{ .Values.name }}-es-elastic-user` secret, which ECK consumes directly — no manual `kubectl` step required.
+The `elasticPassword` field in `values/dev.yaml` is rendered into the `{{ .Values.name }}-es-elastic-user` secret, which ECK consumes directly — no manual `kubectl` step required.
 
 ```yaml
-# values/mgmt.yaml
+# values/dev.yaml
 elasticPassword: "exampleAdminPassword"
 ```
 
-To rotate, edit `values/mgmt.yaml` and run `helmfile apply`. ECK detects the secret change and updates the `elastic` user on its next reconcile.
+To rotate, edit `values/dev.yaml` and run `helmfile apply`. ECK detects the secret change and updates the `elastic` user on its next reconcile.
 
 **Random password mode**: Set `elasticPassword: ""` to skip rendering the secret; ECK will then auto-generate one. Retrieve with:
 
@@ -127,7 +127,7 @@ helmfile destroy
 
 ## Stack Version Upgrades
 
-`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/mgmt.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
+`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
 
 **Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.sh` when ready to track 10.x.
 
@@ -150,7 +150,7 @@ After the bump, run `helmfile diff` → `helmfile apply` to propagate. ECK perfo
 **Always verify ECK Operator compatibility first** — the installed `eck-operator` must support the target Stack version. Consult the compatibility matrix:
 - https://www.elastic.co/support/matrix
 
-Keep Kibana on the **same Stack version** (bump `kibana/values/mgmt.yaml` `version` together).
+Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `version` together).
 
 **Safety features / incident response**: `upgrade.sh` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md).
 

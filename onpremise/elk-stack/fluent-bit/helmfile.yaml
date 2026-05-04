@@ -9,4 +9,4 @@ releases:
     chart: .
     version: 0.57.3
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml

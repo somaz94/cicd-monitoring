@@ -14,7 +14,7 @@ eck-operator/
 ├── Chart.yaml                  # upstream chart metadata (maintained by upgrade.sh)
 ├── helmfile.yaml               # Helmfile release definition
 ├── values/
-│   └── mgmt.yaml               # custom values (managedNamespaces, etc.)
+│   └── dev.yaml               # custom values (managedNamespaces, etc.)
 ├── upgrade.sh                  # external-standard version-tracking script
 ├── README.md
 └── README-en.md
@@ -107,7 +107,7 @@ kubectl -n elastic-system logs -l control-plane=elastic-operator -f
 
 ## Expanding managedNamespaces
 
-If you need to deploy Elasticsearch/Kibana CRs in additional namespaces, add them to `managedNamespaces` in `values/mgmt.yaml`:
+If you need to deploy Elasticsearch/Kibana CRs in additional namespaces, add them to `managedNamespaces` in `values/dev.yaml`:
 
 ```yaml
 managedNamespaces:

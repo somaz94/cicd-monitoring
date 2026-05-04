@@ -14,7 +14,7 @@ releases:
     chart: harbor/harbor
     version: 1.18.3
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
     hooks:
       # postsync: apply raw Gateway API resources after chart upgrade.

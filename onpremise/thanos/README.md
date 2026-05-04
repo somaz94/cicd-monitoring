@@ -21,8 +21,8 @@ Manages [Thanos](https://thanos.io/) using Helmfile. Provides long-term storage 
 
 | Release | Values | Components |
 |---------|--------|-----------|
-| `thanos` | `mgmt.yaml` | Compactor, Store Gateway, Object Storage |
-| `thanos-query` | `mgmt-query.yaml` | Query, Query Frontend |
+| `thanos` | `dev.yaml` | Compactor, Store Gateway, Object Storage |
+| `thanos-query` | `dev-query.yaml` | Query, Query Frontend |
 
 <br/>
 

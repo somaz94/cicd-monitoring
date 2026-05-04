@@ -37,7 +37,7 @@ The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObject
 
 ## Change summary (3 files)
 
-1. [`cicd/argo-cd/values/mgmt.yaml`](../../../cicd/argo-cd/values/mgmt.yaml)
+1. [`cicd/argo-cd/values/dev.yaml`](../../../cicd/argo-cd/values/dev.yaml)
    - `configs.cm.dex.config`: GitLab connector → OIDC connector (Keycloak, `insecureSkipVerify: true`)
    - `configs.secrets`: comment out `dex.gitlab.*`, add `dex.keycloak.clientSecret`
    - `extraObjects`: one new `argocd-https-redirect` HTTPRoute
@@ -64,7 +64,7 @@ kubectl -n argocd get httproute > /tmp/argocd-pre-phase6-httproutes.txt
 
 ```bash
 cd kuberntes-infra
-helmfile -f cicd/argo-cd/helmfile.yaml -e mgmt diff
+helmfile -f cicd/argo-cd/helmfile.yaml -e dev diff
 ```
 
 Expected diff:
@@ -75,7 +75,7 @@ Expected diff:
 ### Step 3. Apply (after user approval)
 
 ```bash
-helmfile -f cicd/argo-cd/helmfile.yaml -e mgmt apply
+helmfile -f cicd/argo-cd/helmfile.yaml -e dev apply
 ```
 
 > ⚠️ **First-time note**: extraObjects is integrated into the chart, so no separate `helmfile sync` is needed — a single `apply` covers the chart diff plus extraObjects.
@@ -132,12 +132,12 @@ dex-only rollback:
 
 ```bash
 git revert <phase6 commit>
-helmfile -f cicd/argo-cd/helmfile.yaml -e mgmt apply
+helmfile -f cicd/argo-cd/helmfile.yaml -e dev apply
 ```
 
 Or a quick hot rollback (without touching git):
 
-1. In [`cicd/argo-cd/values/mgmt.yaml`](../../../cicd/argo-cd/values/mgmt.yaml), comment out the oidc `dex.config` block and uncomment the **legacy GitLab block** kept below it
+1. In [`cicd/argo-cd/values/dev.yaml`](../../../cicd/argo-cd/values/dev.yaml), comment out the oidc `dex.config` block and uncomment the **legacy GitLab block** kept below it
 2. Comment out `secrets.dex.keycloak.clientSecret`, uncomment `secrets.dex.gitlab.*`
 3. `helmfile apply`
 

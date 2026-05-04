@@ -12,10 +12,10 @@ argo-cd/
 ├── helmfile.yaml
 ├── values.yaml
 ├── values/
-│   ├── mgmt.yaml               # global, configs (cm/params/ssh/rbac/secrets)
-│   ├── mgmt-server.yaml        # controller, dex, server, repoServer, applicationSet
-│   ├── mgmt-redis.yaml         # redis, redis-ha, redisSecretInit
-│   └── mgmt-notifications.yaml # notifications controller (Slack templates/triggers)
+│   ├── dev.yaml               # global, configs (cm/params/ssh/rbac/secrets)
+│   ├── dev-server.yaml        # controller, dex, server, repoServer, applicationSet
+│   ├── dev-redis.yaml         # redis, redis-ha, redisSecretInit
+│   └── dev-notifications.yaml # notifications controller (Slack templates/triggers)
 ├── upgrade.sh
 ├── backup/
 ├── docs/
@@ -41,8 +41,8 @@ argo-cd/
 | Upstream issue submission template (English) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template-en.md) |
 
 Related external files:
-- Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml](../../observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml)
-- Alertmanager inhibit/routing config: [observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml](../../observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml)
+- Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml](../../observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml)
+- Alertmanager inhibit/routing config: [observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml](../../observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml)
 
 <br/>
 
@@ -62,7 +62,7 @@ Related external files:
 
 ### 1. Configure values
 
-Create `values/mgmt.yaml` with the following configuration (adjust according to your needs):
+Create `values/dev.yaml` with the following configuration (adjust according to your needs):
 
 ```yaml
 global:
@@ -215,7 +215,7 @@ kubectl apply -f gitlab-appset-repo-secret.yaml -n argocd
 
 ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy GitLab dex connector (Phase 6 cutover). Keycloak's Identity Provider brokers GitLab, so user accounts and groups are preserved (`server` group → `role:server-admin`, `admin@example.com` → `role:global-admin`).
 
-OIDC config is managed in two blocks of [`values/mgmt.yaml`](values/mgmt.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
+OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
 
 - **Migration procedure + 5 pitfalls lessons learned**: [`security/keycloak/docs/argocd-migration-en.md`](../../security/keycloak/docs/argocd-migration-en.md) ([Korean](../../security/keycloak/docs/argocd-migration.md))
 - **Realm/Client/Mapper setup (kcadm-bootstrap.sh automation + 38/38 verify)**: [`security/keycloak/docs/realm-setup-en.md`](../../security/keycloak/docs/realm-setup-en.md) ([Korean](../../security/keycloak/docs/realm-setup.md))
@@ -382,15 +382,15 @@ helm repo add argo https://argoproj.github.io/argo-helm
 cp -r argo-helm/charts/argo-cd .
 cd argo-cd/
 mkdir -p values
-cp values.yaml values/mgmt.yaml
+cp values.yaml values/dev.yaml
 helm dependency update
 rm -rf argo-helm
 
 # Install
-helm install argocd . -n argocd -f ./values/mgmt.yaml --create-namespace
+helm install argocd . -n argocd -f ./values/dev.yaml --create-namespace
 
 # Upgrade
-helm upgrade argocd . -n argocd -f ./values/mgmt.yaml
+helm upgrade argocd . -n argocd -f ./values/dev.yaml
 ```
 
 </details>

@@ -15,7 +15,7 @@ security/keycloak-operator/
 ├── values.schema.json     # OCI chart vendoring (Draft-07 schema reference)
 ├── helmfile.yaml          # single release: keycloak-operator @ keycloak-system ns
 ├── values/
-│   └── mgmt.yaml          # mgmt (example dev) overrides (watchNamespaces, resources)
+│   └── dev.yaml          # dev (example dev) overrides (watchNamespaces, resources)
 ├── upgrade.sh             # external-oci template (tracks somaz94 OCI chart version)
 ├── backup/                # rollback trail written by upgrade.sh
 ├── README.md              # Korean version
@@ -29,7 +29,7 @@ security/keycloak-operator/
 - Kubernetes 1.25+
 - Helm 3.8+ (OCI support)
 - Helmfile
-- mgmt cluster kubeconfig context active
+- dev cluster kubeconfig context active
 
 <br/>
 
@@ -59,13 +59,13 @@ Operator + CR are kept in separate helmfiles (G14). Operator lives here; the CR 
 ### Preview changes
 
 ```bash
-helmfile -f helmfile.yaml -e mgmt diff
+helmfile -f helmfile.yaml -e dev diff
 ```
 
 ### Apply
 
 ```bash
-helmfile -f helmfile.yaml -e mgmt apply        # ⚠️ Cluster change — user approval required
+helmfile -f helmfile.yaml -e dev apply        # ⚠️ Cluster change — user approval required
 ```
 
 ### Track new chart versions
@@ -101,7 +101,7 @@ Once the operator + CRDs are registered, deploy the actual Keycloak instance (Po
 
 ```bash
 # After this component is applied
-helmfile -f ../keycloak/helmfile.yaml -e mgmt apply
+helmfile -f ../keycloak/helmfile.yaml -e dev apply
 ```
 
 <br/>

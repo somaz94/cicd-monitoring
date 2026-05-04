@@ -20,7 +20,7 @@ set -euo pipefail
 _SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$( cd "$( dirname "$_SCRIPT_PATH" )" && pwd )"
 unset _SCRIPT_PATH
-VALUES_FILE="${SCRIPT_DIR}/../values/mgmt-notifications.yaml"
+VALUES_FILE="${SCRIPT_DIR}/../values/dev-notifications.yaml"
 NS_ARGOCD=argocd
 CONTROLLER_POD=argocd-application-controller-0
 NOTIFICATIONS_DEPLOY=argocd-notifications-controller
@@ -49,10 +49,10 @@ require() {
 detect_impacted_triggers() {
   local diff_output=""
   # 1) working tree vs HEAD
-  diff_output=$(git -C "$SCRIPT_DIR/.." diff -- "values/mgmt-notifications.yaml" 2>/dev/null || true)
+  diff_output=$(git -C "$SCRIPT_DIR/.." diff -- "values/dev-notifications.yaml" 2>/dev/null || true)
   # 2) if empty, fall back to HEAD~1..HEAD (changes already committed)
   if [ -z "$diff_output" ]; then
-    diff_output=$(git -C "$SCRIPT_DIR/.." diff HEAD~1 HEAD -- "values/mgmt-notifications.yaml" 2>/dev/null || true)
+    diff_output=$(git -C "$SCRIPT_DIR/.." diff HEAD~1 HEAD -- "values/dev-notifications.yaml" 2>/dev/null || true)
   fi
   [ -z "$diff_output" ] && return 0
   # Pick trigger.<name> appearing near oncePer/when/send lines
@@ -120,7 +120,7 @@ recent_reconcile_log_lines() {
 
 cmd_check() {
   require kubectl git
-  echo "== git diff 기반 영향 분석 (values/mgmt-notifications.yaml) =="
+  echo "== git diff 기반 영향 분석 (values/dev-notifications.yaml) =="
   local impacted
   impacted=$(detect_impacted_triggers || true)
   if [ -z "$impacted" ]; then

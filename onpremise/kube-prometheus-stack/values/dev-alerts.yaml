@@ -231,15 +231,15 @@ additionalPrometheusRulesMap:
   # Current mode: Option B
   #   - Only ArgoCDControllerReconcileStuck is active (root-cause alert for 2026-04-23 incident).
   #   - App-level health alerts (Degraded/Missing/OutOfSync) remain in ArgoCD notifications
-  #     (cicd/argo-cd/values/mgmt-notifications.yaml, #argocd-alarm channel).
+  #     (cicd/argo-cd/values/dev-notifications.yaml, #argocd-alarm channel).
   #
   # Option A (optional): also move app-level health to Alertmanager.
   #   Benefits: auto-RESOLVED alerts (send_resolved=true), silencing, inhibit rules.
   #   To switch to A:
   #     1) uncomment the 3 alerts below (ArgoCDAppDegraded/Missing/OutOfSync)
-  #     2) comment out the 3 triggers in cicd/argo-cd/values/mgmt-notifications.yaml
+  #     2) comment out the 3 triggers in cicd/argo-cd/values/dev-notifications.yaml
   #        (on-health-degraded/missing/unknown in subscriptions)
-  #     3) uncomment the ArgoCD inhibit_rule in mgmt-alertmanager.yaml
+  #     3) uncomment the ArgoCD inhibit_rule in dev-alertmanager.yaml
   #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
   # ---------------------------------------------------------------------------
   argocd-alerts:

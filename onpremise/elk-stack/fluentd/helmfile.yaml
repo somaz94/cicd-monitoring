@@ -12,7 +12,7 @@ releases:
     chart: fluent/fluentd
     version: 0.5.3
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

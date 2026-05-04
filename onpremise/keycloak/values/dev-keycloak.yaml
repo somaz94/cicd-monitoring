@@ -1,10 +1,10 @@
-# Keycloak CR + HTTPRoute on the mgmt (example dev) cluster.
+# Keycloak CR + HTTPRoute on the dev (example dev) cluster.
 # Consumed by the helmfile release `keycloak` (oci://ghcr.io/somaz94/charts/keycloak-cr@0.1.0).
 # Operator + CRDs must already be installed via ../keycloak-operator/.
 
 # Keycloak CR — primary resource.
 keycloak:
-  # Single instance for mgmt (dev cluster, no HA). HA opt-in requires distributed cache config — out of scope.
+  # Single instance for dev (dev cluster, no HA). HA opt-in requires distributed cache config — out of scope.
   instances: 1
 
   # Hostname for client redirects + admin console. Required when proxy.headers != "" to avoid admin redirect loops.

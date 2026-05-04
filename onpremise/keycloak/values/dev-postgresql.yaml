@@ -1,6 +1,6 @@
-# Keycloak-dedicated PostgreSQL on the mgmt (example dev) cluster.
+# Keycloak-dedicated PostgreSQL on the dev (example dev) cluster.
 # Consumed by the helmfile release `keycloak-postgresql` (oci://ghcr.io/somaz94/charts/postgresql@0.1.0).
-# Service hostname: `keycloak-postgresql.keycloak.svc` — referenced from values/mgmt-keycloak.yaml `keycloak.db.host`.
+# Service hostname: `keycloak-postgresql.keycloak.svc` — referenced from values/dev-keycloak.yaml `keycloak.db.host`.
 
 # Force the Deployment
 fullnameOverride: keycloak-postgresql

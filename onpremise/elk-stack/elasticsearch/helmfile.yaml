@@ -8,7 +8,7 @@ releases:
     # Pin chart version. Bump via ./upgrade.sh after verifying the new chart release.
     version: "0.1.4"
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

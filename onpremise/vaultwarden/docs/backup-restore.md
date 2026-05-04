@@ -97,7 +97,7 @@ kubectl scale statefulset vaultwarden --replicas=1 -n vaultwarden
 
 ## Changing Retention
 
-Edit `values/mgmt.yaml` and change `RETENTION_DAYS` in the CronJob args:
+Edit `values/dev.yaml` and change `RETENTION_DAYS` in the CronJob args:
 
 ```yaml
 # Current: 30 days

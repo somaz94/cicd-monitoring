@@ -32,8 +32,8 @@ security/keycloak/
 ├── values-keycloak-cr.yaml             # OCI chart vendoring — somaz94/keycloak-cr defaults
 ├── values-keycloak-cr.schema.json      # Same chart's Draft-07 schema
 ├── values/
-│   ├── mgmt-postgresql.yaml            # PostgreSQL overrides (image, PVC, auth, secretKeys)
-│   └── mgmt-keycloak.yaml              # Keycloak CR overrides (hostname, db, HTTPRoute)
+│   ├── dev-postgresql.yaml            # PostgreSQL overrides (image, PVC, auth, secretKeys)
+│   └── dev-keycloak.yaml              # Keycloak CR overrides (hostname, db, HTTPRoute)
 ├── manifests/
 │   └── realm-example.json              # Phase 3 realm export placeholder (--set-file target)
 ├── scripts/
@@ -55,7 +55,7 @@ security/keycloak/
 - Kubernetes 1.25+
 - Helm 3.8+ (OCI support)
 - Helmfile
-- mgmt cluster kubeconfig context active
+- dev cluster kubeconfig context active
 - **Required first**: [`security/keycloak-operator/`](../keycloak-operator) applied so the CRDs (`Keycloak`, `KeycloakRealmImport`) are registered
 - NGF Gateway `ngf` (in `nginx-gateway` ns) running — the chart's HTTPRoute attaches here for `auth.example.com` traffic
 
@@ -92,13 +92,13 @@ Operator + CR are kept in separate helmfiles (G14). This component is the CR sid
 ### Preview changes
 
 ```bash
-helmfile -f helmfile.yaml -e mgmt diff
+helmfile -f helmfile.yaml -e dev diff
 ```
 
 ### Apply
 
 ```bash
-helmfile -f helmfile.yaml -e mgmt apply        # ⚠️ Cluster change — user approval required
+helmfile -f helmfile.yaml -e dev apply        # ⚠️ Cluster change — user approval required
 ```
 
 A successful apply produces (within ~1–2 minutes):
@@ -154,7 +154,7 @@ helm show chart oci://ghcr.io/somaz94/charts/postgresql --version 0.1.0 | grep ^
 ### 3. What this component actually pins
 
 ```bash
-grep -A2 'image:' values/mgmt-postgresql.yaml
+grep -A2 'image:' values/dev-postgresql.yaml
 # image:
 #   repository: postgres
 #   tag: "17-alpine"
@@ -186,7 +186,7 @@ kubectl -n keycloak logs sts/keycloak | grep -i "PostgreSQL\|database product"
 ### Procedure to change the PostgreSQL version
 
 1. Verify support on the [Keycloak DB matrix](https://www.keycloak.org/server/db)
-2. Edit `values/mgmt-postgresql.yaml` `image.tag` (e.g. `17-alpine` → `18-alpine`)
+2. Edit `values/dev-postgresql.yaml` `image.tag` (e.g. `17-alpine` → `18-alpine`)
 3. **For major upgrades**, take a backup first:
    ```bash
    kubectl -n keycloak exec deploy/keycloak-postgresql -- pg_dump -U keycloak -d keycloak > backup/$(date +%Y%m%d)-keycloak-pre-pg-bump.sql

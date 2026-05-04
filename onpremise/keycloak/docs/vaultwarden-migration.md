@@ -2,7 +2,7 @@
 
 Switch vaultwarden's SSO endpoint from a direct GitLab integration to the Keycloak `example` realm. Existing GitLab-account users keep signing in transparently via Keycloak → GitLab brokering — minimal user impact, ~30s pod restart only.
 
-vaultwarden's SSO support comes from [PR #3899](https://github.com/dani-garcia/vaultwarden/pull/3899) (community fork). This cluster already runs with `sso.enabled=true` ([security/vaultwarden/values/mgmt.yaml:39-49](../../vaultwarden/values/mgmt.yaml#L39-L49)) — only the `authority`/`clientId`/`clientSecret` change.
+vaultwarden's SSO support comes from [PR #3899](https://github.com/dani-garcia/vaultwarden/pull/3899) (community fork). This cluster already runs with `sso.enabled=true` ([security/vaultwarden/values/dev.yaml:39-49](../../vaultwarden/values/dev.yaml#L39-L49)) — only the `authority`/`clientId`/`clientSecret` change.
 
 <br/>
 
@@ -28,7 +28,7 @@ Override `SSO_CALLBACK_PATH` in vaultwarden + the redirectUris list in lockstep 
 
 ## values diff
 
-In [security/vaultwarden/values/mgmt.yaml](../../vaultwarden/values/mgmt.yaml), replace the `sso` block:
+In [security/vaultwarden/values/dev.yaml](../../vaultwarden/values/dev.yaml), replace the `sso` block:
 
 **Before (direct GitLab)**
 
@@ -105,7 +105,7 @@ kubectl -n vaultwarden rollout status deploy/vaultwarden --timeout=120s
 ## Rollback
 
 ```bash
-git checkout HEAD~1 -- security/vaultwarden/values/mgmt.yaml
+git checkout HEAD~1 -- security/vaultwarden/values/dev.yaml
 helmfile -f security/vaultwarden/helmfile.yaml apply   # user must approve
 ```
 

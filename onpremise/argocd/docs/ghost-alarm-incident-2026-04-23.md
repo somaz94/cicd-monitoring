@@ -12,7 +12,7 @@ Between 06:33 and 06:54 KST on 2026-04-23, a burst of "restarted" / "deploy succ
 Three root causes stacked. The **essential one is a design flaw in the notification rules (Cause C)**; A and B are environmental triggers that let the flaw surface.
 
 1. **(Environmental) `argocd-application-controller` reconcile gap**: Some apps had their `reconciledAt` frozen from 2026-04-21 21:11 UTC, others from 2026-04-22 08:54 UTC — **12 to 24 hours of no reconciliation**, all of them released at once on 04-22 21:33 UTC (04-23 06:33 KST).
-2. **(Environmental) dedup key reshuffle from a notifications config change**: `mgmt-notifications.yaml` was upgraded on 2026-04-22 15:27 KST, changing the `oncePer` dedup key formula for every trigger. Existing "already sent" annotations no longer matched the new keys — **previously-sent events became eligible for redelivery**.
+2. **(Environmental) dedup key reshuffle from a notifications config change**: `dev-notifications.yaml` was upgraded on 2026-04-22 15:27 KST, changing the `oncePer` dedup key formula for every trigger. Existing "already sent" annotations no longer matched the new keys — **previously-sent events became eligible for redelivery**.
 3. **(Essential) Design flaw in the `on-restarted`
 
 <br/>
@@ -25,7 +25,7 @@ All times show UTC and KST. CI commit times are based on the commit date in the 
 |---|---|---|
 | 2026-04-21 08:32 | 2026-04-21 17:32 | **commit `678c8b4`** (`somaz`) — `argo-cd` helm chart `9.5.1 → 9.5.2` upgrade. Backup folder `backup/20260421_173002/` created. `upgrade.sh` applied to the cluster at the same time. |
 | 2026-04-21 21:11 | 2026-04-22 06:11 | `reconciledAt` of `dev1-secondary-project-admin`, `qa-example-project-app-admin`, `staging-example-project-admin`, `qa-example-project-admin` froze here (no further update for 24+ hours). |
-| 2026-04-22 03:03 | 2026-04-22 12:03 | **commit `996e330`** (`somaz`) — `fix: argocd notifiactions rules`. Added `oncePer` dedup keys and buffer conditions to every trigger in `mgmt-notifications.yaml`. |
+| 2026-04-22 03:03 | 2026-04-22 12:03 | **commit `996e330`** (`somaz`) — `fix: argocd notifiactions rules`. Added `oncePer` dedup keys and buffer conditions to every trigger in `dev-notifications.yaml`. |
 | 2026-04-22 06:27 (approx) | 2026-04-22 15:27 | Rerun of `upgrade.sh` applied the above change to the `argocd-notifications-cm` in the cluster (based on file mtime). |
 | 2026-04-22 08:34 | 2026-04-22 17:34 | `dev-example-project-game` last healthy sync (rev `412cd4c6`). |
 | 2026-04-22 08:54 | 2026-04-22 17:54 | `dev-example-project-game` sync `18f0cb44` finished → **12 h 39 min reconcile gap begins**. |
@@ -228,7 +228,7 @@ In ArgoCD, the unique identifier of "a sync operation" is `operationState.finish
 
 ### Cause B — dedup key reshuffle from the notifications config change
 
-The trigger block in `values/mgmt-notifications.yaml` was updated on 04-22 15:27 KST (confirmed by diffing against `backup/20260421_173002/mgmt-notifications.yaml`):
+The trigger block in `values/dev-notifications.yaml` was updated on 04-22 15:27 KST (confirmed by diffing against `backup/20260421_173002/dev-notifications.yaml`):
 
 | Trigger | Before | After |
 |---|---|---|
@@ -266,7 +266,7 @@ Git log under `cicd/argo-cd/` in `kuberntes-infra` (newest first):
 |---|---|---|---|
 | `996e330` | 2026-04-22 12:03 | `somaz` | `fix: argocd notifiactions rules` — added `oncePer` dedup + post-sync buffers to every trigger |
 | `678c8b4` | 2026-04-21 17:32 | `somaz` | `feat: upgrade argocd 9.5.1 -> 9.5.2` (appVersion v3.3.6 → v3.3.7) |
-| `8b89f73` | 2026-04-16 18:49 | `somaz` | `refactor(cicd/argo-cd): split mgmt.yaml into core/server/redis/notifications value files` |
+| `8b89f73` | 2026-04-16 18:49 | `somaz` | `refactor(cicd/argo-cd): split dev.yaml into core/server/redis/notifications value files` |
 
 Changes relevant to this incident:
 - `996e330` — **the commit that introduced Cause B (dedup key reshuffle)**. The intent in adding `oncePer` was to suppress duplicate alarms; choosing `reconciledAt`
@@ -322,7 +322,7 @@ Changes relevant to this incident:
 
 <br/>
 
-## Recommended changes (values/mgmt-notifications.yaml)
+## Recommended changes (values/dev-notifications.yaml)
 
 Principle: **use a "unique event identifier" in `oncePer`.**
 
@@ -438,9 +438,9 @@ oncePer: app.status.operationState.finishedAt
 ```bash
 # 1) Edit and commit
 cd ~/gitlab-project/kuberntes-infra
-vi cicd/argo-cd/values/mgmt-notifications.yaml
-git diff cicd/argo-cd/values/mgmt-notifications.yaml
-git add cicd/argo-cd/values/mgmt-notifications.yaml
+vi cicd/argo-cd/values/dev-notifications.yaml
+git diff cicd/argo-cd/values/dev-notifications.yaml
+git add cicd/argo-cd/values/dev-notifications.yaml
 git commit -m "fix(cicd/argo-cd): use finishedAt as oncePer key to prevent duplicate notifications"
 
 # 2) Apply to the cluster (requires operator approval)
@@ -491,9 +491,9 @@ After reviewing two choices (A / B), we picked **Option B** as the most practica
 
 | Component | File | Content |
 |---|---|---|
-| ArgoCD notifications | `cicd/argo-cd/values/mgmt-notifications.yaml` | Subscription enables 7 triggers (4 sync + 3 health). Comments describe how to switch to Option A. |
-| PrometheusRule | `observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml` | `argocd-alerts` group has **only `ArgoCDControllerReconcileStuck` active**; `ArgoCDAppDegraded/Missing/OutOfSync` are commented. |
-| Alertmanager | `observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml` | ArgoCD inhibit_rule commented (a single alert does not need inhibit; uncomment when enabling Option A). |
+| ArgoCD notifications | `cicd/argo-cd/values/dev-notifications.yaml` | Subscription enables 7 triggers (4 sync + 3 health). Comments describe how to switch to Option A. |
+| PrometheusRule | `observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml` | `argocd-alerts` group has **only `ArgoCDControllerReconcileStuck` active**; `ArgoCDAppDegraded/Missing/OutOfSync` are commented. |
+| Alertmanager | `observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml` | ArgoCD inhibit_rule commented (a single alert does not need inhibit; uncomment when enabling Option A). |
 
 <br/>
 
@@ -501,14 +501,14 @@ After reviewing two choices (A / B), we picked **Option B** as the most practica
 
 Uncomment the "Option A" blocks in three files.
 
-1. **`cicd/argo-cd/values/mgmt-notifications.yaml`** — comment out the three subscriptions:
+1. **`cicd/argo-cd/values/dev-notifications.yaml`** — comment out the three subscriptions:
     ```yaml
     # - on-health-degraded   # A: comment out when moving to Alertmanager
     # - on-health-missing
     # - on-health-unknown
     ```
-2. **`observability/monitoring/kube-prometheus-stack/values/mgmt-alerts.yaml`** — uncomment the three alerts under the `# --- Option A rules (disabled by default) ---` block in the `argocd-alerts` group.
-3. **`observability/monitoring/kube-prometheus-stack/values/mgmt-alertmanager.yaml`** — uncomment the ArgoCD inhibit_rule.
+2. **`observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml`** — uncomment the three alerts under the `# --- Option A rules (disabled by default) ---` block in the `argocd-alerts` group.
+3. **`observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml`** — uncomment the ArgoCD inhibit_rule.
 4. Apply:
     ```bash
     cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd && helmfile apply
@@ -746,7 +746,7 @@ kubectl get rs -n <NAMESPACE> --sort-by='.metadata.creationTimestamp'
 
 # 6) Compare the current config against the backup
 cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
-diff -u backup/<BACKUP_DIR>/mgmt-notifications.yaml values/mgmt-notifications.yaml
+diff -u backup/<BACKUP_DIR>/dev-notifications.yaml values/dev-notifications.yaml
 ```
 
 <br/>
@@ -1019,8 +1019,8 @@ With the stall risk gone on v3.3.8, the post-`helmfile apply` check surface simp
 
 ## References
 
-- `values/mgmt-notifications.yaml` — current notifications config
-- `backup/20260421_173002/mgmt-notifications.yaml` — pre-change backup
+- `values/dev-notifications.yaml` — current notifications config
+- `backup/20260421_173002/dev-notifications.yaml` — pre-change backup
 - `backup/20260421_173002/Chart.yaml` — the rollback reference (chart 9.5.1, v3.3.6)
 - GitLab repo `server/argocd-applicationset` — where the CI bot pushes image tag updates
 - ArgoCD notifications official docs: <https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/>

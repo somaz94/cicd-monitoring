@@ -9,7 +9,7 @@ This cluster does not run cert-manager, so it uses the same manual self-signed p
 
 1. Generate a self-signed certificate (with SAN, 10-year validity) via openssl
 2. Register the `harbor-tls` TLS Secret in the `harbor` namespace
-3. Apply `expose.tls` / `externalURL` in `values/mgmt.yaml` and run `helmfile apply`
+3. Apply `expose.tls` / `externalURL` in `values/dev.yaml` and run `helmfile apply`
 4. Configure client (containerd, docker) trust for the self-signed cert
 5. Renew when needed
 
@@ -46,9 +46,9 @@ rm harbor-key.pem
 
 <br/>
 
-## 3. Apply values/mgmt.yaml
+## 3. Apply values/dev.yaml
 
-`expose` block in [`values/mgmt.yaml`](../values/mgmt.yaml):
+`expose` block in [`values/dev.yaml`](../values/dev.yaml):
 
 ```yaml
 expose:

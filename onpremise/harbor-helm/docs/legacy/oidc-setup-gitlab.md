@@ -19,7 +19,7 @@ This document documents the **API-based declarative injection procedure** as the
 
 - Harbor is exposed over HTTPS — see [`tls-setup-en.md`](./tls-setup-en.md)
 - GitLab admin access to create an OAuth Application
-- Harbor admin DB credentials (see `harborAdminPassword` in [`../values/mgmt.yaml`](../values/mgmt.yaml))
+- Harbor admin DB credentials (see `harborAdminPassword` in [`../values/dev.yaml`](../values/dev.yaml))
 - Policy: **only GitLab `server` group members may log in**, and **only `admin@example.com`** is manually promoted to sysadmin (same as ArgoCD)
 
 <br/>
@@ -44,8 +44,8 @@ Copy the **Application ID** (= `client_id`) and **Secret** for the next step.
 Pass the GitLab values via env vars and PUT to `/api/v2.0/configurations`.
 
 ```bash
-# Admin password (extracted from values/mgmt.yaml)
-ADMIN_PW=$(grep '^harborAdminPassword:' ../values/mgmt.yaml | awk -F'"' '{print $2}')
+# Admin password (extracted from values/dev.yaml)
+ADMIN_PW=$(grep '^harborAdminPassword:' ../values/dev.yaml | awk -F'"' '{print $2}')
 
 # Values from the GitLab OAuth app
 OIDC_CLIENT_ID="<GitLab Application ID>"
@@ -188,5 +188,5 @@ The result is identical to the API, but it is not re-runnable/scriptable, so the
 ## References
 
 - Harbor OIDC docs: https://goharbor.io/docs/latest/administration/configure-authentication/oidc-auth/
-- ArgoCD GitLab SSO (same GitLab, same `server` group): [`../../argo-cd/values/mgmt.yaml`](../../argo-cd/values/mgmt.yaml)
+- ArgoCD GitLab SSO (same GitLab, same `server` group): [`../../argo-cd/values/dev.yaml`](../../argo-cd/values/dev.yaml)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`

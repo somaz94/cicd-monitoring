@@ -21,9 +21,9 @@ kube-prometheus-stack/
 ├── Chart.yaml              # Version tracking
 ├── helmfile.yaml           # Helmfile release definition
 ├── values/
-│   ├── mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
-│   ├── mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
-│   └── mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
+│   ├── dev.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
+│   ├── dev-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
+│   └── dev-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 ├── dashboards/             # Custom Grafana dashboard JSON files
 ├── scripts/                # Operational helper scripts
 │   └── import-dashboards.sh
@@ -48,7 +48,7 @@ kube-prometheus-stack/
 
 Related external docs:
 - ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../../../cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md) (KR)
-  - The `argocd-alerts` group in `mgmt-alerts.yaml` and the ArgoCD inhibit rule in `mgmt-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
+  - The `argocd-alerts` group in `dev-alerts.yaml` and the ArgoCD inhibit rule in `dev-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
 
 <br/>
 
@@ -96,7 +96,7 @@ helmfile apply
 
 ### Slack Alert
 
-Set Slack webhook URL in `values/mgmt-alertmanager.yaml`:
+Set Slack webhook URL in `values/dev-alertmanager.yaml`:
 
 ```yaml
 alertmanager:
@@ -151,7 +151,7 @@ If `#infra-alerts` channel receives the alert, the full pipeline (Prometheus →
 
 ### Physical Server Monitoring
 
-Install node-exporter on target servers, then add IPs to `values/mgmt.yaml` `additionalScrapeConfigs`:
+Install node-exporter on target servers, then add IPs to `values/dev.yaml` `additionalScrapeConfigs`:
 
 ```yaml
 - targets:

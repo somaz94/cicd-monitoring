@@ -15,7 +15,7 @@ This document covers the **Keycloak (current production IdP)** procedure, automa
 - Keycloak instance running — Phase 2 of [`security/keycloak/`](../../../security/keycloak/) complete
 - Realm `example` + client `harbor` + group claim mapper exist — Phase 3 complete
 - Harbor `harbor` client secret in hand ([§2 Retrieve client secret](#2-retrieve-client-secret))
-- Harbor admin DB password (see `harborAdminPassword` in [`../values/mgmt.yaml`](../values/mgmt.yaml))
+- Harbor admin DB password (see `harborAdminPassword` in [`../values/dev.yaml`](../values/dev.yaml))
 - Policy: **only Keycloak `server` group members may log in**, and **only `admin@example.com`** is manually promoted to sysadmin
 
 <br/>
@@ -107,7 +107,7 @@ Override via CLI flags: `--groups-claim`, `--group-filter`, `--admin-group`, `--
 What `set-oidc` calls under the hood:
 
 ```bash
-ADMIN_PW=$(grep '^harborAdminPassword:' ../../../cicd/harbor-helm/values/mgmt.yaml | awk -F'"' '{print $2}')
+ADMIN_PW=$(grep '^harborAdminPassword:' ../../../cicd/harbor-helm/values/dev.yaml | awk -F'"' '{print $2}')
 HARBOR_CLIENT_SECRET="<harbor client secret>"
 
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
@@ -264,5 +264,5 @@ The result is identical to the API, but it is not re-runnable/scriptable, so the
 - Harbor OIDC docs: https://goharbor.io/docs/latest/administration/configure-authentication/oidc-auth/
 - Keycloak SSO component: [`security/keycloak/`](../../../security/keycloak/)
 - Phase 4 migration procedure (GitLab → Keycloak): [`security/keycloak/docs/harbor-migration-en.md`](../../../security/keycloak/docs/harbor-migration-en.md)
-- ArgoCD SSO (currently GitLab dex; will switch to Keycloak in Phase 6): [`../../argo-cd/values/mgmt.yaml`](../../argo-cd/values/mgmt.yaml)
+- ArgoCD SSO (currently GitLab dex; will switch to Keycloak in Phase 6): [`../../argo-cd/values/dev.yaml`](../../argo-cd/values/dev.yaml)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`

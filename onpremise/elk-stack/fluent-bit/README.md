@@ -12,7 +12,7 @@ fluent-bit/
 ├── helmfile.yaml       # Helmfile release definition (uses local chart)
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
 ├── values/
-│   └── mgmt.yaml       # Custom values (manually managed)
+│   └── dev.yaml       # Custom values (manually managed)
 ├── templates/          # Local Helm templates (synced with upstream)
 ├── ci/                 # CI test values (synced with upstream)
 ├── dashboards/         # Grafana dashboards (synced with upstream)
@@ -80,7 +80,7 @@ upgrade.sh automatically performs the following:
 
 ### Image tag policy
 
-Do not set `image.tag` in `values/mgmt.yaml`. The chart default renders the tag from `Chart.AppVersion`, so running `./upgrade.sh` bumps the chart and the container image in lockstep. Unlike fluentd, the upstream fluent-bit image has no ES-specific variant that requires pinning. Override `image.tag` in values only when a variant other than the chart default is required.
+Do not set `image.tag` in `values/dev.yaml`. The chart default renders the tag from `Chart.AppVersion`, so running `./upgrade.sh` bumps the chart and the container image in lockstep. Unlike fluentd, the upstream fluent-bit image has no ES-specific variant that requires pinning. Override `image.tag` in values only when a variant other than the chart default is required.
 
 ### Rollback
 
@@ -112,7 +112,7 @@ kubectl get pods -n logging -l app.kubernetes.io/name=fluent-bit
 
 ## Configuration
 
-Custom settings are managed in `values/mgmt.yaml`. Key settings:
+Custom settings are managed in `values/dev.yaml`. Key settings:
 
 - **config.inputs**: Log input sources
 - **config.filters**: Log filtering/transformation
@@ -158,7 +158,7 @@ helmfile status         # Check status
 | Error | Solution |
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
-| Elasticsearch connection failure | Check host/port/credentials in `values/mgmt.yaml` |
+| Elasticsearch connection failure | Check host/port/credentials in `values/dev.yaml` |
 | Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluent-bit` |
 
 <br/>

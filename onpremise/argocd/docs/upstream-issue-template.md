@@ -207,4 +207,4 @@ Ask Claude: _"please submit this issue using `gh issue create`"_ — will be don
 
 1. Link the new issue number back to this repo by adding a mention in `cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md` § 후속 조사 과제.
 2. Subscribe to the issue for updates.
-3. If maintainers ask for additional data (timing correlation, specific pprof profiles), the infrastructure is ready via the `pprof` endpoint enabled in `values/mgmt-server.yaml`.
+3. If maintainers ask for additional data (timing correlation, specific pprof profiles), the infrastructure is ready via the `pprof` endpoint enabled in `values/dev-server.yaml`.

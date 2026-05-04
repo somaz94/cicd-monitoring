@@ -49,19 +49,19 @@ All 3 scenarios **PASS** — across 1010 samples total, zero 5xx/timeout/red.
 | Condition | Result |
 |---|---|
 | HA topology (ES ≥3, Kibana ≥2, PDB configured) | Zero-downtime guaranteed ✅ |
-| Single-node topology (current mgmt) | Not applicable — pod restart causes downtime; logging pipeline buffer absorbs |
+| Single-node topology (current dev) | Not applicable — pod restart causes downtime; logging pipeline buffer absorbs |
 | Cosmetic CR changes (annotations/labels) | No pod restart ✅ |
 
 <br/>
 
-## Contrast with current mgmt cluster
+## Contrast with current dev cluster
 
-The mgmt cluster runs **single-node** topology, outside the HA guarantee. During
+The dev cluster runs **single-node** topology, outside the HA guarantee. During
 rolling upgrades, expect tens of seconds to a few minutes of downtime. Measured
 during Phase 3 (2026-04-21): **ES 0 s, Kibana ~50 s**, absorbed by
 Fluentd / Fluent-bit buffering.
 
-If / when mgmt is promoted to HA, this verification confirms that the chart
+If / when dev is promoted to HA, this verification confirms that the chart
 itself supports zero-downtime rolling.
 
 <br/>

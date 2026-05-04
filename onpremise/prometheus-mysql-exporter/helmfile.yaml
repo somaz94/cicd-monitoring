@@ -12,4 +12,4 @@ releases:
     namespace: monitoring
     version: 2.13.1
     values:
-      - values/example-project.yaml
+      - values/dev-example-project.yaml

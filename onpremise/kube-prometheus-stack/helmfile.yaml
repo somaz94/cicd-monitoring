@@ -13,9 +13,9 @@ releases:
     namespace: monitoring
     version: 84.4.0
     values:
-      - values/mgmt.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
-      - values/mgmt-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
-      - values/mgmt-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
+      - values/dev.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
+      - values/dev-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
+      - values/dev-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

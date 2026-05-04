@@ -1,4 +1,4 @@
-# Override the upstream chart defaults for the mgmt (example dev) cluster.
+# Override the upstream chart defaults for the dev (example dev) cluster.
 # Vendor reference: ../values.yaml (chart default). Diff this file with values.yaml on chart bumps to spot drift.
 
 # Watch the keycloak namespace (where the sibling ../keycloak/ component installs Keycloak
@@ -16,7 +16,7 @@ crds:
   install: true
   keep: true
 
-# Resource sizing for mgmt — single operator pod, modest workload (one Keycloak CR).
+# Resource sizing for dev — single operator pod, modest workload (one Keycloak CR).
 # Operator may briefly spike on first reconcile; do not lower memory below the upstream default (450Mi).
 resources:
   requests:

@@ -7,7 +7,7 @@ releases:
     chart: oci://ghcr.io/somaz94/charts/keycloak-operator
     version: "0.1.1"
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
 # Ensure target namespace exists before sync (idempotent no-op when present).
 # kubectl args 는 shell 해석이 안 되어 sh -c 로 || true 가 유효. / kubectl args do not get shell-interpreted, so sh -c is required for `|| true` to work.

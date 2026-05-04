@@ -12,7 +12,7 @@ harbor-helm/
 ├── helmfile.yaml       # Helmfile release definition (uses remote chart)
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
 ├── values/
-│   └── mgmt.yaml       # Custom values (manually managed)
+│   └── dev.yaml       # Custom values (manually managed)
 ├── upgrade.sh          # Version upgrade script
 ├── backup/             # Auto backup on upgrade
 ├── docs/               # Detailed guides (TLS, OIDC, etc.)
@@ -89,7 +89,7 @@ helm install prometheus-operator-crds -n monitoring prometheus-community/prometh
 kubectl get crd | grep monitoring
 ```
 
-> **Note:** To use without the CRD, set `metrics.enabled: false` and `serviceMonitor.enabled: false` in `values/mgmt.yaml`.
+> **Note:** To use without the CRD, set `metrics.enabled: false` and `serviceMonitor.enabled: false` in `values/dev.yaml`.
 
 <br/>
 

@@ -19,7 +19,7 @@ releases:
       role: sidecar
       app: thanos
     values:
-      - values/mgmt.yaml
+      - values/dev.yaml
 
   # Thanos Query — separate instance for unified query across clusters.
   - name: thanos-query
@@ -30,7 +30,7 @@ releases:
       role: query
       app: thanos
     values:
-      - values/mgmt-query.yaml
+      - values/dev-query.yaml
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

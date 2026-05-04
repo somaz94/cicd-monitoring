@@ -4,7 +4,7 @@
 
 ## Purpose
 
-A documented procedure for managing the **one-time redelivery storm** that occurs whenever `trigger` or `template` definitions in `values/mgmt-notifications.yaml` are changed. The playbook was written after the 2026-04-23 incident, where changing the `oncePer` formula pushed 30 "deploy success" notifications into the Slack `#argocd-alarm` channel in a single burst.
+A documented procedure for managing the **one-time redelivery storm** that occurs whenever `trigger` or `template` definitions in `values/dev-notifications.yaml` are changed. The playbook was written after the 2026-04-23 incident, where changing the `oncePer` formula pushed 30 "deploy success" notifications into the Slack `#argocd-alarm` channel in a single burst.
 
 <br/>
 
@@ -38,7 +38,7 @@ Therefore, this playbook targets **"minimize impact and keep it predictable"** r
 
 ### Pre-flight (just before the change)
 
-- [ ] **1. Impact analysis**: run `git diff values/mgmt-notifications.yaml` and look for `oncePer` / `when` edits.
+- [ ] **1. Impact analysis**: run `git diff values/dev-notifications.yaml` and look for `oncePer` / `when` edits.
 - [ ] **2. List affected triggers**: record the trigger names being changed.
 - [ ] **3. Count delivery targets**: `kubectl get app -n argocd | wc -l` — this is the upper bound of redelivery per changed trigger.
 - [ ] **4. Estimate redelivery volume**: (number of changed triggers) × (apps currently satisfying the when clause).
@@ -78,7 +78,7 @@ To avoid running this checklist manually every time, use the helper script.
 | `status` | Routine health check: goroutine count / recent log activity / oldest `reconciledAt` per app. |
 
 **What the script does for you:**
-- Auto-detect impacted triggers based on `git diff values/mgmt-notifications.yaml` (looks at `oncePer` / `when` / `send` changes).
+- Auto-detect impacted triggers based on `git diff values/dev-notifications.yaml` (looks at `oncePer` / `when` / `send` changes).
 - Estimate redelivery volume as (application count) × (changed trigger count).
 - Fetch the Slack bot token from `argocd-notifications-secret` and send pre/post notices through the `chat.postMessage` API.
 - On `post`: tally "Sending notification" and "already sent" log lines from the notifications-controller.
@@ -99,7 +99,7 @@ Recommended order when changing a notification rule. Example scenario: adjust th
 
 ```bash
 cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
-vi values/mgmt-notifications.yaml
+vi values/dev-notifications.yaml
 ```
 
 ### 2) Pre-commit impact analysis
@@ -110,7 +110,7 @@ vi values/mgmt-notifications.yaml
 
 Example output:
 ```
-== Impact analysis based on git diff (values/mgmt-notifications.yaml) ==
+== Impact analysis based on git diff (values/dev-notifications.yaml) ==
 Impacted triggers:
   - trigger.on-deployed
 Estimated redelivery (upper bound): 10 events = 10 apps × 1 trigger
@@ -122,7 +122,7 @@ If the blast radius is wider than expected, stop here and consider splitting the
 ### 3) Commit
 
 ```bash
-git add values/mgmt-notifications.yaml
+git add values/dev-notifications.yaml
 git commit -m "fix(cicd/argo-cd): <summary of change>"
 ```
 

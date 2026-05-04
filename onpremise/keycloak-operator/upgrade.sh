@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # ============================================================
-# Configuration — keycloak-operator (mgmt cluster, somaz94 OCI chart)
+# Configuration — keycloak-operator (dev cluster, somaz94 OCI chart)
 # - Tracks the somaz94/keycloak-operator OCI chart version (helmfile.yaml.version)
 # - Body is canonical-managed via scripts/upgrade-sync/sync.sh --apply
 # ============================================================
