@@ -1,3 +1,7 @@
+# Deploy Fluentd (log aggregator) via helmfile, consuming upstream fluent/fluentd chart.
+# Pairs with the sibling fluent-bit (forwarder) — fluent-bit ships logs into fluentd for fan-out.
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: fluent
     url: https://fluent.github.io/helm-charts
@@ -9,3 +13,13 @@ releases:
     version: 0.5.3
     values:
       - values/mgmt.yaml
+
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - "kubectl create namespace logging 2>/dev/null || true"

@@ -8,8 +8,10 @@
 #
 # Default install: one operator pod in the release namespace, no override.
 # The operator watches its own namespace by default — set watchNamespaces to
-# ["JOSDK_WATCH_ALL"] to watch every namespace, or to a specific namespace
-# name to scope reconciliation.
+# "JOSDK_ALL_NAMESPACES" to watch every namespace, or to a comma-separated
+# namespace list to scope reconciliation. Watching anything other than the
+# release namespace also requires `rbac.useClusterBindings: true` so the
+# controller permissions are bound cluster-wide.
 
 # Pinned upstream version. Mirrors Chart.yaml `appVersion` and is rewritten by
 # upgrade.sh on a successful bump. Used to render the operator image tag and
@@ -106,10 +108,13 @@ extraEnv: []
 # Watch-namespace scope. The two env vars
 #   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKCONTROLLER_NAMESPACES
 #   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKREALMIMPORTCONTROLLER_NAMESPACES
-# are derived from this value:
-#   "JOSDK_WATCH_CURRENT" — watch only the operator's own namespace (default)
-#   "JOSDK_WATCH_ALL"     — watch every namespace
-#   "ns-a,ns-b"           — comma-separated namespace list
+# are derived from this value. The Quarkus Operator SDK accepts:
+#   "JOSDK_WATCH_CURRENT"   — watch only the operator's own namespace (default)
+#   "JOSDK_ALL_NAMESPACES"  — watch every namespace
+#   "ns-a,ns-b"             — comma-separated namespace list
+# Anything other than JOSDK_WATCH_CURRENT also needs `rbac.useClusterBindings:
+# true` (see below) — the controller ClusterRoles ship with RoleBindings only
+# in the release namespace, which silently 403s on cross-namespace list/watch.
 watchNamespaces: "JOSDK_WATCH_CURRENT"
 
 # Probe overrides. Set per-probe knobs to override the upstream defaults.
@@ -178,6 +183,15 @@ rbac:
   # to .Release.Namespace. The upstream manifest hard-codes "keycloak" here —
   # this value is what makes the chart portable.
   subjectNamespace: ""
+  # When true, bind the per-controller ClusterRoles
+  # (`keycloakcontroller-cluster-role`, `keycloakrealmimportcontroller-cluster-role`)
+  # via ClusterRoleBindings instead of in-namespace RoleBindings. Required
+  # when `watchNamespaces` is "JOSDK_ALL_NAMESPACES" or a list that includes
+  # any namespace other than the release namespace — RoleBindings only grant
+  # the bound rules within their own namespace, so cross-namespace
+  # list/watch on Keycloak / KeycloakRealmImport CRs silently 403s otherwise.
+  # Default false to match the upstream manifest (single-ns operator).
+  useClusterBindings: false
 
 # ---------------------------------------------------------------------------
 # CRDs
@@ -192,3 +206,4 @@ crds:
   # uninstall. Recommended in production — Keycloak/Realm CRs depend on the
   # CRDs and accidental removal would break reconciliation everywhere.
   keep: true
+

@@ -46,6 +46,9 @@ CHART_TYPE="__CHART_TYPE__"  # "local" = manages Chart.yaml + values.yaml / "ext
 # docstring. If undefined, Step 7 is skipped silently.
 # ============================================================
 
+# zsh nomatch compat: don't fail when "$dir"/2*/ has no matches.
+[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
+
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
 VALUES_DIR="$CHART_DIR/values"

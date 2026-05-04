@@ -22,7 +22,7 @@ releases:
   - name: keycloak
     namespace: keycloak
     chart: oci://ghcr.io/somaz94/charts/keycloak-cr
-    version: "0.1.0"
+    version: "0.1.1"
     needs:
       - keycloak/keycloak-postgresql
     values:

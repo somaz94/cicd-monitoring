@@ -1,3 +1,7 @@
+# Deploy Vaultwarden (Bitwarden-compatible password manager) via helmfile.
+# Consume upstream guerzon/vaultwarden chart.
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: guerzon
     url: https://guerzon.github.io/vaultwarden
@@ -6,20 +10,16 @@ releases:
   - name: vaultwarden
     chart: guerzon/vaultwarden
     namespace: vaultwarden
-    version: 0.36.1
+    version: 0.36.3
     values:
       - values/mgmt.yaml
 
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
 hooks:
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "vaultwarden"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+      - "-c"
+      - "kubectl create namespace vaultwarden 2>/dev/null || true"

@@ -1,6 +1,7 @@
-repositories:
-  - name: fluent
-    url: https://fluent.github.io/helm-charts
+# Deploy Fluent Bit (log forwarder) via helmfile, consuming the LOCAL vendored chart.
+# `chart: .` — Chart.yaml + templates/ + dashboards/ in this directory ARE the source of truth.
+# Upstream sync (fluent/fluent-bit chart 변경 반영) is a manual procedure tracked separately.
+# Chart version mirrored from upstream Chart.yaml release.
 
 releases:
   - name: fluent-bit

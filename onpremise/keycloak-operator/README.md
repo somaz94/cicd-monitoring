@@ -33,6 +33,18 @@ security/keycloak-operator/
 
 <br/>
 
+## Apply Order
+
+Operator + CR are kept in separate helmfiles (G14). Operator lives here; the CR component lives under [keycloak/](../keycloak/). Follow this order:
+
+1. **keycloak-operator** (this component) `helmfile sync` first — installs CRDs (`Keycloak`, `KeycloakRealmImport`) and the operator Deployment.
+2. [keycloak](../keycloak/) `helmfile sync` — creates the `Keycloak` CR + a dedicated PostgreSQL; the operator reconciles them into StatefulSet/Service/Ingress.
+3. Destroy in reverse: keycloak (CR + DB) first → keycloak-operator last.
+
+**Why this order**: the CR is reconciled by the operator; if the operator is removed first the CR's finalizer cannot be cleared and gets stuck — destroy must be reverse-ordered.
+
+<br/>
+
 ## Configuration summary
 
 - **Install namespace**: `keycloak-system`

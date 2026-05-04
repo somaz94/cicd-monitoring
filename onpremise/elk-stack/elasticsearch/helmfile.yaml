@@ -3,24 +3,19 @@ releases:
     namespace: logging
     # Public OCI chart — the local templates/ and Chart.yaml under this directory
     # are no longer consumed.
-    # Source repo: https://github.com/somaz94/helm-charts (charts/elasticsearch-eck/)
+    # Source repo: https://github.com/somaz94/helm-charts (charts/elasticsearch-eck/) / Source repo: https://github.com/somaz94/helm-charts (charts/elasticsearch-eck/).
     chart: oci://ghcr.io/somaz94/charts/elasticsearch-eck
     # Pin chart version. Bump via ./upgrade.sh after verifying the new chart release.
     version: "0.1.4"
     values:
       - values/mgmt.yaml
 
-# Ensure the target namespace exists before sync.
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
 hooks:
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "logging"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+      - "-c"
+      - "kubectl create namespace logging 2>/dev/null || true"

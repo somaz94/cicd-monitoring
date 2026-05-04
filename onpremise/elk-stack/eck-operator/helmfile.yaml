@@ -1,3 +1,8 @@
+# Deploy Elastic Cloud on Kubernetes (ECK) operator via helmfile.
+# Operator only — actual Elasticsearch
+# (../elasticsearch/, ../kibana/). G14 — operator + CR 가 별개 helmfile 로 분리 (독립 upgrade.sh 보존).
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: elastic
     url: https://helm.elastic.co
@@ -6,22 +11,17 @@ releases:
   - name: eck-operator
     namespace: elastic-system
     chart: elastic/eck-operator
-    # -- Chart version reference (keep in sync with upgrade.sh output)
+    # Chart version reference (keep in sync with upgrade.sh output).
     version: 3.3.2
     values:
       - values/mgmt.yaml
 
-# Hooks to ensure namespace exists before install
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
 hooks:
   - events: ["presync"]
     showlogs: true
-    command: "kubectl"
+    command: "sh"
     args:
-      - "create"
-      - "namespace"
-      - "elastic-system"
-      - "--dry-run=client"
-      - "-o"
-      - "yaml"
-      - "||"
-      - "true"
+      - "-c"
+      - "kubectl create namespace elastic-system 2>/dev/null || true"

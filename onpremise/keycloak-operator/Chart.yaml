@@ -1,22 +1,47 @@
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/changes: |
+    - kind: added
+      description: rbac.useClusterBindings option (default false) to bind keycloakcontroller-cluster-role and keycloakrealmimportcontroller-cluster-role via ClusterRoleBinding instead of in-namespace RoleBinding. Required for any cross-namespace watchNamespaces value because RoleBindings only grant their bound rules within their own namespace, so the operator silently 403s on list/watch in other namespaces otherwise.
+    - kind: changed
+      description: Documented the correct Quarkus Operator SDK constants for watchNamespaces — JOSDK_WATCH_CURRENT (own ns) and JOSDK_ALL_NAMESPACES (cluster-wide). The previous JOSDK_WATCH_ALL example was not a valid constant and the operator interpreted that string as a namespace name, returning 403 on startup.
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/somaz94/helm-charts
+    - name: Keycloak Operator Documentation
+      url: https://www.keycloak.org/operator/installation
+    - name: Keycloak Operator Resources
+      url: https://github.com/keycloak/keycloak-k8s-resources
+    - name: Keycloak Release Notes
+      url: https://www.keycloak.org/docs/latest/release_notes/index.html
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Seamless Upgrades
+  artifacthub.io/prerelease: "false"
 apiVersion: v2
-name: keycloak-operator
-description: Keycloak Operator (somaz94 OCI chart wrapping the upstream keycloak/keycloak-k8s-resources raw YAML) — installs the Keycloak / KeycloakRealmImport CRDs, ServiceAccount, RBAC, Deployment and metrics Service. Pair with the keycloak component which renders Keycloak / KeycloakRealmImport CRs.
-type: application
-version: 0.1.0
-appVersion: "26.6.1"
-kubeVersion: ">=1.25.0-0"
-keywords:
-  - keycloak
-  - keycloak-operator
-  - sso
-  - oidc
-  - oauth2
-  - identity
-  - security
+appVersion: 26.6.1
+description: Keycloak Operator install (CRDs + Deployment + RBAC + Service) wrapped
+  from the upstream keycloak-k8s-resources raw YAML. Pin upstream releases via upgrade.sh;
+  operate Keycloak instances with the keycloak-cr chart.
 home: https://github.com/somaz94/helm-charts
-sources:
-  - https://github.com/somaz94/helm-charts
-  - https://github.com/keycloak/keycloak-k8s-resources
+keywords:
+- keycloak
+- keycloak-operator
+- sso
+- oidc
+- oauth2
+- identity
+- kubernetes
+- security
+kubeVersion: '>=1.25.0-0'
 maintainers:
-  - name: somaz94
-    url: https://github.com/somaz94
+- name: somaz94
+  url: https://github.com/somaz94
+name: keycloak-operator
+sources:
+- https://github.com/somaz94/helm-charts
+- https://github.com/keycloak/keycloak-k8s-resources
+- https://github.com/keycloak/keycloak
+type: application
+version: 0.1.1
+

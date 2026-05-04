@@ -100,7 +100,8 @@
       "additionalProperties": false,
       "properties": {
         "create": { "type": "boolean" },
-        "subjectNamespace": { "type": "string" }
+        "subjectNamespace": { "type": "string" },
+        "useClusterBindings": { "type": "boolean" }
       }
     },
     "crds": {

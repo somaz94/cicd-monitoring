@@ -72,6 +72,9 @@ DEPENDENCY_CR_NAME="__DEPENDENCY_CR_NAME__"
 MIRROR_CHART_VERSION="__MIRROR_CHART_VERSION__"
 # ============================================================
 
+# zsh nomatch compat: don't fail when "$dir"/2*/ has no matches.
+[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
+
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

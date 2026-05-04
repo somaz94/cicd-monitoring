@@ -15,6 +15,19 @@ Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace 
 
 <br/>
 
+## Apply Order
+
+Operator + CR are split into separate helmfiles (G14). This component is the last CR; follow this order:
+
+1. [eck-operator](../eck-operator/) `helmfile sync` — install CRDs + operator first.
+2. [elasticsearch](../elasticsearch/) `helmfile sync` — deploy Elasticsearch and wait for HEALTH=green.
+3. **kibana** (this component) `helmfile sync` — create the `Kibana` CR; `elasticsearchRef` wires it to the sibling Elasticsearch automatically.
+4. Destroy in reverse: kibana → elasticsearch → eck-operator.
+
+**Why this order**: the Kibana CR needs a healthy Elasticsearch plus the operator to reconcile both; reverse-order destroy prevents stuck finalizers (operator must still run to clear them).
+
+<br/>
+
 ## Directory Structure
 
 ```

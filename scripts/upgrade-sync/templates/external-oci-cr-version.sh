@@ -94,6 +94,9 @@ CHART_SOURCE_REPO="__CHART_SOURCE_REPO__"
 CHART_NAME="__CHART_NAME__"
 # ============================================================
 
+# zsh nomatch compat: don't fail when "$dir"/2*/ has no matches.
+[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
+
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)

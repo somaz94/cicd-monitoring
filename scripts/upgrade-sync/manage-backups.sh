@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# zsh nomatch compat: don't fail when "$dir"/2*/ has no matches.
+[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
+
 # ============================================================
 # upgrade-sync/manage-backups.sh
 #

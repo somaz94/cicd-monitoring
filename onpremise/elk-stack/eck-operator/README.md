@@ -30,6 +30,19 @@ eck-operator/
 
 <br/>
 
+## Apply Order
+
+Operator + CR are kept in separate helmfiles (G14). Operator lives here; CR components live under [elasticsearch/](../elasticsearch/) and [kibana/](../kibana/). Follow this order:
+
+1. **eck-operator** `helmfile sync` first — installs CRDs (`elasticsearch.k8s.elastic.co`, `kibana.k8s.elastic.co`, etc.) and the operator Deployment.
+2. **elasticsearch** `helmfile sync` — creates the `Elasticsearch` CR; the operator reconciles it into StatefulSet/Service/Secret.
+3. **kibana** `helmfile sync` — creates the `Kibana` CR after Elasticsearch reaches HEALTH=green.
+4. Destroy in reverse: kibana → elasticsearch → eck-operator.
+
+**Why this order**: the CR is reconciled by the operator; if the operator is removed first the CR's finalizer cannot be cleared and gets stuck — destroy must be reverse-ordered.
+
+<br/>
+
 ## Configuration Summary
 
 - **Install namespace**: `elastic-system`

@@ -15,6 +15,19 @@ The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secr
 
 <br/>
 
+## Apply Order
+
+Operator + CR are split into separate helmfiles (G14). This component is the CR side; the sibling [eck-operator](../eck-operator/) must be present first:
+
+1. [eck-operator](../eck-operator/) `helmfile sync` — installs CRDs + operator first.
+2. **elasticsearch** (this component) `helmfile sync` — creates the `Elasticsearch` CR; the operator reconciles it.
+3. [kibana](../kibana/) `helmfile sync` — only after Elasticsearch reaches HEALTH=green.
+4. Destroy in reverse: kibana → elasticsearch → eck-operator.
+
+**Why this order**: the CR is reconciled by the operator, so destroying the operator before the CR leaves the CR's finalizer with no controller to release it (it gets stuck) — destroy must be reverse-ordered.
+
+<br/>
+
 ## Directory Structure
 
 ```

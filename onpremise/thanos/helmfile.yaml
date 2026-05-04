@@ -1,20 +1,43 @@
+# Deploy Thanos (sidecar + query) via helmfile, consuming upstream bitnami/thanos chart.
+# Two releases sharing the same chart with role-specific values:
+#   - thanos: compactor / store gateway / object storage sidecar / thanos: compactor / store gateway / object storage sidecar
+#   - thanos-query: unified query layer across clusters
+# Selector: helmfile -l role=sidecar|query <cmd>. / Selector: helmfile -l role=sidecar|query <cmd>.
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: bitnami
     url: https://charts.bitnami.com/bitnami
 
 releases:
-  # Thanos Sidecar components (compactor, store gateway, object storage)
+  # Thanos sidecar set (compactor, store gateway, object storage).
   - name: thanos
     chart: bitnami/thanos
     namespace: monitoring
     version: 17.3.1
+    labels:
+      role: sidecar
+      app: thanos
     values:
       - values/mgmt.yaml
 
-  # Thanos Query (separate instance for unified query across clusters)
+  # Thanos Query — separate instance for unified query across clusters.
   - name: thanos-query
     chart: bitnami/thanos
     namespace: monitoring
     version: 17.3.1
+    labels:
+      role: query
+      app: thanos
     values:
       - values/mgmt-query.yaml
+
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - "kubectl create namespace monitoring 2>/dev/null || true"

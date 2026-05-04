@@ -19,6 +19,23 @@
 # needed) but kept in CONFIG for cross-template compatibility — set them to
 # empty strings or descriptive placeholders.
 #
+# Optional CONFIG vars (default off — single-chart helmfile mirrors keep working):
+#   WRAPPER_CHART_YAML  "true" when local Chart.yaml is wrapper metadata for a
+#                       multi-chart helmfile component (not a mirror of the
+#                       upstream chart). In wrapper mode, only the `version:`
+#                       line of Chart.yaml is patched; name/description/
+#                       appVersion/sources are preserved, and values.yaml /
+#                       values.schema.json are NOT written (component uses
+#                       per-env values/<name>.yaml only). Default "false".
+#   HELMFILE_TRACKED_CHART  OCI URL substring used to scope the helmfile
+#                           version-pin update. When set, only the version
+#                           pin in the release block whose `chart:` line
+#                           contains this substring is bumped — sibling
+#                           releases at the same version stay untouched.
+#                           Required for multi-release helmfiles where this
+#                           script tracks only one chart. Default "" (legacy
+#                           behavior: bump all matching pins).
+#
 # Real per-chart upgrade.sh files are kept in sync via:
 #   scripts/upgrade-sync/sync.sh --apply
 # Only the body below the third `# ===` marker is propagated.
@@ -37,12 +54,22 @@ CHANGELOG_URL="__CHANGELOG_URL__"
 CHART_TYPE="__CHART_TYPE__"  # "local" = manages Chart.yaml + values.yaml / "external" = helmfile + values/ only
 # ============================================================
 
+# zsh nomatch compat: don't fail when "$dir"/2*/ has no matches.
+[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
+
 CHART_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$CHART_DIR/backup"
 VALUES_DIR="$CHART_DIR/values"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # Number of backups to retain. Override via env: `KEEP_BACKUPS=1 ./upgrade.sh`.
 KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
+
+# Optional CONFIG vars (declared in body for backwards compat — existing CONFIG
+# blocks predating these flags do not define them, but body still references them under set -u).
+# Override by setting the same name in the per-chart CONFIG block above.
+# See header docs for semantics.
+WRAPPER_CHART_YAML="${WRAPPER_CHART_YAML:-false}"
+HELMFILE_TRACKED_CHART="${HELMFILE_TRACKED_CHART:-}"
 
 # Detect helmfile flavor (helmfile.yaml or helmfile.yaml.gotmpl).
 # Prefer .gotmpl when both exist (.gotmpl is the templated source of truth).
@@ -504,32 +531,78 @@ echo "  Backed up to: backup/$TIMESTAMP/"
 ls "$BACKUP_DIR/$TIMESTAMP/" | while read -r f; do echo "    - $f"; done
 
 # Update Chart.yaml
-cp "$TEMP_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml"
-echo ""
-echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_APP_VERSION)"
+if [ "$WRAPPER_CHART_YAML" = "true" ]; then
+  # Wrapper mode: local Chart.yaml is component metadata, NOT a mirror of the
+  # upstream chart. Patch only the `version:` line; preserve name
+  # appVersion / sources / etc.
+  CHART_TMP=$(mktemp)
+  awk -v cur="$CURRENT_VERSION" -v new="$LATEST_VERSION" '
+    {
+      if (match($0, /^version:[[:space:]]+/)) {
+        prefix = substr($0, 1, RLENGTH)
+        rest = substr($0, RLENGTH + 1)
+        sub(/[[:space:]]+$/, "", rest)
+        if (rest == "\"" cur "\"") { print prefix "\"" new "\""; next }
+        if (rest == cur)           { print prefix new; next }
+      }
+      print
+    }
+  ' "$CHART_DIR/Chart.yaml" > "$CHART_TMP"
+  mv "$CHART_TMP" "$CHART_DIR/Chart.yaml"
+  echo ""
+  echo "  Updated Chart.yaml (wrapper: version $CURRENT_VERSION -> $LATEST_VERSION; appVersion preserved)"
+else
+  cp "$TEMP_DIR/Chart.yaml" "$CHART_DIR/Chart.yaml"
+  echo ""
+  echo "  Updated Chart.yaml ($CURRENT_VERSION -> $LATEST_VERSION / App: $LATEST_APP_VERSION)"
+fi
 
-# Update values.yaml
-cp "$TEMP_DIR/values-new.yaml" "$CHART_DIR/values.yaml"
-echo "  Updated values.yaml"
+# Update values.yaml + values.schema.json — skipped in wrapper mode (component
+# uses values/<env>.yaml only, no top-level values.yaml).
+if [ "$WRAPPER_CHART_YAML" != "true" ]; then
+  cp "$TEMP_DIR/values-new.yaml" "$CHART_DIR/values.yaml"
+  echo "  Updated values.yaml"
 
-# Update values.schema.json (if upstream chart includes one)
-if [ -f "$TEMP_DIR/values.schema.json" ]; then
-  cp "$TEMP_DIR/values.schema.json" "$CHART_DIR/values.schema.json"
-  echo "  Updated values.schema.json"
+  # Update values.schema.json (if upstream chart includes one)
+  if [ -f "$TEMP_DIR/values.schema.json" ]; then
+    cp "$TEMP_DIR/values.schema.json" "$CHART_DIR/values.schema.json"
+    echo "  Updated values.schema.json"
+  fi
 fi
 
 # Update helmfile (portable sed: works on macOS BSD sed and GNU sed).
 # Handles three pin forms: literal `version: X.Y.Z`, quoted `version: "X.Y.Z"`,
 # and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`. / gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
+# When HELMFILE_TRACKED_CHART is set, the update is scoped to the release block
+# whose `chart:` line contains that substring — sibling releases at the same
+# version are left alone.
 if [ -n "$HELMFILE_PATH" ]; then
-  UPDATED_COUNT=$(grep -cE "(version:[[:space:]]+\"?${CURRENT_VERSION}\"?([[:space:]]|$)|\\\$chartVersion[[:space:]]*:=[[:space:]]+\"${CURRENT_VERSION}\")" "$HELMFILE_PATH" || true)
   HELMFILE_TMP=$(mktemp)
-  sed -E \
-    -e "s|(version:[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
-    -e "s|(version:[[:space:]]+)${CURRENT_VERSION}([[:space:]]+)|\1${LATEST_VERSION}\2|g" \
-    -e "s|(version:[[:space:]]+)${CURRENT_VERSION}\$|\1${LATEST_VERSION}|g" \
-    -e "s|(\\\$chartVersion[[:space:]]*:=[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
-    "$HELMFILE_PATH" > "$HELMFILE_TMP"
+  if [ -n "$HELMFILE_TRACKED_CHART" ]; then
+    awk -v cur="$CURRENT_VERSION" -v new="$LATEST_VERSION" -v pat="$HELMFILE_TRACKED_CHART" '
+      /^[[:space:]]*-[[:space:]]+name:[[:space:]]+/ { in_block = 0 }
+      /^[[:space:]]*chart:[[:space:]]+/             { in_block = (index($0, pat) > 0) ? 1 : 0 }
+      {
+        if (in_block && match($0, /^[[:space:]]*version:[[:space:]]+/)) {
+          prefix = substr($0, 1, RLENGTH)
+          rest   = substr($0, RLENGTH + 1)
+          sub(/[[:space:]]+$/, "", rest)
+          if (rest == "\"" cur "\"") { print prefix "\"" new "\""; next }
+          if (rest == cur)           { print prefix new; next }
+        }
+        print
+      }
+    ' "$HELMFILE_PATH" > "$HELMFILE_TMP"
+    UPDATED_COUNT=$(diff "$HELMFILE_PATH" "$HELMFILE_TMP" | grep -c "^>" || true)
+  else
+    UPDATED_COUNT=$(grep -cE "(version:[[:space:]]+\"?${CURRENT_VERSION}\"?([[:space:]]|$)|\\\$chartVersion[[:space:]]*:=[[:space:]]+\"${CURRENT_VERSION}\")" "$HELMFILE_PATH" || true)
+    sed -E \
+      -e "s|(version:[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
+      -e "s|(version:[[:space:]]+)${CURRENT_VERSION}([[:space:]]+)|\1${LATEST_VERSION}\2|g" \
+      -e "s|(version:[[:space:]]+)${CURRENT_VERSION}\$|\1${LATEST_VERSION}|g" \
+      -e "s|(\\\$chartVersion[[:space:]]*:=[[:space:]]+)\"${CURRENT_VERSION}\"|\1\"${LATEST_VERSION}\"|g" \
+      "$HELMFILE_PATH" > "$HELMFILE_TMP"
+  fi
   mv "$HELMFILE_TMP" "$HELMFILE_PATH"
   echo "  Updated $HELMFILE_NAME ($UPDATED_COUNT pin(s): $CURRENT_VERSION -> $LATEST_VERSION)"
 fi

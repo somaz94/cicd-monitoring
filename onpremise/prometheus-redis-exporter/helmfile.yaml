@@ -1,9 +1,12 @@
+# Deploy prometheus-redis-exporter via helmfile, consuming upstream prometheus-community chart.
+# One release per project; copy the block below + create a new values file for additional projects.
+# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+
 repositories:
   - name: prometheus-community
     url: https://prometheus-community.github.io/helm-charts
 
 releases:
-  # Add new projects by copying the block below and creating a new values file
   - name: example-project-redis-exporter
     chart: prometheus-community/prometheus-redis-exporter
     namespace: monitoring

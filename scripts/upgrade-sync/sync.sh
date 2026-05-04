@@ -75,8 +75,9 @@ EOF
   exit 0
 }
 
-# Find all managed upgrade.sh files (skip backups, deprecated, and the
-# canonical templates themselves).
+# Find all managed upgrade.sh files (skip backups, deprecated, optional, and the
+# canonical templates themselves). `_optional/` charts are activated by moving them
+# out of `_optional/`; until then they are out of sync drift scope.
 # Backup convention: only `backup/` (no leading underscore). See the
 # "backup governance" section in README.md.
 find_managed_files() {
@@ -85,6 +86,7 @@ find_managed_files() {
     -name 'upgrade.sh' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
+    -not -path '*/_optional/*' \
     -not -path '*/scripts/upgrade-sync/*' \
     | sort
 }
@@ -96,6 +98,7 @@ find_unmanaged_charts() {
     -name 'Chart.yaml' \
     -not -path '*/backup/*' \
     -not -path '*/_deprecated/*' \
+    -not -path '*/_optional/*' \
     -not -path '*/templates/*' \
     | while read -r chart; do
         local dir=""; dir=$(dirname "$chart")
