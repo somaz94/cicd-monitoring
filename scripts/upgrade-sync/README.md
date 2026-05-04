@@ -604,7 +604,7 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 | **Retention** | `KEEP_BACKUPS` policy (default 5). Auto-pruned via `auto_prune_backups` on every successful `upgrade.sh` run |
 | **Override** | Tune per-run via env: `KEEP_BACKUPS=1 ./upgrade.sh` |
 | **Bulk ops** | `scripts/upgrade-sync/manage-backups.sh` — `--list` / `--cleanup` / `--total-size` / `--purge` |
-| **Sync exclusion** | `sync.sh`, `check-versions.sh`, `manage-backups.sh`, and `cicd-sync/*` all skip `backup/` — backups never sync to other repos |
+| **Sync exclusion** | `sync.sh`, `check-versions.sh`, `manage-backups.sh`, and external publishing tools all skip `backup/` — backups never sync to other repos |
 
 <br/>
 
@@ -1172,6 +1172,7 @@ Probably forgot to add a branch to `detect_template()`. See [Adding a new canoni
 
 - **macOS bash 3.2** (default): no `declare -A` or other bash 4+ features ✅
 - **Linux bash 4+**: works ✅
+- **zsh** (direct invocation `zsh ./upgrade.sh ...`): works ✅. Canonical bodies start with `[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch` to prevent zsh's `no matches found` fatal when the backup glob (`"$BACKUP_DIR"/2*/`) has zero matches.
 - **sed**: works on both BSD sed (macOS) and GNU sed (Linux)
   - Canonical bodies use `sed ... > tmp && mv tmp file` instead of `sed -i ''`
 - **awk**: uses only basic constructs compatible with both BSD awk (macOS) and gawk (Linux)
@@ -1243,9 +1244,9 @@ A: No. `find_managed_files` excludes `*/backup/*`. Each chart's `backup/` direct
 
 **Q: How are `_deprecated/` and `_optional/` handled?**
 
-A:
-- `_deprecated/` is permanently excluded (`*/_deprecated/*` exclude)
-- `_optional/` is treated as an active directory and included in sync (e.g., `_optional/fluent-bit-aws`, `_optional/thanos`)
+A: Both are permanently excluded from sync drift, all Makefile checks (test/lint/shell-lint), and governance.
+- `_deprecated/` (`*/_deprecated/*` exclude): retired components, kept as a historical trail.
+- `_optional/` (`*/_optional/*` exclude): inactive optional components. **To activate, move the directory out of `_optional/`** — it then auto-rejoins sync and check scopes. On activation, run `./upgrade.sh` directly, or `sync.sh --apply` once to align with the canonical templates.
 
 <br/>
 

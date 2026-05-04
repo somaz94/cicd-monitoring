@@ -108,7 +108,7 @@ helmfile -f ../keycloak/helmfile.yaml -e dev apply
 
 ## References
 
-- [PrivateWork/helm-charts/charts/keycloak-operator/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/keycloak-operator) — chart values reference
+- [somaz94/helm-charts/charts/keycloak-operator/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/keycloak-operator) — chart values reference
 - [Keycloak Operator Documentation](https://www.keycloak.org/operator/installation)
 - [`security/keycloak/`](../keycloak) — sibling component (Keycloak CR + DB + realm)
 - [`scripts/upgrade-sync/`](../../scripts/upgrade-sync/) — upgrade.sh canonical management

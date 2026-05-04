@@ -231,8 +231,8 @@ curl -kI https://auth.example.com/realms/master    # expect HTTP 200
 
 ## References
 
-- [PrivateWork/helm-charts/charts/keycloak-cr/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/keycloak-cr) — chart values reference
-- [PrivateWork/helm-charts/charts/postgresql/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/postgresql) — postgres chart reference
+- [somaz94/helm-charts/charts/keycloak-cr/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/keycloak-cr) — chart values reference
+- [somaz94/helm-charts/charts/postgresql/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/postgresql) — postgres chart reference
 - [Keycloak Operator Documentation](https://www.keycloak.org/operator/installation)
 - [Keycloak DB Configuration](https://www.keycloak.org/server/db) — official PostgreSQL support matrix
 - [`security/keycloak-operator/`](../keycloak-operator) — sibling component (Operator + CRDs)
