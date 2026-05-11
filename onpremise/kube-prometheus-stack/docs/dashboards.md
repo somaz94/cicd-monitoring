@@ -16,6 +16,7 @@ Managed as JSON files in `dashboards/` directory.
 | `nginx-gateway-dashboard.json` | NGINX Gateway Fabric — control-plane (reconcile loop, work queue, NGF event batch, resources) + data-plane (request rate, connection state, accept/handle rate, agent CPU
 | `argocd-dashboard.json` | ArgoCD (App sync, Git requests, Cluster status) |
 | `harbor-dashboard.json` | Harbor (Projects, Storage, HTTP requests) |
+| `control-plane-health-dashboard.json` | Control Plane Health — etcd / apiserver latency + GitLab Runner CI correlation (incident analysis; surfaced from the 2026-05-08 incident) |
 
 > The former `ingress-nginx-dashboard.json` has moved to `dashboards/_deprecated/` and is no longer imported automatically. It was retired after the 2026-04-17 ingress-nginx → NGF cutover.
 

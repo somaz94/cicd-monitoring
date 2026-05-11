@@ -559,9 +559,21 @@ STATUS column (main table = Stack/component version):
 
 ### Prerequisites
 
-- `helm` (for helm-repo lookups)
-- `git` (for git-tags lookups, used by `local-with-templates` in git mode)
-- `curl`, `python3` (for version-source lookups — used by `local-cr-version`, `external-oci-cr-version`, `ansible-github-release`)
+The following tools must be on `PATH` (CI runner installs them automatically via `.gitlab/ci/shared.yml`'s `.install_tools`; local users install manually):
+
+| Tool | Purpose | Used by |
+|---|---|---|
+| `bash` (>= 3.2 / 4+) | every sync/upgrade script | always |
+| `helm` | helm-repo lookups, OCI chart pull | `check-versions.sh` + every helm-based `upgrade.sh` |
+| `helmfile` | helmfile sync/diff/apply | component deploys (CI `apply-components.sh`, local `helmfile apply`) |
+| `kubectl` | cluster apply / context management | invoked by helmfile, CI `helmfile-apply-component.sh` |
+| `git` | git-tags lookups, automated commit/push | `local-with-templates` (git mode), CI `auto-upgrade.sh` |
+| `curl` | upstream metadata fetch | `check-versions.sh`, every version-source template |
+| `python3` | JSON parsing (helm search / GitHub releases / Docker Hub tags responses) | `check-versions.sh`, `local-cr-version`, `external-oci-cr-version`, `ansible-github-release`, `external-oci-with-mirror`, ... |
+| `jq` | JSON processing | `auto-upgrade.sh` helpers + some helm plugins |
+| `yq` | YAML processing | CI `helmfile-apply-component.sh`, `apply-components.sh` |
+| `crane` | OCI image mirror (upstream → private registry) | `external-oci-with-mirror` template Step 7 mirror stage |
+| `tar`, `gzip` | archive handling | `helm pull --untar`, OCI chart downloads |
 
 Same portability as sync.sh: works on macOS bash 3.2 and Linux bash 4+.
 

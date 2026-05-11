@@ -109,12 +109,12 @@ git checkout HEAD~1 -- security/vaultwarden/values/dev.yaml
 helmfile -f security/vaultwarden/helmfile.yaml apply   # user must approve
 ```
 
-The GitLab Application stays alive for vaultwarden until plan v2's Phase 7 cleanup, so rollback is one revert away.
+The GitLab Application stays alive for vaultwarden until the Phase 7 cleanup, so rollback is one revert away.
 
 <br/>
 
 ## Phase 7 cleanup
 
-In [plan v2](../../../../../.claude/plans/gitlab-project-kubernetes-infra-keycloa-scalable-bachman.md)'s Phase 7:
+During Phase 7 (brokering consolidation):
 - Drop the vaultwarden-only GitLab Application (collapse onto the single `Keycloak Brokering (example)` application)
 - Tidy stale SSO Associations on previously-cutover users (newly logging-in users get re-mapped automatically)

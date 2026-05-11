@@ -181,6 +181,39 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
 
+    # Mount the etcd-client-cert secret into Prometheus pod for kubeEtcd ServiceMonitor mTLS scrape.
+    # Prometheus pod 에 etcd-client-cert secret 을 마운트 — kubeEtcd ServiceMonitor 의 mTLS 스크레이프에 사용.
+    # Secret created out-of-band from control-01:/etc/ssl/etcd/ssl/ (admin-k8s-control-01.{pem,-key.pem}, ca.pem).
+    # Secret 은 control-01:/etc/ssl/etcd/ssl/ 의 admin cert 로 별도 생성 (helmfile 외부 관리).
+    secrets:
+      - etcd-client-cert
+
+# =============================================================================
+# Kube etcd (kubespray external etcd on control-01) — mTLS scrape via 2379
+# kube etcd (control-01 의 kubespray external etcd) — 2379 mTLS 스크레이프
+# =============================================================================
+kubeEtcd:
+  enabled: true
+  # External etcd is a host systemd service, not a static pod — point endpoints at the node IP.
+  # external etcd 는 host systemd 서비스이므로 (static pod 아님) 노드 IP 로 endpoint 명시.
+  endpoints:
+    - 192.168.1.17
+  service:
+    enabled: true
+    # etcd does not expose a separate metrics port (no --listen-metrics-urls); scrape the client port.
+    # etcd 가 별도 metrics 포트(--listen-metrics-urls)를 노출하지 않아 client 포트(2379) 그대로 스크레이프.
+    port: 2379
+    targetPort: 2379
+  serviceMonitor:
+    enabled: true
+    scheme: https
+    insecureSkipVerify: false
+    # Cert paths inside Prometheus pod (mounted from secret etcd-client-cert above).
+    # Prometheus 파드 내부 cert 경로 (위의 etcd-client-cert secret 에서 마운트).
+    caFile: /etc/prometheus/secrets/etcd-client-cert/ca.crt
+    certFile: /etc/prometheus/secrets/etcd-client-cert/client.crt
+    keyFile: /etc/prometheus/secrets/etcd-client-cert/client.key
+
 # =============================================================================
 # Kube Proxy (disabled — Cilium replaces kube-proxy)
 # =============================================================================

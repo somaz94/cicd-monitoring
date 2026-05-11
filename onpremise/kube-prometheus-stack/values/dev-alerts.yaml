@@ -425,3 +425,58 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "Harbor overall health is unhealthy"
               description: "Harbor /api/v2.0/health aggregate has been unhealthy for 3+ minutes — one or more components failing (check HarborComponentDown for specifics)."
+
+  # ---------------------------------------------------------------------------
+  # Control Plane Alerts — etcd
+  # Default rules cover most cases; these add the user-felt symptom and a leading CI-burst indicator.
+  # ---------------------------------------------------------------------------
+  control-plane-alerts:
+    groups:
+      - name: control-plane-alerts
+        rules:
+
+          # apiserver pods GET p99 > 2s sustained 5m — user-felt `kubectl get pods` lag.
+          - alert: PodsAPIHighLatency
+            expr: histogram_quantile(0.99, sum by (le, verb, scope) (rate(apiserver_request_duration_seconds_bucket{resource="pods",verb=~"GET|LIST"}[5m]))) > 2
+            for: 5m
+            labels:
+              severity: warning
+              group: control-plane
+            annotations:
+              summary: "Pods API {{ $labels.verb }} ({{ $labels.scope }}) p99 latency high"
+              description: "apiserver pods {{ $labels.verb }} scope={{ $labels.scope }} p99 latency is {{ $value | humanizeDuration }} (>2s) for 5m. Likely cause: etcd backend pressure (check EtcdRequestSlow, GitLabRunnerPodSurge)."
+
+          # etcd get/list p99 > 500ms sustained 5m — more sensitive than the default 1s threshold.
+          - alert: EtcdRequestSlow
+            expr: histogram_quantile(0.99, sum by (le, operation) (rate(etcd_request_duration_seconds_bucket{operation=~"get|list"}[5m]))) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+              group: control-plane
+            annotations:
+              summary: "etcd {{ $labels.operation }} p99 slow"
+              description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>500ms) for 5m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard."
+
+          # gitlab-runner ns container disk-write rate > 50 MB/s sustained 3m — captures heavy buildx jobs that the pod-count alert misses.
+          # 2026-05-08 16:00~16:10 spike showed 7-10 pods (under PodSurge threshold) but >100 MB/s writes pushing etcd fsync to 1.7s.
+          - alert: GitLabRunnerHighDiskIO
+            expr: sum(rate(container_fs_writes_bytes_total{namespace="gitlab-runner"}[5m])) > 50e6
+            for: 3m
+            labels:
+              severity: warning
+              group: control-plane
+            annotations:
+              summary: "GitLab Runner disk write surge ({{ $value | humanize1024 }}B/s)"
+              description: "gitlab-runner namespace container disk write rate is {{ $value | humanize1024 }}B/s (>50MB/s) for 3m. Heavy buildx
+
+          # gitlab-runner ns pod count > 15 sustained 3m — leading indicator of CI burst that drives etcd/apiserver latency.
+          # concurrent=5 per release × 2 releases → steady-state ~10; sustained >15 means burst incoming.
+          - alert: GitLabRunnerPodSurge
+            expr: count(kube_pod_info{namespace="gitlab-runner"}) > 15
+            for: 3m
+            labels:
+              severity: info
+              group: control-plane
+            annotations:
+              summary: "GitLab Runner pod surge ({{ $value }} pods)"
+              description: "gitlab-runner namespace has {{ $value }} pods (>15) for 3m+. Expected steady-state ~10. Watch for follow-up PodsAPIHighLatency / EtcdRequestSlow alerts."

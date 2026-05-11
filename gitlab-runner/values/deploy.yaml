@@ -34,8 +34,10 @@ runnerToken: "glrt-BFaFLSO8Ji3g0CwkSsHQxHQ6MQp1OjMH.01.0w1wpfpnp"
 
 ## Configure the maximum number of concurrent jobs
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+## Lowered from 10 to 5 (2026-05-08) to relieve etcd/apiserver write pressure under CI bursts.
+## 2026-05-08 10 -> 5 로 축소 — CI 부하 시 etcd/apiserver write 압력 완화 목적.
 ##
-concurrent: 10
+concurrent: 5
 
 ## Number of seconds until the forceful shutdown operation times out and exits the process.
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
@@ -128,6 +130,15 @@ runners:
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"
+        # Reduce apiserver GET /pods polling frequency (default 3s) — eases control-plane load.
+        # apiserver GET /pods 폴링 주기 완화 (default 3s) — control-plane 부하 감소.
+        poll_interval = 5
+        # Tolerate transient apiserver slowdowns without failing the job (default 180s).
+        # apiserver 일시 지연을 잡 실패로 직결시키지 않도록 여유 (default 180s).
+        poll_timeout = 600
+        # Allow graceful pod termination instead of immediate delete (reduces etcd churn).
+        # 즉시 삭제 대신 정상 종료 유예 (etcd 변경 빈도 감소).
+        cleanup_grace_period_seconds = 30
 
   ## DEPRECATED: Specify the tags associated with the runner. Comma-separated list of tags.
   ##

@@ -26,7 +26,8 @@ kube-prometheus-stack/
 │   └── dev-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
 ├── dashboards/             # Custom Grafana dashboard JSON files
 ├── scripts/                # Operational helper scripts
-│   └── import-dashboards.sh
+│   ├── import-dashboards.sh
+│   └── sync-etcd-client-cert.sh
 ├── docs/                   # Detailed guides
 │   ├── dashboards-en.md
 │   ├── slack-alert-format-en.md
@@ -204,6 +205,35 @@ See `./scripts/import-dashboards.sh --help` for the full option list.
 > `--from-secret` reads the Grafana password from a Kubernetes secret via `kubectl`. The default target is `monitoring/kube-prometheus-stack-grafana` (key `admin-password`); override with `--secret-namespace / --secret-name / --secret-key` or the `GRAFANA_SECRET_NS / GRAFANA_SECRET_NAME / GRAFANA_SECRET_KEY` environment variables. The current kubectl context must point at the target cluster.
 
 Custom dashboard details: [Dashboard Guide](docs/dashboards-en.md)
+
+<br/>
+
+### etcd Client Cert Sync (mTLS scrape)
+
+The `kubeEtcd` ServiceMonitor scrapes etcd metrics on port 2379 over mTLS, which requires the `etcd-client-cert` Secret in the monitoring namespace. This Secret is built from the kubespray-managed certs on the control-plane node via `scripts/sync-etcd-client-cert.sh`.
+
+**Re-run when**
+
+- the etcd cert is approaching expiry (kubespray default: 365 days)
+- the cluster is rebuilt or the control-plane node IP changes
+- the admin / CA cert files on the control plane are regenerated
+
+```bash
+cd observability/monitoring/kube-prometheus-stack
+
+# Default — pull from control-01 (192.168.1.17), refresh monitoring/etcd-client-cert
+./scripts/sync-etcd-client-cert.sh
+
+# Different node / SSH user
+./scripts/sync-etcd-client-cert.sh -H 192.168.1.18 -u ubuntu
+
+# Render the manifest only, do not apply
+./scripts/sync-etcd-client-cert.sh --dry-run
+```
+
+See `./scripts/sync-etcd-client-cert.sh --help` for the full option list.
+
+> Prerequisite: the host running the script must be able to `ssh + sudo cat` against the target node (use the same account as kubespray's `ansible_user`). After refreshing the secret, run `kubectl -n monitoring rollout restart statefulset/prometheus-kube-prometheus-stack-prometheus` or wait for the next helmfile sync to remount the cert.
 
 <br/>
 

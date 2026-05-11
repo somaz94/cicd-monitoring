@@ -103,7 +103,7 @@ app → GitLab                               app → Keycloak → GitLab        
 
 ## What changes when LDAP is introduced
 
-Covered by the follow-up plan ([openldap-keycloak-federation.md](../../../.claude/plans/gitlab-project-kuberntes-infra-openldap-keycloak-federation.md)):
+Covered by the follow-up effort (OpenLDAP + Keycloak User Federation track):
 
 1. Install OpenLDAP (slapd).
 2. In the Keycloak `example` realm → User Federation → add an LDAP provider (URL, baseDN, bind creds, sync options).
@@ -169,4 +169,3 @@ If LDAP is the long-term endpoint, do we even need the GitLab brokering step? Th
 - [vaultwarden-migration-en.md](vaultwarden-migration-en.md) — vaultwarden cutover
 - [argocd-migration-en.md](argocd-migration-en.md) — ArgoCD dex connector swap
 - [operator-cr-relationship-en.md](operator-cr-relationship-en.md) — why Operator and CR live in separate components
-- Follow-up plan: [openldap-keycloak-federation.md](../../../.claude/plans/gitlab-project-kuberntes-infra-openldap-keycloak-federation.md) — LDAP integration track

@@ -219,6 +219,61 @@ helmfile status                        # Show status
 
 <br/>
 
+## Build-job node isolation (build → k8s-compute-04)
+
+Pin **CI build pods** to `k8s-compute-04` so that `docker buildx` / `dind` disk IO doesn't pummel the DB·etcd on the general workers (compute-01/02/03).
+
+### Cluster-side prep (once)
+
+```bash
+kubectl taint node k8s-compute-04 dedicated=ci-build:NoSchedule
+kubectl label node k8s-compute-04 role=ci-build
+```
+
+- `NoSchedule` taint: any pod without a matching toleration is pushed away → deploy runners / generic workloads automatically avoid compute-04.
+- `role=ci-build` label: the build runner targets only this node via `node_selector`.
+
+### `build.yaml` runners.config block
+
+In [`values/build.yaml`](values/build.yaml) inside `runners.config`'s `[runners.kubernetes]` block:
+
+```toml
+[runners.kubernetes.node_selector]
+  "role" = "ci-build"
+
+[runners.kubernetes.node_tolerations]
+  "dedicated=ci-build" = "NoSchedule"
+```
+
+- `node_selector` — schedule only on nodes labeled `role=ci-build` (i.e. compute-04).
+- `node_tolerations` key format: `"<taint-key>=<taint-value>" = "<effect>"`.
+  - taint `dedicated=ci-build:NoSchedule` → `"dedicated=ci-build" = "NoSchedule"`.
+
+### `deploy.yaml` — no changes needed
+
+The `NoSchedule` taint already keeps un-tolerated deploy pods off compute-04. No deploy-side config required.
+
+### values.yaml top-level vs runners.config TOML
+
+| Location | Target |
+|---|---|
+| `values.yaml` top-level `nodeSelector` / `tolerations` / `affinity` | The gitlab-runner **manager deployment pod** (the controller that picks up jobs and spawns build pods) |
+| `runners.config` TOML's `[runners.kubernetes.node_selector]` / `node_tolerations` | The per-job **build pods** spawned by the manager |
+
+This isolation only targets build pods, so only the latter is set. The manager pod has no toleration either, so the taint also keeps it off compute-04 — leaving it untouched is fine.
+
+### Apply & verify
+
+```bash
+helmfile -l name=build-image apply
+
+# Run a CI build and watch where the spawned pod lands
+kubectl -n gitlab-runner get pod -o wide -w
+# build runner pods should land on k8s-compute-04; deploy pods should not.
+```
+
+<br/>
+
 ## Troubleshooting
 
 1. **Runner not registering**

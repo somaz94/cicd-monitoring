@@ -34,8 +34,10 @@ runnerToken: "glrt-NwKInq8B_XILQugY5XzP2HQ6MQp1OjMH.01.0w02bfgwk"
 
 ## Configure the maximum number of concurrent jobs
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
+## Lowered from 10 to 5 (2026-05-08) to relieve etcd/apiserver write pressure under CI bursts.
+## 2026-05-08 10 -> 5 로 축소 — CI 부하 시 etcd/apiserver write 압력 완화 목적.
 ##
-concurrent: 10
+concurrent: 5
 
 ## Number of seconds until the forceful shutdown operation times out and exits the process.
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
@@ -128,6 +130,41 @@ runners:
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"
+        # Reduce apiserver GET /pods polling frequency (default 3s) — eases control-plane load.
+        # apiserver GET /pods 폴링 주기 완화 (default 3s) — control-plane 부하 감소.
+        poll_interval = 5
+        # Tolerate transient apiserver slowdowns without failing the job (default 180s).
+        # apiserver 일시 지연을 잡 실패로 직결시키지 않도록 여유 (default 180s).
+        poll_timeout = 600
+        # Allow graceful pod termination instead of immediate delete (reduces etcd churn).
+        # 즉시 삭제 대신 정상 종료 유예 (etcd 변경 빈도 감소).
+        cleanup_grace_period_seconds = 30
+        # Pin build pods to k8s-compute-04 (tainted with dedicated=ci-build:NoSchedule + labeled role=ci-build)
+        # to isolate buildx/dind disk IO from compute-01/02/03. Deploy runners deliberately omit these so
+        # the same NoSchedule taint keeps them on the other nodes.
+        # 빌드 pod 를 k8s-compute-04 (taint dedicated=ci-build:NoSchedule + label role=ci-build) 에 고정 —
+        # buildx/dind 의 디스크 IO 를 compute-01/02/03 에서 격리. deploy 러너는 일부러 안 넣어두면 같은
+        # NoSchedule taint 가 deploy pod 를 다른 노드로 자연스럽게 밀어준다.
+        [runners.kubernetes.node_selector]
+          "role" = "ci-build"
+        # Toleration table key uses "<taint-key>=<taint-value>" with the effect as the value.
+        # taint dedicated=ci-build:NoSchedule -> "dedicated=ci-build" = "NoSchedule".
+        # toleration 테이블의 key 는 "<taint-key>=<taint-value>", value 는 effect.
+        # taint dedicated=ci-build:NoSchedule → "dedicated=ci-build" = "NoSchedule".
+        [runners.kubernetes.node_tolerations]
+          "dedicated=ci-build" = "NoSchedule"
+        # Run service containers (e.g. docker:dind) as privileged so dockerd can mount cgroups.
+        # 서비스 컨테이너 (예: docker:dind) 를 privileged 로 실행 — dockerd 가 cgroup mount 가능하도록.
+        # build container itself stays unprivileged (limits build-script blast radius).
+        # build 컨테이너 자체는 unprivileged 유지 (build script 의 권한 영향 범위 제한).
+        # Required by gitlab-toolchain-images build_custom job (docker buildx multi-arch).
+        # gitlab-toolchain-images 의 build_custom 잡 (docker buildx multi-arch) 에 필요.
+        # Note: top-level `services_privileged` is dropped by `register --template-config`
+        # in GitLab Runner 18.11.x. Use the nested security_context table instead — that one is preserved.
+        # 주의: top-level `services_privileged` 는 GitLab Runner 18.11.x 의 register --template-config 가
+        # 무시한다. nested security_context 테이블을 써야 register 후에도 보존된다.
+        [runners.kubernetes.service_container_security_context]
+          privileged = true
 
   ## DEPRECATED: Specify the tags associated with the runner. Comma-separated list of tags.
   ##
