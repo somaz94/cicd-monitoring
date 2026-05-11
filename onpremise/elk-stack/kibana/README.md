@@ -36,6 +36,10 @@ kibana/
 ├── values/
 │   └── dev.yaml               # Kibana CR values (`version` = Stack version)
 ├── upgrade.sh                  # external-oci-cr-version based Stack version tracker
+├── dashboards/                 # Saved Objects (Lens + Dashboard) NDJSON + apply/export scripts
+│   ├── apply.sh                # repo NDJSON → live Kibana
+│   ├── export.sh               # live Kibana → repo NDJSON
+│   └── *.ndjson                # Saved Object definitions
 ├── docs/
 │   ├── upgrade-rollback.md     # Kibana-specific notes + link to shared guide (Korean)
 │   └── upgrade-rollback-en.md  # English mirror
@@ -54,6 +58,9 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | [Upgrade / Rollback (Kibana-specific)](docs/upgrade-rollback-en.md) | ES dependency notes + link to shared guide |
 | [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback-en.md) | `upgrade.sh` safety features, OCI chart pin bump, webhook-bypass rollback (primary doc) |
 | [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
+| [Dashboards (Saved Objects management)](dashboards/README-en.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
+| [Dashboards Saved Objects workflow](docs/dashboards-saved-objects-en.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
+| [User Metrics Catalog](docs/user-metrics-catalog-en.md) | 7-panel definitions of the Dev ExampleProject Game dashboard (DAU/NU/WAU/MAU/Retention/Retention Rate). Includes small-sample caveat |
 
 <br/>
 

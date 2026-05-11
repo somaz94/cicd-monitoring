@@ -18,10 +18,19 @@ fluent-bit/
 ├── dashboards/         # Grafana dashboards (synced with upstream)
 ├── upgrade.sh          # Version upgrade script
 ├── backup/             # Auto-backup during upgrades
+├── docs/               # Topic-specific guides (Korean + English mirror)
 └── README.md
 ```
 
 > **Note:** This chart uses the local chart (`chart: .`) approach, managing templates/ directly.
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [Recommended prod-tail settings](docs/prod-tail-config-en.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide |
 
 <br/>
 

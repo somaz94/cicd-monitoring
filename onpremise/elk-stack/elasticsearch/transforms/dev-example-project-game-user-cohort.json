@@ -1,0 +1,62 @@
+{
+  "description": "Per-user cohort for dev-example-project-game: first_seen, last_seen, active_days, D-N returning. Continuous transform syncs every 1h on @timestamp with 60s delay. Day-boundary math uses scripted_metric/script params.tz (default Asia/Seoul). To switch timezone, change every params.tz value to a ZoneId string (e.g. 'UTC', 'America/Los_Angeles') and run './apply.sh --replace'. Retention horizons are params.offset_days (D-1=1, D-7=7); add new scripted_metric entries with different offsets to extend (D-14, D-30, ...).",
+  "source": {
+    "index": ["dev-example-project-game"],
+    "query": {
+      "bool": {
+        "filter": [
+          {"exists": {"field": "data.userId"}}
+        ]
+      }
+    }
+  },
+  "pivot": {
+    "group_by": {
+      "user_id": {"terms": {"field": "data.userId"}}
+    },
+    "aggregations": {
+      "first_seen":   {"min": {"field": "@timestamp"}},
+      "last_seen":    {"max": {"field": "@timestamp"}},
+      "total_events": {"value_count": {"field": "@timestamp"}},
+      "active_days_count": {
+        "cardinality": {
+          "script": {
+            "source": "doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString()",
+            "params": {"tz": "Asia/Seoul"}
+          }
+        }
+      },
+      "d1_returning": {
+        "scripted_metric": {
+          "params": {"tz": "Asia/Seoul", "offset_days": 1},
+          "init_script": "state.days = new ArrayList();",
+          "map_script":  "state.days.add(doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay());",
+          "combine_script": "return state.days;",
+          "reduce_script": "long first = Long.MAX_VALUE; HashSet set = new HashSet(); for (def s : states) { for (def d : s) { long dl = (long)d; set.add(dl); if (dl < first) first = dl; } } return set.contains(first + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d7_returning": {
+        "scripted_metric": {
+          "params": {"tz": "Asia/Seoul", "offset_days": 7},
+          "init_script": "state.days = new ArrayList();",
+          "map_script":  "state.days.add(doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay());",
+          "combine_script": "return state.days;",
+          "reduce_script": "long first = Long.MAX_VALUE; HashSet set = new HashSet(); for (def s : states) { for (def d : s) { long dl = (long)d; set.add(dl); if (dl < first) first = dl; } } return set.contains(first + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      }
+    }
+  },
+  "dest": {
+    "index": "dev-example-project-game-user-cohort"
+  },
+  "frequency": "1h",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "60s"
+    }
+  },
+  "settings": {
+    "max_page_search_size": 500
+  }
+}
