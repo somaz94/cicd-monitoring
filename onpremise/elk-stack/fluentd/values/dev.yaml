@@ -63,8 +63,94 @@ metrics:
     additionalLabels:
       release: kube-prometheus-stack
 
+  # PrometheusRule — buffer / retry / pipeline stall detection
+  #
   prometheusRule:
-    enabled: false
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
+    rules:
+      # Pod down — no metrics scraped at all
+      - alert: FluentdDown
+        expr: up{job="fluentd"} == 0
+        for: 2m
+        labels:
+          context: fluentd
+          severity: critical
+        annotations:
+          summary: "Fluentd aggregator down (logging ns)"
+          description: "fluent-bit forward 가 차단됨. fluent-bit storage 가 흡수 중이며 fluentd 복구 시 자동 재개. {{ $labels.pod }} on {{ $labels.instance }}"
+
+      # Scrape missing (job disappeared)
+      - alert: FluentdScrapeMissing
+        expr: absent(up{job="fluentd"} == 1)
+        for: 10m
+        labels:
+          context: fluentd
+          severity: warning
+        annotations:
+          summary: "Fluentd metrics scrape missing"
+          description: "ServiceMonitor
+
+      # Buffer queue length high (queue_limit_length 128 기준 ~40%)
+      #
+      - alert: FluentdBufferQueueHigh
+        expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 50
+        for: 5m
+        labels:
+          context: fluentd
+          severity: warning
+        annotations:
+          summary: "Fluentd ES output buffer queue rising"
+          description: "queue={{ $value }}/128 chunks. ES 처리량 또는 fluentd flush_thread 한계 의심. {{ $labels.pod }}"
+
+      # Buffer queue critical — almost full (~78%)
+      #
+      - alert: FluentdBufferQueueCritical
+        expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 100
+        for: 1m
+        labels:
+          context: fluentd
+          severity: critical
+        annotations:
+          summary: "Fluentd ES buffer queue near limit"
+          description: "queue={{ $value }}/128. 곧 overflow → fluent-bit 으로 block. ES 즉시 점검 필요"
+
+      # Buffer disk size > 75% of total_limit_size (4GB → 3GB threshold)
+      #
+      - alert: FluentdBufferDiskHigh
+        expr: fluentd_output_status_buffer_total_bytes{type="elasticsearch"} > 3221225472
+        for: 5m
+        labels:
+          context: fluentd
+          severity: warning
+        annotations:
+          summary: "Fluentd buffer disk usage > 3GB"
+          description: "buffer={{ $value | humanize1024 }}B
+
+      # Retry rate non-zero — ES 일시 장애 또는 throttling 가능성
+      #
+      - alert: FluentdRetryRising
+        expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[5m]) > 0
+        for: 10m
+        labels:
+          context: fluentd
+          severity: warning
+        annotations:
+          summary: "Fluentd → ES retry rate elevated"
+          description: "최근 10분간 retry 발생 중. ES cluster status
+
+      # Pipeline stalled — no records emitted for 10 minutes
+      #
+      - alert: FluentdIngestStalled
+        expr: rate(fluentd_output_status_emit_records{type="elasticsearch"}[10m]) == 0
+        for: 10m
+        labels:
+          context: fluentd
+          severity: critical
+        annotations:
+          summary: "Fluentd ingest stalled (no records → ES)"
+          description: "10분간 ES 로 emit 된 record 0. fluent-bit 입력
 
 dashboards:
   enabled: "false"
@@ -214,25 +300,29 @@ fileConfigs:
         flush_interval 10s
         flush_thread_count 4
         chunk_limit_size 16MB
-        queue_limit_length 64
+        # chunk count cap matches disk cap: 128 × 16MB = 2GB
+        queue_limit_length 128
         retry_type exponential_backoff
         retry_wait 1s
-        retry_max_times 10
+        # Retry forever to align with fluent-bit Retry_Limit no_limits
+        retry_forever true
+        # Block input on overflow so backpressure pushes back to fluent-bit storage
+        #
         overflow_action block
-        total_limit_size 2GB
+        total_limit_size 4GB
         flush_at_shutdown true
       </buffer>
 
       # Performance settings
       bulk_message_request_threshold 1024
 
-      # Error handling - send failed records to file
+      # Safety net for unrecoverable records; retry_forever keeps recoverable ones in the primary buffer
+      #
       <secondary>
         @type file
         path /var/log/failed-records
         <format>
-          @type single_value
-          message_key message
+          @type json
         </format>
       </secondary>
     </match>
