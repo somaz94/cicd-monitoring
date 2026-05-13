@@ -30,7 +30,8 @@ fluent-bit/
 
 | Document | Description |
 |---|---|
-| [Recommended prod-tail settings](docs/prod-tail-config-en.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide |
+| [Recommended prod-tail settings](docs/prod-tail-config-en.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide + current dev Phase 1a state |
+| [Index re-ingest procedure](docs/reingest-procedure-en.md) | Replay logs from NFS into ES after index loss. DB ≠ ES asynchrony background, full/partial re-ingest, Phase 1a vs 1b behavior |
 
 <br/>
 

@@ -39,6 +39,11 @@ nodeSelector: {}
 
 affinity: {}
 
+# RWO state PVC + SQLite — two pods mounting concurrently triggers 'database is locked' on the new pod
+#
+updateStrategy:
+  type: Recreate
+
 # fluent-bit forwards to fluentd (not ES directly); ES credentials are not
 # needed here. Removed to avoid dead references to monitoring-ns secrets.
 env: []
@@ -57,6 +62,8 @@ extraVolumeMounts:
   - name: qa-example-project-game-app-logs-pvc-fluentbit
     mountPath: /fluent-bit/logs/example-project/qa/game
     readOnly: true
+  - name: fluent-bit-state-pvc
+    mountPath: /fluent-bit/state
 
 config:
   service: |
@@ -70,6 +77,10 @@ config:
         HTTP_Listen 0.0.0.0
         HTTP_Port 2020
         Health_Check On
+        storage.path /fluent-bit/state/storage/
+        storage.sync normal
+        storage.checksum off
+        storage.backlog.mem_limit 50M
 
   inputs: |
     # Dev ExampleProject Game logs
@@ -89,6 +100,10 @@ config:
         # Ignore_Older 0: disables age filtering (all files are processed regardless of modification time)
         # Ignore_Older 7d: skips files not modified in the last 7 days (prevents processing months of old logs on NFS)
         Ignore_Older 7d
+        DB /fluent-bit/state/tail-dev-game.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
 
     # Dev ExampleProject Battle logs
     [INPUT]
@@ -103,6 +118,10 @@ config:
         Refresh_Interval 10
         Read_from_Head false
         Ignore_Older 7d
+        DB /fluent-bit/state/tail-dev-battle.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
 
     # Staging ExampleProject Game logs
     [INPUT]
@@ -117,6 +136,10 @@ config:
         Refresh_Interval 10
         Read_from_Head false
         Ignore_Older 7d
+        DB /fluent-bit/state/tail-stg-game.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
 
     # QA ExampleProject Game logs
     [INPUT]
@@ -131,6 +154,10 @@ config:
         Refresh_Interval 10
         Read_from_Head false
         Ignore_Older 7d
+        DB /fluent-bit/state/tail-qa-game.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
 
   filters: |
     # Add metadata for dev game logs
@@ -180,7 +207,10 @@ config:
         Match example-project.*
         Host fluentd
         Port 24224
-        Retry_Limit 5
+        # Survive fluentd outages by retrying indefinitely and absorbing pressure on disk
+        #
+        Retry_Limit no_limits
+        storage.total_limit_size 2G
 
   customParsers: |
     [PARSER]
@@ -272,6 +302,13 @@ persistentVolumeClaims:
       storage: 5Gi
       selector:
         volumeName: qa-example-project-game-app-logs-pv-fluentbit
+    # Single replica → RWO is sufficient and SQLite locking is safer than RWX
+    #
+    - name: fluent-bit-state-pvc
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: nfs-client-server1
+      storage: 5Gi
 
 # =============================================================================
 # ServiceMonitor (Prometheus metrics for Fluent Bit)
