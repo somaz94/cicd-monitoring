@@ -7,6 +7,6 @@ releases:
   - name: fluent-bit
     namespace: logging
     chart: .
-    version: 0.57.3
+    version: 0.57.5
     values:
       - values/dev.yaml

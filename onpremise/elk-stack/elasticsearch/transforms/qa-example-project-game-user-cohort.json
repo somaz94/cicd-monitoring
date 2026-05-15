@@ -1,0 +1,464 @@
+{
+  "description": "Per-user cohort (flat). first_seen = first /users/create. d1..d30 = any activity on first_create+N. CSV-friendly via Lens datatable.",
+  "source": {
+    "index": [
+      "qa-example-project-game"
+    ],
+    "query": {
+      "bool": {
+        "filter": [
+          {
+            "exists": {
+              "field": "data.userId"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "pivot": {
+    "group_by": {
+      "user_id": {
+        "terms": {
+          "field": "data.userId"
+        }
+      }
+    },
+    "aggregations": {
+      "first_seen": {
+        "scripted_metric": {
+          "params": {
+            "path": "/users/create"
+          },
+          "init_script": "state.times = new ArrayList();",
+          "map_script": "if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.times.add(doc['@timestamp'].value.toInstant().toEpochMilli()); }",
+          "combine_script": "return state.times;",
+          "reduce_script": "long min = Long.MAX_VALUE; boolean any = false; for (def s : states) { for (def t : s) { long tv = (long)t; if (tv < min) min = tv; any = true; } } return any ? Instant.ofEpochMilli(min).toString() : null;"
+        }
+      },
+      "last_seen": {
+        "max": {
+          "field": "@timestamp"
+        }
+      },
+      "total_events": {
+        "value_count": {
+          "field": "@timestamp"
+        }
+      },
+      "active_days_count": {
+        "cardinality": {
+          "script": {
+            "source": "doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString()",
+            "params": {
+              "tz": "Asia/Seoul"
+            }
+          }
+        }
+      },
+      "d1_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 1,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d2_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 2,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d3_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 3,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d4_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 4,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d5_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 5,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d6_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 6,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d7_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 7,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d8_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 8,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d9_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 9,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d10_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 10,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d11_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 11,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d12_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 12,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d13_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 13,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d14_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 14,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d15_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 15,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d16_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 16,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d17_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 17,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d18_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 18,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d19_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 19,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d20_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 20,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d21_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 21,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d22_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 22,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d23_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 23,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d24_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 24,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d25_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 25,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d26_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 26,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d27_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 27,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d28_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 28,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d29_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 29,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      },
+      "d30_returning": {
+        "scripted_metric": {
+          "params": {
+            "offset_days": 30,
+            "tz": "Asia/Seoul",
+            "path": "/users/create"
+          },
+          "init_script": "state.create_days = new ArrayList(); state.all_days = new ArrayList();",
+          "map_script": "long epoch = doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toEpochDay(); state.all_days.add(epoch); if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.create_days.add(epoch); }",
+          "combine_script": "return state;",
+          "reduce_script": "long firstCreate = Long.MAX_VALUE; boolean any = false; HashSet allDays = new HashSet(); for (def s : states) { for (def d : s.create_days) { long dl = (long)d; if (dl < firstCreate) firstCreate = dl; any = true; } for (def d : s.all_days) { allDays.add((long)d); } } if (!any) return null; return allDays.contains(firstCreate + ((long)params.offset_days)) ? 1L : 0L;"
+        }
+      }
+    }
+  },
+  "dest": {
+    "index": "qa-example-project-game-user-cohort"
+  },
+  "frequency": "5m",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "60s"
+    }
+  },
+  "settings": {
+    "max_page_search_size": 500
+  }
+}
