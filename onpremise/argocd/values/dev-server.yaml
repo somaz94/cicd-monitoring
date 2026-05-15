@@ -3,18 +3,18 @@ controller:
   replicas: 1
   # Controller environment variable optimization
   env:
-    # Kubernetes API request QPS limit (default: 50)
-    # Reduces bottlenecks during large-scale app synchronization
+    # Kubernetes API request QPS limit (default: 50).
+    # Reduces bottlenecks during large-scale app synchronization.
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "150"
-    # Kubernetes API burst request limit (default: 100)
-    # Improves sync speed during traffic spikes
+    # Kubernetes API burst request limit (default: 100).
+    # Improves sync speed during traffic spikes.
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "300"
-    # Enable pprof endpoint on :6060 for goroutine leak debugging
+    # Enable pprof endpoint on :6060 for goroutine leak debugging.
     # Access: kubectl port-forward -n argocd argocd-application-controller-0 6060:6060
     #        curl localhost:6060/debug/pprof/goroutine?debug=2 > goroutine.txt
-    # See: cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - post-incident follow-up section
+    # See: cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - post-incident follow-up section.
     - name: ARGOCD_APPLICATION_CONTROLLER_PPROF
       value: "true"
   resources:
@@ -63,13 +63,13 @@ server:
     # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
     pathType: Prefix
 
-  # Gateway API HTTPRoute — Phase 3.5 (ingress-nginx → NGF) parallel deployment
-  # - Upstream chart natively supports server.httproute: block (templates/argocd-server/httproute.yaml)
-  # - backendRefs are auto-wired by the chart: configs.params["server.insecure"]=true → service port 80 (HTTP)
-  # - sectionName: https — Phase 6 (2026-04-29) 변경. argocd-https-redirect HTTPRoute (sectionName: http) 와 충돌
-  #   회피 위해 메인 route 를 HTTPS listener 만 부착. 이전 옛 코멘트 (양쪽 listener attach) 는
-  #   force-ssl-redirect: false 가정. 현재는 redirect 강제로 컨벤션 변경됨. / Old comment (attach both listeners) assumed force-ssl-redirect: false; now redirect is enforced.
-  # - At Phase 6 cutover, NginxProxy loadBalancerIP swap (.69 → .55) automatically shifts real traffic
+  # Gateway API HTTPRoute — Phase 3.5 (ingress-nginx → NGF) parallel deployment.
+  # - Upstream chart natively supports server.httproute: block (templates/argocd-server/httproute.yaml).
+  # - backendRefs are auto-wired by the chart: configs.params["server.insecure"]=true → service port 80 (HTTP).
+  # - sectionName: https — Phase 6 (2026-04-29) change. Avoid conflict with argocd-https-redirect HTTPRoute
+  #   (sectionName: http) — main route only on HTTPS listener. Old comment (attach both listeners) assumed
+  #   force-ssl-redirect: false; now redirect is enforced.
+  # - At Phase 6 cutover, NginxProxy loadBalancerIP swap (.69 → .55) automatically shifts real traffic.
   httproute:
     enabled: true
     parentRefs:
@@ -98,17 +98,17 @@ repoServer:
   replicas: 1
   # Repo server environment variable optimization
   env:
-    # Command execution timeout (default: 90s)
-    # Increased timeout needed for large Helm chart manifest generation
+    # Command execution timeout (default: 90s).
+    # Increased timeout needed for large Helm chart manifest generation.
     - name: ARGOCD_EXEC_TIMEOUT
       value: "180"
-    # Git operation retry count (default: 1)
-    # Improves stability through retries on git ls-remote failures
+    # Git operation retry count (default: 1).
+    # Improves stability through retries on git ls-remote failures.
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
       value: "3"
-    # Allow Helm concurrent execution (default: false)
-    # Improves performance when syncing multiple Helm-based apps simultaneously
-    # Warning: Verify no interdependencies between templates
+    # Allow Helm concurrent execution (default: false).
+    # Improves performance when syncing multiple Helm-based apps simultaneously.
+    # Warning: Verify no interdependencies between templates.
     - name: ARGOCD_HELM_ALLOW_CONCURRENCY
       value: "true"
   resources:

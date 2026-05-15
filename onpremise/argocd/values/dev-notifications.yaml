@@ -358,7 +358,7 @@ notifications:
     #       }]
     
   triggers:
-    # Fires on successful sync + Healthy state; dedup per sync operation to avoid duplicate alerts during rolling updates
+    # Fires on successful sync + Healthy state; dedup per sync operation to avoid duplicate alerts during rolling updates.
     trigger.on-deployed: |
       - description: Application is synced and healthy after any operation.
         send:
@@ -369,7 +369,7 @@ notifications:
           app.status.operationState != null
         oncePer: app.status.operationState.finishedAt
 
-    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per sync operation
+    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per sync operation.
     trigger.on-health-degraded: |
       - description: Application has degraded (not due to sync)
         send:
@@ -382,7 +382,7 @@ notifications:
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
         oncePer: app.status.operationState.finishedAt
 
-    # Fires once per failed sync operation (dedup by finishedAt timestamp)
+    # Fires once per failed sync operation (dedup by finishedAt timestamp).
     trigger.on-sync-failed: |
       - description: Application syncing has failed
         send:
@@ -390,7 +390,7 @@ notifications:
         when: app.status.operationState.phase in ['Error', 'Failed']
         oncePer: app.status.operationState.finishedAt
 
-    # Fires on OutOfSync, excluding freshly-created apps (<5min) and post-sync settling window (<60s); dedup per git revision
+    # Fires on OutOfSync, excluding freshly-created apps (<5min) and post-sync settling window (<60s); dedup per git revision.
     trigger.on-sync-status-out-of-sync: |
       - description: Application sync status is 'OutOfSync'
         send:
@@ -407,7 +407,7 @@ notifications:
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60))
         oncePer: app.status.sync.revision
 
-    # Fires on Missing health; dedup per reconcile cycle
+    # Fires on Missing health; dedup per reconcile cycle.
     trigger.on-health-missing: |
       - description: Application health status is missing
         send:
@@ -415,7 +415,7 @@ notifications:
         when: app.status.health.status == 'Missing'
         oncePer: app.status.reconciledAt
 
-    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout; dedup per sync operation to avoid repeated alerts while health stays Progressing
+    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout; dedup per sync operation to avoid repeated alerts while health stays Progressing.
     trigger.on-restarted: |
       - description: Application has been restarted (not due to sync)
         send:
@@ -428,7 +428,7 @@ notifications:
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
         oncePer: app.status.operationState.finishedAt
 
-    # Fires on Unknown health; dedup per reconcile cycle
+    # Fires on Unknown health; dedup per reconcile cycle.
     trigger.on-health-unknown: |
       - description: Application health status is unknown
         send:
@@ -449,7 +449,7 @@ notifications:
   #     1) comment out the 3 triggers below (on-health-degraded/missing/unknown)
   #     2) enable the 3 commented-out alerts in observability/.../dev-alerts.yaml
   #     3) enable the ArgoCD inhibit_rule in observability/.../dev-alertmanager.yaml
-  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
+  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
   subscriptions:
     - recipients:
       - slack:#argocd-alarm

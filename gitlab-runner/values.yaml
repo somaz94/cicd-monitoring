@@ -519,6 +519,47 @@ runners:
   ## Active if runners.config is empty or null
   configPath: ""
 
+  ## When set, written verbatim as the runner's config.toml and `gitlab-runner
+  ## register` is skipped on boot. The supplied TOML is passed through `tpl`,
+  ## so Helm values can be interpolated as usual.
+  ##
+  ## configOverride must be a COMPLETE config.toml: it replaces the rendered
+  ## config in its entirety, so the following chart values have NO effect and
+  ## must be expressed directly in the TOML (or omitted):
+  ##
+  ##   - concurrent, checkInterval, shutdown_timeout, logLevel, logFormat,
+  ##     sentryDsn, connectionMaxAge
+  ##   - metrics.enabled / metrics.port  (set `listen_address = ":<port>"`)
+  ##   - sessionServer.*  (write [session_server] directly; placeholder
+  ##     substitution is also skipped)
+  ##   - runners.config, runners.configPath
+  ##   - runners.name, runners.tags, runners.locked, runners.protected,
+  ##     runners.runUntagged, runners.maximumTimeout, runners.executor,
+  ##     runners.jobNamespace
+  ##   - gitlabUrl  (set `url = "..."` under [[runners]])
+  ##   - runnerRegistrationToken / runnerToken  (the token lives in the TOML or
+  ##     is injected via extraEnv / extraEnvFromRefs / secrets)
+  ##
+  ## Pod-level values (extraEnv, secrets, certsSecretName, volumes, RBAC,
+  ## metrics Service/PodMonitor, ...) are unaffected.
+  ##
+  ## On boot the entrypoint runs `gitlab-runner verify --url=` so an invalid
+  ## token fails loudly instead of producing a runner that never picks up jobs.
+  ##
+  # configOverride: |
+  #   concurrent = 10
+  #   check_interval = 3
+  #   log_level = "info"
+  #
+  #   [[runners]]
+  #     name = "my-runner"
+  #     url = "https://gitlab.example.com/"
+  #     token = "glrt-xxxxxxxxxxxxxxxxxxxx"
+  #     executor = "kubernetes"
+  #     [runners.kubernetes]
+  #       namespace = "gitlab-runner"
+  #       image = "alpine"
+
   ## Which executor should be used
   ##
   # executor: kubernetes

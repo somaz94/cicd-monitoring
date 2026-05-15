@@ -32,8 +32,8 @@ EOF
 }
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
 #
-# Checks: realm exists
-# Exits non-zero on any failure so it can be wired into CI
+# Checks: realm exists / sslRequired=external / groups (server, global-admin) / clients (argocd, harbor, oauth2-proxy) with redirect URIs / per-client groups protocol-mapper / GitLab IdP enabled (when expected) / IdP server-group-map hardcoded mapper.
+# Exits non-zero on any failure so it can be wired into CI / pre-cutover gating.
 set -uo pipefail
 
 NAMESPACE="${NAMESPACE:-keycloak}"

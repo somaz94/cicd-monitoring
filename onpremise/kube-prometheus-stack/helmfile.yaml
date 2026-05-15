@@ -1,6 +1,6 @@
 # Deploy kube-prometheus-stack (Prometheus + Grafana + Alertmanager + node-exporter + kube-state-metrics)
 # via helmfile, consuming upstream prometheus-community chart.
-# Multi-file values split: core
+# Multi-file values split: core / alertmanager / alerts.
 # Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
 
 repositories:

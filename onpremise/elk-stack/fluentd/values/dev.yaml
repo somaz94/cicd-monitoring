@@ -64,7 +64,6 @@ metrics:
       release: kube-prometheus-stack
 
   # PrometheusRule — buffer / retry / pipeline stall detection
-  #
   prometheusRule:
     enabled: true
     additionalLabels:
@@ -92,8 +91,7 @@ metrics:
           summary: "Fluentd metrics scrape missing"
           description: "ServiceMonitor
 
-      # Buffer queue length high (queue_limit_length 128 기준 ~40%)
-      #
+      # Buffer queue length high (~40% of queue_limit_length 128)
       - alert: FluentdBufferQueueHigh
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 50
         for: 5m
@@ -105,7 +103,6 @@ metrics:
           description: "queue={{ $value }}/128 chunks. ES 처리량 또는 fluentd flush_thread 한계 의심. {{ $labels.pod }}"
 
       # Buffer queue critical — almost full (~78%)
-      #
       - alert: FluentdBufferQueueCritical
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 100
         for: 1m
@@ -117,7 +114,6 @@ metrics:
           description: "queue={{ $value }}/128. 곧 overflow → fluent-bit 으로 block. ES 즉시 점검 필요"
 
       # Buffer disk size > 75% of total_limit_size (4GB → 3GB threshold)
-      #
       - alert: FluentdBufferDiskHigh
         expr: fluentd_output_status_buffer_total_bytes{type="elasticsearch"} > 3221225472
         for: 5m
@@ -128,8 +124,7 @@ metrics:
           summary: "Fluentd buffer disk usage > 3GB"
           description: "buffer={{ $value | humanize1024 }}B
 
-      # Retry rate non-zero — ES 일시 장애 또는 throttling 가능성
-      #
+      # Retry rate non-zero — possible transient ES failure or throttling
       - alert: FluentdRetryRising
         expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[5m]) > 0
         for: 10m
@@ -140,17 +135,22 @@ metrics:
           summary: "Fluentd → ES retry rate elevated"
           description: "최근 10분간 retry 발생 중. ES cluster status
 
-      # Pipeline stalled — no records emitted for 10 minutes
+      # Pipeline stalled — buffer has chunks (input arrived) but ES emit is zero
       #
+      # sum() aggregation avoids per-plugin_id stale series firing on their own
+      # AND buffer_queue_length>0 distinguishes real stall from quiet input window
       - alert: FluentdIngestStalled
-        expr: rate(fluentd_output_status_emit_records{type="elasticsearch"}[10m]) == 0
+        expr: |
+          sum(rate(fluentd_output_status_emit_records{type="elasticsearch"}[10m])) == 0
+          and
+          sum(fluentd_output_status_buffer_queue_length{type="elasticsearch"}) > 0
         for: 10m
         labels:
           context: fluentd
           severity: critical
         annotations:
-          summary: "Fluentd ingest stalled (no records → ES)"
-          description: "10분간 ES 로 emit 된 record 0. fluent-bit 입력
+          summary: "Fluentd ingest stalled (buffer non-empty but no records → ES)"
+          description: "10분간 ES 로 emit 0 + buffer 에 chunk 잔존 = 진짜 정체. ES cluster status
 
 dashboards:
   enabled: "false"
@@ -307,7 +307,6 @@ fileConfigs:
         # Retry forever to align with fluent-bit Retry_Limit no_limits
         retry_forever true
         # Block input on overflow so backpressure pushes back to fluent-bit storage
-        #
         overflow_action block
         total_limit_size 4GB
         flush_at_shutdown true
@@ -317,7 +316,6 @@ fileConfigs:
       bulk_message_request_threshold 1024
 
       # Safety net for unrecoverable records; retry_forever keeps recoverable ones in the primary buffer
-      #
       <secondary>
         @type file
         path /var/log/failed-records
@@ -326,6 +324,22 @@ fileConfigs:
         </format>
       </secondary>
     </match>
+
+  # Suppress upstream chart 0.5.3 defaults that would otherwise leak dead routes
+  # into the fluentd ConfigMap. The upstream `fileConfigs` ships a four-file chain —
+  # `01_sources.conf` (host /var/log/containers/*.log tail) → `02_filters.conf`
+  # (`@KUBERNETES` block) → `03_dispatch.conf` (`@DISPATCH` prometheus filter + relabel
+  # to `@OUTPUT`) → `04_outputs.conf` (`@OUTPUT` → `elasticsearch-master:9200`).
+  # We override 01 + 02 above with our own fluent-bit-forward + example-project.** pipeline,
+  # and add 03_outputs.conf pointing at the ECK service (`elasticsearch-es-http`).
+  # But 03_dispatch.conf + 04_outputs.conf are different keys, so Helm dict-merge
+  # keeps the upstream defaults — `@OUTPUT` plugin still initializes against the
+  # now-deleted `elasticsearch-master` service, exposing `fluentd_output_status_emit_records
+  # {type="elasticsearch"} = 0` and firing `FluentdIngestStalled` (PromQL `rate(... == 0)`)
+  # as a false positive. Empty-string overrides below emit an empty ConfigMap entry
+  # for each, which fluentd treats as a no-op.
+  03_dispatch.conf: ""
+  04_outputs.conf: ""
 
 resources:
   requests:

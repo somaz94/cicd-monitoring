@@ -93,7 +93,6 @@ chart_backup_stats() {
   local newest=""
 
   # Glob is asc by name; backup dirs use YYYYMMDD_HHMMSS so name == time order.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름순 == 시간순.
   for d in "$backup_dir"/2*/; do
     [ -d "$d" ] || continue
     count=$((count + 1))

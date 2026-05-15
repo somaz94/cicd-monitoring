@@ -1,5 +1,5 @@
 # Deploy Argo CD via helmfile, consuming upstream argo/argo-cd chart.
-# Multi-file values split: global
+# Multi-file values split: global / server / redis / notifications.
 # Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
 # Lifecycle hooks: presync → helm dep update + ensure namespace.
 
@@ -14,7 +14,7 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 9.5.9
+    version: 9.5.14
     values:
       - values/dev.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/dev-server.yaml        # controller, dex, server, repoServer, applicationSet

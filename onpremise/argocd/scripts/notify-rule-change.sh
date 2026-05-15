@@ -5,18 +5,18 @@
 # ArgoCD notification rule change helper
 # Background: cicd/argo-cd/docs/notification-rule-change-playbook.md
 #
-# Usage
+# Usage:
 #   ./scripts/notify-rule-change.sh check    — dry-run: detect impacted triggers
 #   ./scripts/notify-rule-change.sh pre      — before apply: impact analysis + Slack pre-notice
 #   ./scripts/notify-rule-change.sh post     — after apply: sent count + goroutine check + completion notice
-#   ./scripts/notify-rule-change.sh status   — controller state (goroutine
+#   ./scripts/notify-rule-change.sh status   — controller state (goroutine / reconcile activity)
 #
-# Requirements
+# Requirements: kubectl, jq, curl, git
 # =============================================================================
 
 set -euo pipefail
 
-# Resolve script path portably across bash and zsh
+# Resolve script path portably across bash and zsh (BASH_SOURCE → $0 fallback).
 _SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 SCRIPT_DIR="$( cd "$( dirname "$_SCRIPT_PATH" )" && pwd )"
 unset _SCRIPT_PATH
@@ -25,9 +25,9 @@ NS_ARGOCD=argocd
 CONTROLLER_POD=argocd-application-controller-0
 NOTIFICATIONS_DEPLOY=argocd-notifications-controller
 SLACK_CHANNEL="#argocd-alarm"
-# Goroutine count is informational; baseline depends on app count & sharding (1400+ seen as normal on 10-app cluster)
+# Goroutine count is informational; baseline depends on app count & sharding (1400+ seen as normal on 10-app cluster).
 GOROUTINE_INFO_THRESHOLD=3000
-# Real stuck detection: zero reconcile activity over this window
+# Real stuck detection: zero reconcile activity over this window.
 RECONCILE_WINDOW=10m
 
 # -----------------------------------------------------------------------------
@@ -44,18 +44,18 @@ require() {
   done
 }
 
-# Extract changed trigger block names from git diff (detects oncePer/when/send changes)
-# Check staged + unstaged + last commit (works both before and after apply)
+# Extract changed trigger block names from git diff (detects oncePer/when/send changes).
+# Check staged + unstaged + last commit (works both before and after apply).
 detect_impacted_triggers() {
   local diff_output=""
   # 1) working tree vs HEAD
   diff_output=$(git -C "$SCRIPT_DIR/.." diff -- "values/dev-notifications.yaml" 2>/dev/null || true)
-  # 2) if empty, fall back to HEAD~1..HEAD (changes already committed)
+  # 2) if empty, fall back to HEAD~1..HEAD (changes already committed).
   if [ -z "$diff_output" ]; then
     diff_output=$(git -C "$SCRIPT_DIR/.." diff HEAD~1 HEAD -- "values/dev-notifications.yaml" 2>/dev/null || true)
   fi
   [ -z "$diff_output" ] && return 0
-  # Pick trigger.<name> appearing near oncePer/when/send lines
+  # Pick trigger.<name> appearing near oncePer/when/send lines.
   echo "$diff_output" | awk '
     /^[-+].*trigger\.[a-z-]+:/ {
       if (match($0, /trigger\.[a-z-]+/)) {
@@ -110,7 +110,7 @@ get_goroutines() {
 }
 
 recent_reconcile_log_lines() {
-  # --since=11m: stats log is emitted every 10 min, so at least 1 line must exist when healthy
+  # --since=11m: stats log is emitted every 10 min, so at least 1 line must exist when healthy.
   kubectl logs -n "$NS_ARGOCD" "$CONTROLLER_POD" --since=11m 2>/dev/null | wc -l | tr -d ' '
 }
 
@@ -205,7 +205,7 @@ cmd_status() {
   [ "$lines" -lt 1 ] && printf "  [no stats line — complete halt
   echo ""
 
-  # Real stuck detection: reconcile activity over RECONCILE_WINDOW
+  # Real stuck detection: reconcile activity over RECONCILE_WINDOW.
   local reconciles
   reconciles=$(kubectl logs -n "$NS_ARGOCD" "$CONTROLLER_POD" --since="$RECONCILE_WINDOW" 2>/dev/null \
     | grep -cE "Reconciliation completed" || true)
@@ -222,7 +222,7 @@ cmd_status() {
     | sort | head -5 \
     | awk -v now="$(date -u +%s)" '
       {
-        # ISO8601 to epoch, macOS-compatible date invocation
+        # ISO8601 to epoch, macOS-compatible date invocation.
         cmd = "date -u -j -f \"%Y-%m-%dT%H:%M:%SZ\" \"" $1 "\" +%s 2>/dev/null || date -u -d \"" $1 "\" +%s 2>/dev/null"
         cmd | getline epoch
         close(cmd)

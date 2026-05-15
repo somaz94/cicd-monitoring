@@ -168,7 +168,6 @@ list_backups() {
 
   local i=1
   # Reverse-sorted glob via sort -r: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     local dirname=""; dirname=$(basename "$dir")
@@ -191,7 +190,6 @@ do_rollback() {
 
   local backups=()
   # Reverse-sorted glob: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     backups+=("$dir")
@@ -632,7 +630,7 @@ fi
 
 # Update helmfile (portable sed: works on macOS BSD sed and GNU sed).
 # Handles three pin forms: literal `version: X.Y.Z`, quoted `version: "X.Y.Z"`,
-# and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`. / gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
+# and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
 if [ -n "$HELMFILE_PATH" ]; then
   UPDATED_COUNT=$(grep -cE "(version:[[:space:]]+\"?${CURRENT_VERSION}\"?([[:space:]]|$)|\\\$chartVersion[[:space:]]*:=[[:space:]]+\"${CURRENT_VERSION}\")" "$HELMFILE_PATH" || true)
   HELMFILE_TMP=$(mktemp)

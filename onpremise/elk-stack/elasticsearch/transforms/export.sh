@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Pull ES Transform definitions from the cluster back into this directory as JSON.
-# 클러스터의 ES Transform 정의를 이 디렉토리의 JSON 으로 동기화 (apply.sh 의 역방향).
+# (Reverse of apply.sh.)
 #
 # Default: export every transform whose id matches a "<id>.json" file already present.
 # Use --id <id> to export a specific transform (creates a new <id>.json if missing).
-# 기본: 디렉토리에 이미 "<id>.json" 으로 존재하는 transform 들을 export.
-# --id <id> 로 특정 transform 만 export 가능 (없는 파일은 신규 생성).
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -117,7 +115,6 @@ if not d.get('transforms'):
   fi
 
   # Extract only the user-supplied definition fields (drop create_time, version, etc.)
-  # 사용자 정의 필드만 추출 (create_time, version 등 메타데이터 제거)
   out_file="$TRANSFORMS_DIR/${id}.json"
   tmp_in=$(mktemp)
   printf '%s' "$resp" > "$tmp_in"

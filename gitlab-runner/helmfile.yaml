@@ -1,6 +1,6 @@
-# Deploy GitLab Runners (build
+# Deploy GitLab Runners (build / deploy / legacy) via helmfile, consuming upstream gitlab/gitlab-runner chart.
 # Three releases share the namespace and chart, differing in role-specific values.
-# Selector: helmfile -l role=build|deploy|legacy <cmd>. / Selector: helmfile -l role=build|deploy|legacy <cmd>.
+# Selector: helmfile -l role=build|deploy|legacy <cmd>.
 # Chart versions pinned per release. Bump via ./upgrade.sh after verifying the new release.
 
 repositories:
@@ -12,7 +12,7 @@ releases:
   - name: build-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.88.1
+    version: 0.88.3
     labels:
       role: build
       app: gitlab-runner
@@ -23,7 +23,7 @@ releases:
   - name: deploy-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.88.1
+    version: 0.88.3
     labels:
       role: deploy
       app: gitlab-runner

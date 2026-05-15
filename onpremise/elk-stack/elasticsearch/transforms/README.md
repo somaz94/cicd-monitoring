@@ -2,7 +2,7 @@
 
 Stores definitions of **continuous pivot transforms** that materialize analytics-friendly indices on top of raw log indices like `dev-example-project-game`. Once registered, ES incrementally updates these indices automatically.
 
-Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices. For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects-en.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects-en.md#two-flavours-of-applysh-dont-confuse-them).
+Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices (`dev-pm-retention-dashboard`
 
 <br/>
 
@@ -12,7 +12,7 @@ Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes 
 transforms/
 ├── apply.sh                                # JSON → ES Transform job (PUT + start)
 ├── export.sh                               # ES Transform → JSON (reverse of apply)
-├── dev-example-project-game-user-cohort.json      # Per-user cohort (first_seen, D-1
+├── dev-example-project-game-user-cohort.json      # Per-user cohort (first_seen, D-1 … D-30 returning …)
 ├── README.md
 └── README-en.md
 ```
@@ -23,7 +23,7 @@ transforms/
 
 ## Current transform: `dev-example-project-game-user-cohort`
 
-Pivots the `dev-example-project-game` index on `data.userId` and emits the cohort-analytics index `dev-example-project-game-user-cohort`.
+Pivots the `dev-example-project-game` index on `data.userId` and emits the cohort-analytics index `dev-example-project-game-user-cohort`. The destination index is queried directly by the Retention Curve / Daily Cohort Retention panels of [dev-pm-retention-dashboard](../../kibana/dashboards/dev-pm-retention-dashboard.ndjson). QA follows the same pattern: `qa-example-project-game-user-cohort.json` + [qa-pm-retention-dashboard](../../kibana/dashboards/qa-pm-retention-dashboard.ndjson).
 
 | Field | Meaning | Computation |
 |---|---|---|
@@ -32,15 +32,20 @@ Pivots the `dev-example-project-game` index on `data.userId` and emits the cohor
 | `last_seen` | Most recent activity time | `max(@timestamp)` |
 | `total_events` | Total event count | `value_count(@timestamp)` |
 | `active_days_count` | Distinct active days | `cardinality(toLocalDate(@timestamp))` |
-| `d1_returning` | D-1 retention flag (0/1) | scripted_metric: 1 if first_seen day + 1 ∈ active-day set |
-| `d7_returning` | D-7 retention flag (0/1) | scripted_metric: 1 if first_seen day + 7 ∈ active-day set |
+| `d1_returning` … `d30_returning` | D-1 … D-30 retention flag (0
 
 Runtime configuration:
-- `frequency: 1h` — sync check every hour
+- `frequency: 5m` — sync check every 5 minutes
 - `sync.time.field: @timestamp`, `delay: 60s` — 1-minute safety margin against out-of-order docs
 - continuous mode — only the touched user rows are updated incrementally when new events arrive
 
-Load: per-user partial updates are very light. ~200 active users × 1 hourly pivot = tens of KB of traffic per hour.
+Key rules of the D-N anchor:
+- **Anchor**: not `min(@timestamp)`, but the **first occurrence per user of `params.path` (`/users/create`)**. Signup day is day 0.
+- **Null handling**: a user with no signup event ever yields `dN_returning = null` → ES `avg()` automatically skips them → the Retention Curve / Daily Table divisor naturally reduces to "signed-up users only".
+- **Timezone**: `params.tz = "Asia/Seoul"` sets the day-boundary. To change, update every `dN_returning.scripted_metric.params.tz` together and run `--replace`.
+- **Adding a horizon** (e.g. D-60): duplicate any `dN_returning` block under `pivot.aggregations`, change `params.offset_days` to 60, run `--replace`. Also extend the Retention Curve Vega's N range to match.
+
+Load: per-user partial updates are very light. ~200 active users × 1 pivot every 5 minutes = tens of KB of traffic per hour.
 
 <br/>
 
@@ -156,9 +161,10 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 ## Design choices
 
 - **`params.tz` indirection**: every day-boundary calculation uses `scripted_metric`
-- **D-N retention horizons**: stored as `params.offset_days` per scripted_metric. To add D-14 or D-30, copy the `d7_returning` block and change the offset.
+- **D-N retention horizons**: stored as `params.offset_days` per scripted_metric. The current definition covers D-1 … D-30. To add D-60 / D-90, copy any `dN_returning` block and change `offset_days`.
+- **Signup-anchored cohort**: D-N counts only users with a `/users/create` event (anchored via `params.path`). Users without a signup event return `null`, so ES `avg()` excludes them automatically.
 - **Source query filter**: only docs with `data.userId` are considered (`source.query.filter.exists`). Prevents transform failures on records that lack the field.
-- **Frequency 1h**: balances freshness vs. cluster load. New users become visible in the cohort index within ~1 hour. Tighten (e.g., `5m`) only if you need finer granularity.
+- **Frequency 5m**: matches the live cluster (was `1h` historically). Tighten further only when finer granularity is needed; widen if cluster load becomes an issue.
 
 <br/>
 

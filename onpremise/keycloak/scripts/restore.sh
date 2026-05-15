@@ -33,7 +33,7 @@ EOF
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-keycloak}"
-POD="${POD:-keycloak-postgresql-0}"   # adjust if PVC chart renders Deployment
+POD="${POD:-keycloak-postgresql-0}"   # adjust if PVC chart renders Deployment (drop the -0 suffix)
 DB_NAME="${DB_NAME:-keycloak}"
 DB_USER="${DB_USER:-keycloak}"
 DUMP_FILE="${1:-}"

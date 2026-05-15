@@ -5,20 +5,20 @@ global:
 
 configs:
   cm:
-    # Reconciliation timeout setting (default: 180s)
-    # Prevents reconciliation loop resets when many apps can't complete sync within timeout
+    # Reconciliation timeout setting (default: 180s).
+    # Prevents reconciliation loop resets when many apps can't complete sync within timeout.
     timeout.reconciliation: 600s
-    # Hard reconciliation timeout (default: 0s, disabled)
-    # Setting to 0 prevents forced termination of reconciliation operations
+    # Hard reconciliation timeout (default: 0s, disabled).
+    # Setting to 0 prevents forced termination of reconciliation operations.
     timeout.hard.reconciliation: 0s
     # =============================================================================
     # SSO — Keycloak OpenID Connect (Phase 6, 2026-04-29+)
     #
-    # ArgoCD dex 가 Keycloak `example` realm 의 `argocd` 클라이언트로 OIDC 연결. / ArgoCD dex talks OIDC to Keycloak `example` realm `argocd` client.
-    # Keycloak 이 GitLab 을 IdP brokering → 사용자 자격증명은 기존 GitLab 그대로.
-    # group claim 이름 (`server`, `global-admin`) 동일 유지 → 아래 policy.csv 무수정.
-    # insecureSkipVerify: wildcard self-signed cert 신뢰 우회 (cert-manager 도입 전까지). / bypass wildcard self-signed cert trust (until cert-manager).
-    # 마이그레이션 절차: security/keycloak/docs/argocd-migration.md / Migration procedure: security/keycloak/docs/argocd-migration.md
+    # ArgoCD dex talks OIDC to Keycloak `example` realm `argocd` client.
+    # Keycloak brokers GitLab as IdP — user credentials remain GitLab.
+    # group claim names (`server`, `global-admin`) unchanged → policy.csv below stays untouched.
+    # insecureSkipVerify: bypass wildcard self-signed cert trust (until cert-manager).
+    # Migration procedure: security/keycloak/docs/argocd-migration.md
     # =============================================================================
     dex.config: |
       connectors:
@@ -30,28 +30,29 @@ configs:
             clientID: argocd
             clientSecret: G821cLHAGckf46ZP8VIynmvpL5EO1vVT
             redirectURI: https://argocd.example.com/api/dex/callback
-            # scopes 명시 안 함 — dex default (openid + profile + email) 사용.
-            # Keycloak `example` realm 에 별도 `groups` client-scope 가 없고, argocd 클라이언트의 / The `example` realm has no separate `groups` client-scope; the argocd client's
-            # client 직속 protocol-mapper (oidc-group-membership-mapper) 가 token 에 groups claim / direct protocol-mapper (oidc-group-membership-mapper) injects the groups claim
-            # 을 자동 추가하므로 scope 요청 불필요. scopes: [openid groups] 명시 시 Keycloak 이 / into the token, so requesting it as a scope is unnecessary. Specifying scopes:
-            # `Invalid scopes: openid openid ... groups` 로 reject (groups 는 unknown scope, openid 는 dex 자동 prepend 와 중복).
+            # scopes intentionally omitted — uses dex default (openid + profile + email).
+            # The `example` realm has no separate `groups` client-scope; the argocd client's
+            # direct protocol-mapper (oidc-group-membership-mapper) injects the groups claim
+            # into the token, so requesting it as a scope is unnecessary. Specifying scopes:
+            # [openid groups] would be rejected by Keycloak (`Invalid scopes: ...` — groups
+            # is unknown, openid is duplicated by dex's auto-prepend).
             insecureSkipVerify: true
-            # Keycloak 이 default mapper config 로 groups claim 을 ID token 에는 안 넣고 userinfo / Keycloak's default mapper config does not put groups claim into the ID token,
-            # endpoint 에서만 리턴 → dex 가 userinfo endpoint 도 호출해서 groups claim 을 가져오도록.
-            # 미설정 시 ArgoCD JWT 의 groups claim 이 [] 가 되어 policy.csv 의 g, server,... 매칭 / Without this, the ArgoCD JWT's groups claim becomes [], breaking policy.csv `g, server, ...`
-            # 실패 → 권한 0 → 무한 로딩.
+            # Keycloak's default mapper config does not put groups claim into the ID token;
+            # it is only returned by the userinfo endpoint → make dex hit userinfo to retrieve
+            # groups. Without this, the ArgoCD JWT's groups claim becomes [], breaking
+            # policy.csv `g, server, ...` matching → no permissions → infinite loading.
             getUserInfo: true
-            # dex 의 oidc connector 는 default 로 groups claim 을 무시 (security default). / dex's oidc connector ignores the groups claim by default (security default).
-            # 본 옵션 활성 시 dex 가 upstream 의 groups claim 을 ArgoCD JWT 에 forward. / When enabled, dex forwards the upstream's groups claim into the ArgoCD JWT.
-            # 미설정 시 Keycloak token 에 groups: [server] 가 있어도 dex 로그에 groups=[] 로 / Without this, dex shows groups=[] in logs even when the Keycloak token contains
-            # 표시되어 RBAC 매칭 실패. / groups: [server], breaking RBAC matching.
+            # dex's oidc connector ignores the groups claim by default (security default).
+            # When enabled, dex forwards the upstream's groups claim into the ArgoCD JWT.
+            # Without this, dex shows groups=[] in logs even when the Keycloak token contains
+            # groups: [server], breaking RBAC matching.
             insecureEnableGroups: true
 
     # -----------------------------------------------------------------------------
-    # Legacy: GitLab-direct dex connector (pre-Phase 6) — preserved for rollback only
+    # Legacy: GitLab-direct dex connector (pre-Phase 6) — preserved for rollback only.
     # -----------------------------------------------------------------------------
-    # 2026-04-29 까지 ArgoCD 는 GitLab 을 dex connector 로 직결 사용. / Until 2026-04-29 ArgoCD used GitLab directly as dex connector.
-    # 롤백 시: 위 dex.config 의 oidc 블록을 아래 GitLab 블록으로 교체 + secrets 의 dex.gitlab.* 활성. / Rollback: swap the oidc block above with the GitLab block below + re-enable dex.gitlab.* secrets.
+    # Until 2026-04-29 ArgoCD used GitLab directly as dex connector.
+    # Rollback: swap the oidc block above with the GitLab block below + re-enable dex.gitlab.* secrets.
     #
     # dex.config: |
     #   connectors:
@@ -68,26 +69,26 @@ configs:
   params:
     create: true
     server.insecure: true
-    # Repo server timeout (default: 60s)
-    # Increased timeout needed for large repository synchronization
+    # Repo server timeout (default: 60s).
+    # Increased timeout needed for large repository synchronization.
     server.repo.server.timeout.seconds: "180"
-    # Controller timeout for fetching manifests from repo server (default: 60s)
-    # Increase this value when "Context deadline exceeded" errors occur
+    # Controller timeout for fetching manifests from repo server (default: 60s).
+    # Increase this value when "Context deadline exceeded" errors occur.
     controller.repo.server.timeout.seconds: "180"
-    # Number of status reconciliation processors (default: 20)
-    # Improves app status checking speed (Synced, Health, OutOfSync, etc.)
+    # Number of status reconciliation processors (default: 20).
+    # Improves app status checking speed (Synced, Health, OutOfSync, etc.).
     controller.status.processors: "600"
-    # Number of operation processors (default: 10)
-    # Improves parallel processing of sync operations
+    # Number of operation processors (default: 10).
+    # Improves parallel processing of sync operations.
     controller.operation.processors: "300"
-    # Kubectl parallel execution limit (default: 20)
-    # Increases concurrent kubectl apply operations for faster deployments
+    # Kubectl parallel execution limit (default: 20).
+    # Increases concurrent kubectl apply operations for faster deployments.
     controller.kubectl.parallelism.limit: "100"
-    # Controller sharding algorithm (default: legacy)
-    # Round-robin provides balanced workload distribution across replicas
+    # Controller sharding algorithm (default: legacy).
+    # Round-robin provides balanced workload distribution across replicas.
     controller.sharding.algorithm: "round-robin"
-    # Repo server parallelism limit (default: 0, unlimited)
-    # Unlimited can cause OOMKilled or slow manifest generation
+    # Repo server parallelism limit (default: 0, unlimited).
+    # Unlimited can cause OOMKilled or slow manifest generation.
     reposerver.parallelism.limit: "100"
   # SSH known hosts for Git repositories
   ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
@@ -143,11 +144,11 @@ configs:
 
       g, server, role:server-admin
   
-  # NOTE (2026-04-29 Phase 6 cutover): argo-cd chart 9.x 는 configs.secret.extra.<key> path 만
-  # 인식 — 아래의 옛 `secrets:` 블록은 chart 가 무시. 따라서 dex client secret 은 / the legacy `secrets:` block below is ignored. So dex client secret is
-  # 위의 dex.config 에 평문 인라인 (이전 GitLab 시기와 동일 컨벤션). 본 블록은 미사용. / inlined as plaintext in dex.config above (same convention as the previous GitLab era). This block is unused.
+  # NOTE (2026-04-29 Phase 6 cutover): argo-cd chart 9.x reads only configs.secret.extra.<key> path —
+  # the legacy `secrets:` block below is ignored. So dex client secret is inlined as plaintext in
+  # dex.config above (same convention as the previous GitLab era). This block is unused.
   secrets:
-    # Legacy: dex.* secrets — chart 9.x 가 인식 안 하는 옛 path. 평문 인라인으로 대체됨.
+    # Legacy dex.* secrets — old path not recognized by chart 9.x; replaced by plaintext inline.
     # dex.keycloak.clientSecret: "G821cLHAGckf46ZP8VIynmvpL5EO1vVT"
     # dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
     # dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
@@ -156,9 +157,9 @@ configs:
 # Extra K8s manifests rendered by the chart (templates/extra-manifests.yaml).
 #
 # Phase 6 (2026-04-29+) — sibling HTTPRoute for HTTP→HTTPS 301 redirect.
-# argo-cd chart 의 server.httproute 옵션은 단일 HTTPRoute 만 생성 → redirect sibling 은
-# extraObjects 로 주입하여 helm chart lifecycle 에 통합 (install/upgrade/uninstall 자동). / sibling via extraObjects to integrate with the helm chart lifecycle (install/upgrade/uninstall handled automatically).
-# Harbor (manifests/+postsync hook) 와 다른 패턴 — vaultwarden 와 동일 (extraObjects 인라인).
+# argo-cd chart's server.httproute renders a single HTTPRoute → inject the redirect
+# sibling via extraObjects to integrate with the helm chart lifecycle (install/upgrade/uninstall handled automatically).
+# Different from Harbor (manifests/+postsync hook) — same as vaultwarden (extraObjects inline).
 # =============================================================================
 extraObjects:
   - apiVersion: gateway.networking.k8s.io/v1

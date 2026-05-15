@@ -1,235 +1,165 @@
-# User Metrics Catalog — Dev ExampleProject Game
+# User metrics catalog — dev-pm-retention-dashboard
 
-Full definitions of the metrics collected and visualized in the `Dev ExampleProject Game — User Metrics` dashboard. For methodology around the visualizations themselves see [dashboards-saved-objects-en.md](dashboards-saved-objects-en.md).
+Definitions of all 10 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects-en.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template-en.md).
 
 <br/>
 
-## Data sources at a glance
+## Data source summary
 
-| Dataset | ES index | Kibana data view | Ingestion |
+| Dataset | ES index | Kibana data view | Ingest path |
 |---|---|---|---|
-| **Raw game events** | `dev-example-project-game` | `dev-example-project-game-logs` (id `b50c59ea-…0fe`) | fluent-bit → fluentd → ES (real time) |
-| **User cohort** | `dev-example-project-game-user-cohort` | `dev-example-project-game-user-cohort-logs` (id `410571c2-…b8e2`) | ES Transform pivot (`dev-example-project-game-user-cohort`, continuous, 1h sync) |
+| **Raw game events** | `dev-example-project-game` | `dev-example-project-game-logs` (id `b50c59ea-…0fe`) | fluent-bit → fluentd → ES (real-time) |
+| **User cohort** | `dev-example-project-game-user-cohort` | `dev-example-project-game-user-cohort-logs` (id `410571c2-…b8e2`, time field `first_seen`, runtime field `cohort_date`) | ES Transform pivot job (`dev-example-project-game-user-cohort`, continuous mode, frequency 5m) |
 
-Fields of the raw index relevant to the dashboard:
+Raw-index fields used by the dashboard:
 
 | Field | Type | Notes |
 |---|---|---|
-| `@timestamp` | date | Normalized to KST (+09:00) by fluentd before ingest |
-| `data.userId` | long | User identifier. Unique key for DAU/WAU/MAU |
-| `data.accountId` | long | Account identifier. Unique key for NU |
-| `data.requestPath` | text + `.keyword` | API endpoint (e.g. `/users/create`, `/login`). keyword usable in term filters |
-| `data.kind` | text + `.keyword` | Event category |
-| `data.statusCode` | long | HTTP status code |
-| `log_source`, `environment`, `app`, `component` | text + `.keyword` | Metadata applied by fluent-bit (`dev-example-project-game`, `dev`, `example-project`, `game`) |
+| `@timestamp` | date | fluentd normalises to KST (+09:00) before ES |
+| `data.userId` | long | User identifier. Unique key for DAU/WAU/MAU; transform group_by |
+| `data.accountId` | long | Account identifier. (Not currently used by this dashboard — reserved.) |
+| `data.requestPath` | text + `.keyword` | API endpoint. The `.keyword` sub-field is required for both the NU KPI term filter and the transform scripted_metric |
+| `data.statusCode` | long | HTTP status. DAU Trend KQL filters `< 4` (successful responses only) |
+
+Cohort-index fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `user_id` | long | Result of transform group_by terms |
+| `first_seen` / `last_seen` | date | First / last activity timestamp |
+| `total_events` | long | Total events per user |
+| `active_days_count` | long | Distinct active days in KST |
+| `d1_returning` … `d30_returning` | long (0/1) or null | D-1 … D-30 retention flag. 1 if the user had activity on `/users/create` day + N, 0 if not, null when the user never had a signup event |
+| `cohort_date` | runtime keyword | Not in index mapping — a Kibana data view runtime field. Emits `first_seen` as a KST date string → row-grouping key for the Daily Cohort Retention table |
 
 <br/>
 
-## Metric catalog
+## Panel catalog
 
-The dashboard (`c92bea18-…afc7`) hosts seven panels in three rows. Default time range `now-90d/d ~ now`.
+10 panels, all on the same dashboard (`dev-pm-retention-dashboard`). Default time range `now-30d ~ now` (`timeRestore: true`).
 
-| Row | Panel | Data source | Unit |
+| Row | Panel | Kind | Data source |
 |---|---|---|---|
-| 0 | DAU / NU | raw | unique count |
-| 1 | WAU / MAU | raw | unique count |
-| 2 | Retention (counts) / Retention Rate (%) | cohort | users / % |
+| 1 | NU (Today) / NU (Last 7d) / NU (Last 30d) | Vega-Lite KPI ×3 | raw |
+| 2 | DAU / WAU / MAU | Vega-Lite KPI ×3 | raw |
+| 3 | NU Trend (30d) / DAU Trend | Lens lnsXY ×2 | raw |
+| 4 | Average Retention Curve (D+1..D+30) | Vega (full) | cohort |
+| 5 | Daily Cohort Retention (table) | Lens lnsDatatable | cohort |
 
 <br/>
 
-### 1) DAU — Daily Active Users
+### 1) NU (Today)
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Unique active users per day |
-| Source | `dev-example-project-game` (raw) |
-| Lens id | `c88bf6ae-a2d3-452b-b072-824c81e65c1a` (title: `DAU — dev-example-project-game`) |
-| Formula | `cardinality(data.userId)` × `date_histogram(@timestamp, 1d)` |
-| KQL filter | None (all traffic) |
-| Chart | Line, X=day, Y=unique userId count |
+| Definition | Unique new signups in the time window (unique `data.userId` that hit the signup endpoint) |
+| Data source | `dev-example-project-game` (raw) |
+| Saved-object id | `dev-pm-retention-nu-today`, `dev-pm-retention-nu-7d`, `dev-pm-retention-nu-30d` |
+| Chart | Vega-Lite big-number card, background `#16a34a` (green) |
+| Query | `term: data.requestPath.keyword = "/users/create"` ∧ `exists: data.userId` ∧ `range: @timestamp >= {now/d, now-7d, now-30d}` |
+| Agg | `cardinality(data.userId)` |
 
-Operational meaning: daily active users trend. A `0` day usually indicates data loss or a service outage.
+Operational meaning: a fast read on daily / weekly / monthly signup velocity. Repeated `/users/create` calls by the same user are de-duped.
 
 <br/>
 
-### 2) NU — New Users
+### 2) DAU
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Unique account count creating new accounts |
-| Source | `dev-example-project-game` (raw) |
-| Lens id | `b53eb261-c606-41a3-97b1-5cf82ded667e` (title: `NU — dev-example-project-game`) |
-| Formula | `cardinality(data.accountId)` × `date_histogram(@timestamp, 1d)` |
-| KQL filter | `data.requestPath : "/users/create"` |
-| Chart | Line |
+| Definition | Unique active users in the time window |
+| Data source | `dev-example-project-game` (raw) |
+| Saved-object id | `dev-pm-retention-dau-today` (bg `#1ea7fd` blue), `dev-pm-retention-wau-7d` (`#2c8a96` teal), `dev-pm-retention-mau-30d` (`#7c47ab` purple) |
+| Chart | Vega-Lite big-number card |
+| Query | `exists: data.userId` ∧ `range: @timestamp >= {now/d, now-7d, now-30d}` (no KQL filter) |
+| Agg | `cardinality(data.userId)` |
 
-Operational meaning: daily signups, baseline for marketing campaigns and growth analysis.
-
-Justification: `/users/create` was confirmed as the signup endpoint via data exploration (127 unique accountIds across the last 30 days; no other `*create*` paths observed).
+Operational meaning: a fast read on activity volume. **Health-check / 4xx traffic is included**, so absolute numbers may differ slightly from DAU Trend (the noise-cleaned version below).
 
 <br/>
 
-### 3) WAU — Weekly Active Users
+### 3) NU Trend (30d) — new-user time series
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Unique active users per ISO week |
-| Source | `dev-example-project-game` (raw) |
-| Lens id | `a257e5a8-14e8-4c5b-a72f-a438ebe35056` (title: `WAU — dev-example-project-game`) |
-| Formula | `cardinality(data.userId)` × `date_histogram(@timestamp, 1w)` |
-| KQL filter | None |
-| Chart | Line |
+| Definition | Daily new users over a 30-day trend |
+| Data source | `dev-example-project-game` (raw) |
+| Saved-object id | `dev-pm-retention-nu-trend` |
+| Chart | Lens lnsXY (line) |
+| X | `date_histogram(@timestamp, 1d)` |
+| Y | `unique_count(data.userId)` label `New users` |
+| KQL filter | none (relies on the dashboard `now-30d ~ now` time range) |
 
-Operational meaning: weekly active users — smooths out day-of-week noise.
+Operational meaning: a per-day breakdown of NU. Note: the Lens has no `/users/create` filter, so what it actually shows is **unique daily users** within the dashboard window. To make it strictly "new signups", add `data.requestPath : /users/create` as a KQL filter.
 
 <br/>
 
-### 4) MAU — Monthly Active Users
+### 4) DAU Trend — daily active users (noise-cleaned)
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Unique active users per calendar month |
-| Source | `dev-example-project-game` (raw) |
-| Lens id | `eb30574c-408d-4687-af70-f8f85a4c65eb` (title: `MAU — dev-example-project-game`) |
-| Formula | `cardinality(data.userId)` × `date_histogram(@timestamp, 1M)` |
-| KQL filter | None |
-| Chart | Line |
+| Definition | Daily unique active users, excluding health-check / stats / 4xx responses |
+| Data source | `dev-example-project-game` (raw) |
+| Saved-object id | `dev-pm-retention-dau-trend` |
+| Chart | Lens lnsXY (line) |
+| X | `date_histogram(@timestamp, 1d)` |
+| Y | `unique_count(data.userId)` label `DAU` |
+| KQL filter | `data.userId : * and not data.requestPath : "/api/health" and not data.requestPath : "/api/stats" and data.statusCode < 4` |
 
-Operational meaning: monthly active users — long-term growth trend.
+Operational meaning: the noise-cleaned version of the DAU KPI. Any gap between DAU KPI and DAU Trend signals how much health-check traffic exists.
 
 <br/>
 
-### 5) D-1 Retention — Next-day return
+### 5) Average Retention Curve (D+1..D+30) — full Vega
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Number of users per signup cohort who returned the next day |
-| Source | `dev-example-project-game-user-cohort` (transform) |
-| Lens id | `d258439b-5e25-4e5b-9fe6-450c9a22deb3` (title: `Retention — dev-example-project-game`) |
-| Formula | `sum(d1_returning)` × `date_histogram(first_seen, 1d)` |
-| KQL filter | None (whole cohort index) |
-| Chart | Line (one series of the cohort chart) |
+| Definition | Average D+1..D+30 retention rate across all cohorts in the time range |
+| Data source | `dev-example-project-game-user-cohort` (cohort) |
+| Saved-object id | `dev-pm-retention-curve` |
+| Chart | Vega (vega/v5) — area + line + symbol + `.1%` labels above each point |
+| Time filter | `%timefield% = first_seen`, `%context% = true` (dashboard time range applied) |
+| Query | 30 × `avg(dN_returning)` for N=1..30 |
+| Y axis | 0 ~ 1 (`.0%` format) |
 
-`d1_returning` field definition (transform pivot scripted_metric):
-
-```
-init_script:    state.days = new ArrayList()
-map_script:     state.days.add( @timestamp / 86400000L )   # epoch day
-combine_script: return state.days
-reduce_script:  first = min(all_days), set = HashSet(all_days)
-                return set.contains(first + 1L) ? 1L : 0L
-```
-
-→ Stored as 0 or 1 per user row. Summing within the same cohort_date yields D-1 returning user count.
-
-Operational meaning: next-day return rate of newly-acquired users → an onboarding-quality signal.
+Operational meaning: the average retention curve 1..30 days after signup. `null` values (users that never signed up) are automatically excluded → the denominator naturally reduces to "signed-up users only". The `defined: rate != null` guard hides points where data is missing, so early-prod thin data doesn't render misleading 0% spikes.
 
 <br/>
 
-### 6) D-7 Retention — Week-later return
+### 6) Daily Cohort Retention (table) — per-cohort retention table
 
-| Field | Value |
+| Item | Value |
 |---|---|
-| Definition | Number of users per signup cohort who returned 7 days later |
-| Source | `dev-example-project-game-user-cohort` (transform) |
-| Lens id | `d258439b-5e25-4e5b-9fe6-450c9a22deb3` (same Lens as D-1, different series) |
-| Formula | `sum(d7_returning)` × `date_histogram(first_seen, 1d)` |
-| KQL filter | None |
-| Chart | Line |
+| Definition | Per-signup-day NU + D+1..D+30 retention rate table |
+| Data source | `dev-example-project-game-user-cohort` (cohort) |
+| Saved-object id | `dev-pm-retention-daily-table` |
+| Chart | Lens `lnsDatatable` |
+| Row group | `terms(cohort_date)` (runtime keyword field, max 100 rows) — "Date" |
+| Col 1 | `count(___records___)` — "NU" (number of signups in that cohort) |
+| Cols 2 ~ 31 | `average(d1_returning)` … `average(d30_returning)` labels `D+1` … `D+30` |
+| Time filter | dashboard `now-30d ~ now`, by `first_seen` |
 
-`d7_returning` mirrors D-1 with `first + 7L`.
-
-Operational meaning: week-later return rate — core user stickiness.
+Operational meaning: the raw decomposition behind the Retention Curve. Surfaces which cohort day has an anomalous retention pattern at a row-by-row level. Cohorts with very small NU (e.g. NU=1) render D+N as exactly 0% or 100%, so apply a **small-sample caveat** — trust rows only when cohort NU ≥ 10.
 
 <br/>
 
-### 7) Retention Rate — D-1 / D-7 (%)
+## Operational caveats
 
-| Field | Value |
+- **Data-sparsity signal**: cohorts with NU between 1 and 5 show retention as 0% or 100% — do not generalize.
+- **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README-en.md#data-view-management-policy).
+- **DAU vs DAU Trend mismatch**: caused by the KQL filter. If health-check traffic frequency varies over time, the ratio between the two will drift.
+- **Timezone**: Curve / Table cohort-day boundaries follow `params.tz = Asia/Seoul` (in the transform). Independent of viewer browser timezone.
+- **`/users/create` as anchor**: for other services
+
+<br/>
+
+## Change-impact quick map
+
+| Change | Affected files |
 |---|---|
-| Definition | Per-cohort D-1 / D-7 retention **rates** (%) |
-| Source | `dev-example-project-game-user-cohort` (transform) |
-| Lens id | `853e0e95-b891-4164-b4dc-d340e867e788` (title: `Retention Rate — dev-example-project-game`) |
-| Formula (Lens) | D-1%: `sum(d1_returning) / count() * 100`<br/>D-7%: `sum(d7_returning) / count() * 100` |
-| X axis | `date_histogram(first_seen, 1d)` |
-| Y axis unit | Percent (1 decimal, `%` suffix) |
-| Chart | Line (2 series) |
+| Retention horizon extension (e.g. D-60) | `elasticsearch/transforms/dev-example-project-game-user-cohort.json` (add `dN_returning`), `dev-pm-retention-curve` Vega `aggs` + `points` N-range, `dev-pm-retention-daily-table` Lens columns |
+| Signup endpoint change | NU KPI ×3 `term` filter, transform `params.path` (every `dN_returning`), README / catalog text |
+| New panel (e.g. PU, ARPU) | `dev-pm-retention-dashboard.ndjson` lens/visualization + dashboard refs/grid, this catalog table |
+| Timezone change | every `params.tz` in the transform, cohort data view's `cohort_date` runtime field script |
 
-Operational meaning: **separates absolute volume from retention quality** that the count chart (5, 6) conflates.
-
-Example — signups doubled and D-1 returning also doubled:
-- The **Retention chart** (id `d258439b…`) shows both lines climbing → "absolute numbers grew" only
-- The **Retention Rate chart** stays flat → "the rate is unchanged; onboarding quality didn't move"
-
-Reverse — signups flat but D-1 dropped:
-- Retention chart: only the D-1 line goes down — change visible
-- Retention Rate chart: D-1% drops cleanly — quantifies the drop
-
-> **Why pair the two retention charts**: looking at the numerator (returning count) alone mixes cohort-size changes with retention-quality changes. With raw count + rate side-by-side, the two effects are cleanly separated. Both panels live in the dashboard's Retention row.
-
-#### Small-sample caveat (observed)
-
-In the dev dataset, three cohort days hit D-1 = 100% (2026-04-19, 04-25, 04-26). All three had a **cohort size of 1** — a single new user who returned the next day → 100% retention. Statistically meaningless.
-
-→ When interpreting Retention Rate spikes, always check the **denominator** (new users in cohort) in the adjacent Retention (counts) chart. Retention rate becomes operationally meaningful only once cohort size ≥ 10 or so.
-
-<br/>
-
-## Cohort index schema (`dev-example-project-game-user-cohort`)
-
-Transform output index. One row = one user.
-
-| Field | Type | Meaning |
-|---|---|---|
-| `user_id` | long | `data.userId` (pivot group_by) |
-| `first_seen` | date | First activity `@timestamp` (= signup or first log) |
-| `last_seen` | date | Most recent activity `@timestamp` |
-| `total_events` | long | Cumulative event count |
-| `active_days_count` | long | Distinct active days (`toLocalDate` in KST) |
-| `d1_returning` | long | 0 or 1 — first_seen day + 1 ∈ active days |
-| `d7_returning` | long | 0 or 1 — first_seen day + 7 ∈ active days |
-
-To add metrics, extend `dev-example-project-game-user-cohort.json` `pivot.aggregations` → `./apply.sh --replace`. Examples:
-
-- **D-30 returning** — scripted_metric, `first + 30L`
-- **lifetime_events_p50** — `percentiles { field: total_events, percents: [50] }` (transforms can't compute this directly; needs a separate search aggregation)
-- **last_active_age_days** — runtime field: `now - last_seen`
-
-<br/>
-
-## Time-accuracy notes
-
-- **Cohort reference day**: KST date of `first_seen`. Since fluentd normalizes `@timestamp` to +09:00, users at the very edge of midnight may fall into one cohort or its neighbor (~minute scale). Lens date_histogram timezone follows Kibana `dateFormat:tz` — pin it to `Asia/Seoul` for consistency.
-- **Backfill**: when the transform is first applied it sweeps the entire raw index once. Our cluster: 142k docs processed in < 1 min, 202 user rows produced.
-- **D-1 / D-7 semantics**: "did the user act on first_seen day + 1 / + 7?" (calendar-day, not rolling-24h). If first_seen is 2026-04-23 23:50 KST, D-1 is anything during 2026-04-24. Some midnight effect, but acceptable for operational metrics.
-- **Continuous sync lag**: 1h frequency + `delay: 60s` — a new user becomes visible in the cohort index within ~1 hour. Tighten `frequency` (e.g. `5m`) for finer freshness at the cost of more cluster work.
-
-<br/>
-
-## `first_seen` accuracy and `Ignore_Older 7d`
-
-The fluent-bit input option `Ignore_Older 7d` ([fluent-bit/values/dev.yaml:88-91](../../fluent-bit/values/dev.yaml#L88)) applies **only at file discovery time** — when fluent-bit first encounters a file, anything with mtime older than 7 days is ignored. Once a file is being tailed it stays tailed regardless.
-
-| Scenario | `first_seen` accuracy |
-|---|---|
-| User joined **after** fluent-bit went live | ✅ Accurate (real first activity time) |
-| User joined **before** fluent-bit went live (in ES before ingestion started) | ⚠️ first_seen snaps to the ingestion start (actual signup is earlier) |
-| fluent-bit pod restart + new file appears that's untouched for 7+ days | ⚠️ That file's logs are skipped — rare edge case |
-
-This cluster is dev and fluent-bit has been running for weeks → **almost every user's `first_seen` is close to actual signup**. Newly joining users are always ingested in real time → accurate.
-
-The tiny gap between NU (`/users/create` callers) and Retention's cohort size is exactly: **users predating fluent-bit's deployment**, and **users that appeared in ES without ever hitting `/users/create`**.
-
-<br/>
-
-## Roadmap
-
-| Metric | Status | Notes |
-|---|---|---|
-| DAU
-| D-1
-| Retention Rate (%) | ✅ Done | Lens formula on cohort |
-| D-30 Retention | ⏳ Candidate | Extend transform aggregation |
-| Per-user LTV
-| Activity by day-of-week
-| Cohort funnel (signup → first payment) | ⏳ Candidate | Extend scripted_metric or a separate transform |
+This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README-en.md](../dashboards/README-en.md) + [transforms/README-en.md](../../elasticsearch/transforms/README-en.md).

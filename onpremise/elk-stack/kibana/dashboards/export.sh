@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # Sync live Kibana saved objects back to repo NDJSON (reverse of apply.sh).
-# 라이브 Kibana 의 saved objects 를 repo NDJSON 으로 동기화 (apply.sh 의 역방향).
 #
 # Default: exports every dashboard listed in `manifest.txt` (one "<dashboard-id>  <ndjson-file>"
 # per line, comments with #). You can override per-run with --id/--out.
-# 기본 동작: manifest.txt 에 등록된 모든 dashboard 를 export (한 줄당
-# "<dashboard-id>  <ndjson-file>", `#` 주석 가능). --id/--out 으로 1회용 override.
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -20,8 +17,11 @@ KIBANA_PORT="${KIBANA_PORT:-5601}"
 KIBANA_SCHEME="${KIBANA_SCHEME:-http}"
 ES_SECRET="${ES_SECRET:-elasticsearch-es-elastic-user}"
 ES_USER="${ES_USER:-elastic}"
-DATA_VIEW_FILE="${DATA_VIEW_FILE:-dev-example-project-game-data-view.ndjson}"
+DATA_VIEW_FILE="${DATA_VIEW_FILE:-example-project-game-data-view.ndjson}"
 EMIT_DATA_VIEW="${EMIT_DATA_VIEW:-true}"
+# Source Space to export from. Saved objects are Space-scoped, so dashboards
+# edited in the cst Space must be exported from there.
+SPACE_ID="${SPACE_ID:-default}"
 
 if [ -t 1 ]; then
   C_OK="\033[32m"; C_WARN="\033[33m"; C_ERR="\033[31m"; C_RST="\033[0m"
@@ -35,7 +35,7 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--id UUID --out FILE]... [--no-data-view] [--dry-run]
+Usage: $(basename "$0") [--id UUID --out FILE]... [--space-id ID] [--no-data-view] [--dry-run]
 
 Exports dashboards (and their references) from the in-cluster Kibana into NDJSON
 files. Run after editing dashboards/lenses in the Kibana UI to capture the new
@@ -45,6 +45,8 @@ Options:
   --id UUID --out FILE  Export a specific dashboard ID to FILE (relative to this
                         directory or absolute). May be repeated for multiple
                         dashboards. When given, the manifest is ignored.
+  --space-id ID         Export from the given Kibana Space (single source).
+                        Default: "default". Saved objects are Space-scoped.
   --no-data-view        Skip writing the data-view bootstrap NDJSON (default: write).
   --dry-run             Print what would be exported without writing files.
 
@@ -63,6 +65,7 @@ Env overrides:
   ES_SECRET=$ES_SECRET
   ES_USER=$ES_USER
   DATA_VIEW_FILE=$DATA_VIEW_FILE
+  SPACE_ID=$SPACE_ID
 EOF
 }
 
@@ -79,6 +82,10 @@ while [ $# -gt 0 ]; do
       shift; [ $# -gt 0 ] || { err "--out requires FILE"; exit 2; }
       ARG_OUTS+=("$1")
       ;;
+    --space-id)
+      shift; [ $# -gt 0 ] || { err "--space-id requires ID"; exit 2; }
+      SPACE_ID="$1"
+      ;;
     --no-data-view) EMIT_DATA_VIEW=false ;;
     --dry-run)      DRY_RUN=1 ;;
     -h|--help)      usage; exit 0 ;;
@@ -86,6 +93,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Build the Space URL prefix. Default Space has no prefix; named Spaces use "/s/<id>".
+if [ "$SPACE_ID" = "default" ]; then
+  SPACE_PREFIX=""
+else
+  SPACE_PREFIX="/s/${SPACE_ID}"
+fi
 
 if [ ${#ARG_IDS[@]} -ne ${#ARG_OUTS[@]} ]; then
   err "each --id needs a matching --out (got ${#ARG_IDS[@]} ids vs ${#ARG_OUTS[@]} outs)"
@@ -132,7 +146,7 @@ EXPORT_PATH="/api/saved_objects/_export"
 
 log "Kibana saved objects export"
 log "  namespace=$NAMESPACE  pod=$ES_POD  kibana=$KIBANA_URL"
-log "  manifest=$MANIFEST  emit-data-view=$EMIT_DATA_VIEW  dry-run=$DRY_RUN"
+log "  space=$SPACE_ID  manifest=$MANIFEST  emit-data-view=$EMIT_DATA_VIEW  dry-run=$DRY_RUN"
 log "  targets (${#IDS[@]}):"
 for i in "${!IDS[@]}"; do
   log "    - ${IDS[$i]} → ${FILES[$i]}"
@@ -174,7 +188,7 @@ export_one() {
 
   kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -u "${ES_USER}:${PASS}" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
-      -X POST "${KIBANA_URL}${EXPORT_PATH}" -d "$req" \
+      -X POST "${KIBANA_URL}${SPACE_PREFIX}${EXPORT_PATH}" -d "$req" \
     > "$raw"
 
   if [ ! -s "$raw" ]; then
@@ -189,8 +203,7 @@ export_one() {
     return 1
   fi
 
-  # Split NDJSON into main (lens + dashboard) and bootstrap (data view)
-  # NDJSON 을 main(lens + dashboard) 과 bootstrap(data view) 으로 분리
+  # Split NDJSON into main (visualization + lens + dashboard) and bootstrap (data view)
   DATA_VIEW_RAW="$raw" python3 - "$raw" "$out" "$WORKDIR" <<'PYEOF'
 import json, sys, pathlib, os
 raw_path = sys.argv[1]
@@ -208,16 +221,20 @@ with open(raw_path) as f:
         else:
             objs.append(o)
 
-lenses     = sorted([o for o in objs if o['type']=='lens'], key=lambda x: x['attributes']['title'])
+# Group order: visualization → lens → dashboard. data-view goes to bootstrap.
+visuals    = sorted([o for o in objs if o['type']=='visualization'], key=lambda x: x['attributes']['title'])
+lenses     = sorted([o for o in objs if o['type']=='lens'],          key=lambda x: x['attributes']['title'])
 dashboards = [o for o in objs if o['type']=='dashboard']
 idx_pats   = [o for o in objs if o['type']=='index-pattern']
 
+main_objs = visuals + lenses + dashboards
+
 with open(out_path, 'w') as f:
-    for o in lenses + dashboards:
+    for o in main_objs:
         f.write(json.dumps(o, separators=(',',':')) + '\n')
     if summary:
         s = dict(summary)
-        s['exportedCount']  = len(lenses) + len(dashboards)
+        s['exportedCount']  = len(main_objs)
         s['missingRefCount'] = 0
         s['missingReferences'] = []
         f.write(json.dumps(s, separators=(',',':')) + '\n')
@@ -229,9 +246,9 @@ if idx_pats:
     with open(dv_path, 'w') as f:
         json.dump(payload, f)
 
-print(f"  main: {out_path.name} ({len(lenses)} lens + {len(dashboards)} dashboard)")
-for o in lenses + dashboards:
-    print(f"    - {o['type']:10s} {o['id']} | {o['attributes']['title']}")
+print(f"  main: {out_path.name} ({len(visuals)} viz + {len(lenses)} lens + {len(dashboards)} dashboard)")
+for o in main_objs:
+    print(f"    - {o['type']:13s} {o['id']} | {o['attributes']['title']}")
 if idx_pats:
     print(f"  (captured {len(idx_pats)} data-view object(s) for bootstrap)")
 PYEOF
@@ -245,7 +262,6 @@ for i in "${!IDS[@]}"; do
 done
 
 # Emit data view bootstrap once (deduplicated across all exported dashboards)
-# 모든 dashboard 의 data view 객체를 합쳐 1회 출력 (중복 제거)
 if [ "$EMIT_DATA_VIEW" = "true" ] && [ -f "$WORKDIR/data-view-objs.json" ]; then
   python3 - "$WORKDIR" "$DASHBOARDS_DIR/$DATA_VIEW_FILE" <<'PYEOF'
 import json, sys, pathlib, glob

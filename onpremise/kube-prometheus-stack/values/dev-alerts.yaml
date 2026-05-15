@@ -225,6 +225,28 @@ additionalPrometheusRulesMap:
               summary: "Cilium operator is down"
               description: "No Cilium operator process detected for 5 minutes — CRD management and IP allocation are halted"
 
+          # Single cilium-agent CPU outlier vs DaemonSet peers (added 2026-05-13)
+          # Catches the failure mode where a cilium pod stays ready=true but spins on a BPF
+          # datapath loop (e.g. CT GC retry against an unpinned BPF map after a restart).
+          # The 4 cilium_* health alerts above do NOT cover this case — agent reports healthy
+          # while burning 20+ cores worth of CPU on its own node. Comparing each agent's CPU
+          # to the average of its DaemonSet peers makes the outlier obvious regardless of
+          # baseline (10m sustained guards against transient buildkit/datapath bursts).
+          # Precedent: 2026-05-13 cilium-rnkhg on k8s-control-01 ran at 1141m vs peer avg ~50m
+          # for >5min, driving the control-plane node to 74% CPU with no alert firing.
+          - alert: CiliumAgentCPUOutlier
+            expr: |
+              rate(container_cpu_usage_seconds_total{namespace="kube-system",pod=~"cilium-.*",container="cilium-agent"}[5m])
+              / ignoring(pod) group_left()
+              avg(rate(container_cpu_usage_seconds_total{namespace="kube-system",pod=~"cilium-.*",container="cilium-agent"}[5m]))
+              > 5
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Cilium agent {{ $labels.pod }} CPU 5x DaemonSet average"
+              description: "Single cilium-agent pod CPU is 5x the average of its DaemonSet peers for 10m — likely BPF/datapath loop while still reporting ready. Check logs for repeated warnings (e.g. 'Skipping CT garbage collection'); recovery is usually `kubectl delete pod {{ $labels.pod }} -n kube-system` so the DaemonSet recreates the pod with a clean init pass. Precedent: 2026-05-13 incident on k8s-control-01."
+
   # ---------------------------------------------------------------------------
   # ArgoCD Alerts — controller-level health (Option B, active)
   #
@@ -240,7 +262,7 @@ additionalPrometheusRulesMap:
   #     2) comment out the 3 triggers in cicd/argo-cd/values/dev-notifications.yaml
   #        (on-health-degraded/missing/unknown in subscriptions)
   #     3) uncomment the ArgoCD inhibit_rule in dev-alertmanager.yaml
-  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section
+  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
   # ---------------------------------------------------------------------------
   argocd-alerts:
     groups:
@@ -427,7 +449,7 @@ additionalPrometheusRulesMap:
               description: "Harbor /api/v2.0/health aggregate has been unhealthy for 3+ minutes — one or more components failing (check HarborComponentDown for specifics)."
 
   # ---------------------------------------------------------------------------
-  # Control Plane Alerts — etcd
+  # Control Plane Alerts — etcd / apiserver / CI-correlation from the 2026-05-08 incident.
   # Default rules cover most cases; these add the user-felt symptom and a leading CI-burst indicator.
   # ---------------------------------------------------------------------------
   control-plane-alerts:
@@ -446,28 +468,20 @@ additionalPrometheusRulesMap:
               summary: "Pods API {{ $labels.verb }} ({{ $labels.scope }}) p99 latency high"
               description: "apiserver pods {{ $labels.verb }} scope={{ $labels.scope }} p99 latency is {{ $value | humanizeDuration }} (>2s) for 5m. Likely cause: etcd backend pressure (check EtcdRequestSlow, GitLabRunnerPodSurge)."
 
-          # etcd get/list p99 > 500ms sustained 5m — more sensitive than the default 1s threshold.
+          # etcd get/list p99 > 800ms sustained 15m — still more sensitive than the default 1s threshold.
+          # 2026-05-12 tuned twice:
+          #   - for 5m → 15m: filter intermittent VM-disk fsync spikes (WAL fsync p50 0.75ms vs p99 471ms = noisy neighbor / hypervisor pauses).
+          #   - threshold 0.5s → 0.8s: env baseline sits ~700ms even with no user impact (apiserver pods GET/LIST p99 stays ~5ms), so 0.5s produced sustained false-positive.
+          # Still 200ms below the default 1s → catches sustained pressure earlier than the user-felt PodsAPIHighLatency (2s, 5m).
           - alert: EtcdRequestSlow
-            expr: histogram_quantile(0.99, sum by (le, operation) (rate(etcd_request_duration_seconds_bucket{operation=~"get|list"}[5m]))) > 0.5
-            for: 5m
+            expr: histogram_quantile(0.99, sum by (le, operation) (rate(etcd_request_duration_seconds_bucket{operation=~"get|list"}[5m]))) > 0.8
+            for: 15m
             labels:
               severity: warning
               group: control-plane
             annotations:
               summary: "etcd {{ $labels.operation }} p99 slow"
-              description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>500ms) for 5m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard."
-
-          # gitlab-runner ns container disk-write rate > 50 MB/s sustained 3m — captures heavy buildx jobs that the pod-count alert misses.
-          # 2026-05-08 16:00~16:10 spike showed 7-10 pods (under PodSurge threshold) but >100 MB/s writes pushing etcd fsync to 1.7s.
-          - alert: GitLabRunnerHighDiskIO
-            expr: sum(rate(container_fs_writes_bytes_total{namespace="gitlab-runner"}[5m])) > 50e6
-            for: 3m
-            labels:
-              severity: warning
-              group: control-plane
-            annotations:
-              summary: "GitLab Runner disk write surge ({{ $value | humanize1024 }}B/s)"
-              description: "gitlab-runner namespace container disk write rate is {{ $value | humanize1024 }}B/s (>50MB/s) for 3m. Heavy buildx
+              description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>800ms) for 15m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard."
 
           # gitlab-runner ns pod count > 15 sustained 3m — leading indicator of CI burst that drives etcd/apiserver latency.
           # concurrent=5 per release × 2 releases → steady-state ~10; sustained >15 means burst incoming.

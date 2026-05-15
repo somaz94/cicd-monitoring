@@ -108,7 +108,7 @@ else
     --from-literal=password="$REAL_ADMIN_PASSWORD" >/dev/null
 fi
 
-# 1. Realm. / 1. Realm.
+# 1. Realm.
 if ! $KCADM get "realms/$REALM" >/dev/null 2>&1; then
   log "Creating realm $REALM..."
   $KCADM create realms -s realm="$REALM" -s enabled=true -s sslRequired=external
@@ -179,7 +179,7 @@ upsert_client vaultwarden "$VAULTWARDEN_REDIRECTS" '{"pkce.code.challenge.method
 # 4. Groups protocol-mapper — defense in depth: client-direct mapper (always applied) + 'groups' client-scope (kicks in
 # whenever the client requests `groups` scope). Without the client-scope a dex-style consumer that requests
 # `groups` scope is rejected with `Invalid scopes: ... groups` because Keycloak does not auto-create a
-# 'groups' client-scope.
+# 'groups' client-scope. The client-direct mapper alone makes Harbor work (scope-less) but breaks dex setups.
 #
 # Mapper config: 6 fields. With Keycloak 26.x, an empty config `{}` is interpreted as all-false →
 # the mapper silently drops the claim from every token type. Always write all 6 explicitly.

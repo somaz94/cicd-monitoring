@@ -27,7 +27,7 @@ EOF
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-keycloak}"
-POD="${POD:-keycloak-0}"                          # operator-spawned StatefulSet pod / operator-spawned StatefulSet pod
+POD="${POD:-keycloak-0}"                          # operator-spawned StatefulSet pod
 REALM="${REALM:-example}"
 OUTPUT="${OUTPUT:-manifests/realm-example.json}"
 

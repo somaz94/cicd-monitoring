@@ -533,7 +533,7 @@ ls "$BACKUP_DIR/$TIMESTAMP/" | while read -r f; do echo "    - $f"; done
 # Update Chart.yaml
 if [ "$WRAPPER_CHART_YAML" = "true" ]; then
   # Wrapper mode: local Chart.yaml is component metadata, NOT a mirror of the
-  # upstream chart. Patch only the `version:` line; preserve name
+  # upstream chart. Patch only the `version:` line; preserve name / description /
   # appVersion / sources / etc.
   CHART_TMP=$(mktemp)
   awk -v cur="$CURRENT_VERSION" -v new="$LATEST_VERSION" '
@@ -572,7 +572,7 @@ fi
 
 # Update helmfile (portable sed: works on macOS BSD sed and GNU sed).
 # Handles three pin forms: literal `version: X.Y.Z`, quoted `version: "X.Y.Z"`,
-# and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`. / gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
+# and gotmpl hoist `{{- $chartVersion := "X.Y.Z" }}`.
 # When HELMFILE_TRACKED_CHART is set, the update is scoped to the release block
 # whose `chart:` line contains that substring — sibling releases at the same
 # version are left alone.

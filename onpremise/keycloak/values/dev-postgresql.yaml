@@ -2,7 +2,7 @@
 # Consumed by the helmfile release `keycloak-postgresql` (oci://ghcr.io/somaz94/charts/postgresql@0.1.0).
 # Service hostname: `keycloak-postgresql.keycloak.svc` — referenced from values/dev-keycloak.yaml `keycloak.db.host`.
 
-# Force the Deployment
+# Force the Deployment / Service / PVC name so the Keycloak CR can hard-code db.host without depending on Helm release name.
 fullnameOverride: keycloak-postgresql
 
 # postgres image — pinned to PostgreSQL 17 (latest officially supported by Keycloak 26.x at https://www.keycloak.org/server/db).
@@ -21,7 +21,7 @@ persistence:
   size: 20Gi
 
 # Chart-managed credential Secret. The chart renders a Secret named `keycloak-postgresql` (= fullname) holding the credentials below.
-# secretKeys override changes the keys inside the Secret from POSTGRES_USER
+# secretKeys override changes the keys inside the Secret from POSTGRES_USER / POSTGRES_PASSWORD to username / password.
 # Why: Keycloak CR's default secret key names are `username`
 # Container env names (POSTGRES_USER
 auth:

@@ -67,15 +67,15 @@ cd ../../kibana/dashboards && ./apply.sh --include-data-view   # first bootstrap
 
 ## NDJSON format
 
-Kibana export uses newline-delimited JSON — one object per line. Our `dev-example-project-game-user-metrics.ndjson` looks like:
+Kibana export uses newline-delimited JSON — one object per line. Our `dev-pm-retention-dashboard.ndjson` looks like:
 
 ```
-{ "type": "lens",      "id": "<lens-uuid>",     "attributes": {…}, "references": [{…}] }
-{ "type": "lens",      "id": "<lens-uuid>",     "attributes": {…}, "references": [{…}] }
-{ "type": "lens",      "id": "<lens-uuid>",     "attributes": {…}, "references": [{…}] }
-{ "type": "lens",      "id": "<lens-uuid>",     "attributes": {…}, "references": [{…}] }
-{ "type": "dashboard", "id": "<dash-uuid>",     "attributes": {…}, "references": [{…}] }
-{ "excludedObjects": [], "exportedCount": 5, "missingReferences": [], … }    ← summary
+{ "type": "visualization", "id": "dev-pm-retention-…", "attributes": {…}, "references": [{…}] }  ← 7 Vega
+…
+{ "type": "lens",          "id": "dev-pm-retention-…", "attributes": {…}, "references": [{…}] }  ← 3 Lens
+…
+{ "type": "dashboard",     "id": "dev-pm-retention-dashboard", "attributes": {…}, "references": [{…}] }
+{ "excludedObjects": [], "exportedCount": 11, "missingReferences": [], … }    ← summary
 ```
 
 Key invariants:
@@ -163,10 +163,10 @@ Key points:
   "type": "dashboard",
   "id": "<dash-uuid>",
   "attributes": {
-    "title": "Dev ExampleProject Game — User Metrics",
+    "title": "Game User Matric & Retention",
     "panelsJSON": "[…]",                  // string-escaped JSON (that's how Kibana stores it)
     "timeRestore": true,
-    "timeFrom": "now-90d/d",
+    "timeFrom": "now-30d",
     "timeTo":   "now",
     "kibanaSavedObjectMeta": {
       "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"kuery\"},\"filter\":[]}"
@@ -243,7 +243,7 @@ Here `title ≠ name` is possible — `title` is the actual index, `name` is the
    Response: NDJSON (data-view + lens objects + dashboard + summary)
 4) Split response into two:
    - lens + dashboard → designated *.ndjson
-   - index-pattern (data view) → dev-example-project-game-data-view.ndjson (merged + dedup across all dashboards)
+   - index-pattern (data view) → example-project-game-data-view.ndjson (merged + dedup across all dashboards)
 5) Recompute summary's exportedCount and append
 ```
 
@@ -303,7 +303,7 @@ kubectl -n logging exec -i elasticsearch-es-default-0 -- \
 
 > "Is the data view NDJSON also automated?" — **Yes, already.**
 
-Core mechanism: `export.sh`'s `includeReferencesDeep: true` flag walks dashboard references depth-first → lens → data view, then splits the result and writes to `dev-example-project-game-data-view.ndjson`.
+Core mechanism: `export.sh`'s `includeReferencesDeep: true` flag walks dashboard references depth-first → lens → data view, then splits the result and writes to `example-project-game-data-view.ndjson`.
 
 ```
 Kibana dashboard
@@ -379,4 +379,4 @@ The `*-data-view.ndjson` pattern is excluded from the default `apply.sh` run (op
 
 - Kibana 9.x Saved Objects API: https://www.elastic.co/docs/api/doc/kibana/group/endpoint-saved-objects
 - Lens state schema is poorly documented officially — in practice, the safest workflow is to build in the UI and capture via `export.sh`.
-- For data views over `transform` output indices (e.g. `dev-example-project-game-user-cohort`), a separate data view must be created. `dashboards/dev-example-project-game-data-view.ndjson` here is bootstrap-only.
+- For data views over `transform` output indices (e.g. `dev-example-project-game-user-cohort`), a separate data view must be created. `dashboards/example-project-game-data-view.ndjson` here is bootstrap-only.

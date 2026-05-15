@@ -12,7 +12,7 @@ releases:
     namespace: harbor
     createNamespace: true
     chart: harbor/harbor
-    version: 1.18.3
+    version: 1.19.0
     values:
       - values/dev.yaml
 

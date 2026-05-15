@@ -1,12 +1,12 @@
 # Override the upstream chart defaults for the dev (example dev) cluster.
 # Vendor reference: ../values.yaml (chart default). Diff this file with values.yaml on chart bumps to spot drift.
 
-# Watch the keycloak namespace (where the sibling ../keycloak/ component installs Keycloak
+# Watch the keycloak namespace (where the sibling ../keycloak/ component installs Keycloak / KeycloakRealmImport CRs) plus the operator's own namespace.
 # Explicit list (comma-separated) avoids the JOSDK special-constant ambiguity — chart README's "JOSDK_WATCH_ALL" is not a valid Quarkus Operator SDK constant (the real one is `JOSDK_ALL_NAMESPACES`, but cluster-wide watch is wider scope than we need here).
 watchNamespaces: "keycloak,keycloak-system"
 
 # Cluster-scoped RBAC required for the explicit watchNamespaces list above plus operator's CRD/networkpolicy management.
-# useClusterBindings=true switches `keycloakcontroller-cluster-role` and `keycloakrealmimportcontroller-cluster-role` from in-namespace RoleBindings (chart default, mirrors upstream single-ns operator) to ClusterRoleBindings — required for cross-namespace list/watch on Keycloak
+# useClusterBindings=true switches `keycloakcontroller-cluster-role` and `keycloakrealmimportcontroller-cluster-role` from in-namespace RoleBindings (chart default, mirrors upstream single-ns operator) to ClusterRoleBindings — required for cross-namespace list/watch on Keycloak / KeycloakRealmImport CRs in the keycloak ns.
 rbac:
   create: true
   useClusterBindings: true

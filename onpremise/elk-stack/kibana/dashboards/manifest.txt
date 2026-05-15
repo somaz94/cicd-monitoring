@@ -1,5 +1,6 @@
 # Kibana dashboards managed by apply.sh / export.sh
-# Format: <dashboard-uuid>  <ndjson-filename>
+# Format: <dashboard-id>  <ndjson-filename>
 # Lines starting with '#' and inline '#' comments are ignored.
 
-c92bea18-3810-4082-a2bc-03ae9ff4afc7  dev-example-project-game-user-metrics.ndjson   # Dev ExampleProject Game — User Metrics
+dev-pm-retention-dashboard  dev-pm-retention-dashboard.ndjson   # DEV — Game User Matric & Retention
+qa-pm-retention-dashboard   qa-pm-retention-dashboard.ndjson    # QA — Game User Matric & Retention

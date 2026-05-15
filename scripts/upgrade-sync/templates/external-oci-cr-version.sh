@@ -244,7 +244,6 @@ list_backups() {
 
   local i=1
   # Reverse-sorted glob via sort -r: name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     local dirname=""
@@ -275,7 +274,6 @@ do_rollback() {
 
   local backups=()
   # Reverse-sorted glob via sort -r: name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     backups+=("$dir")
@@ -833,8 +831,6 @@ read_helmfile_chart_url() {
 # Read the chart pin from helmfile. For .gotmpl with `{{- $chartVersion := "X" }}`
 # hoist, prefer the hoist; fall back to the first indented release-level 'version:'
 # (skipping templated values like `{{ $chartVersion | quote }}`).
-# `{{- $chartVersion := "X" }}` hoist 우선; 없으면 release `version:` fallback
-# (`{{ $chartVersion | quote }}` 같은 템플릿 표현식은 스킵).
 read_helmfile_chart_pin() {
   [ -n "$HELMFILE_PATH" ] || { echo ""; return; }
   awk '
@@ -862,7 +858,6 @@ read_helmfile_chart_pin() {
 # (double quotes, single quotes, or bare). For .gotmpl, prefers the
 # `$chartVersion := "X"` hoist; otherwise updates the first indented
 # 'version:' line (top-level YAML keys remain safe).
-# 없으면 첫 indented 'version:' 라인 갱신 (top-level YAML 키는 안전).
 update_helmfile_chart_pin() {
   local new="$1"
   local file="$HELMFILE_PATH"

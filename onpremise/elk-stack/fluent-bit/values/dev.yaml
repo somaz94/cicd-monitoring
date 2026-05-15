@@ -40,7 +40,6 @@ nodeSelector: {}
 affinity: {}
 
 # RWO state PVC + SQLite — two pods mounting concurrently triggers 'database is locked' on the new pod
-#
 updateStrategy:
   type: Recreate
 
@@ -208,7 +207,6 @@ config:
         Host fluentd
         Port 24224
         # Survive fluentd outages by retrying indefinitely and absorbing pressure on disk
-        #
         Retry_Limit no_limits
         storage.total_limit_size 2G
 
@@ -303,7 +301,6 @@ persistentVolumeClaims:
       selector:
         volumeName: qa-example-project-game-app-logs-pv-fluentbit
     # Single replica → RWO is sufficient and SQLite locking is safer than RWX
-    #
     - name: fluent-bit-state-pvc
       accessModes:
         - ReadWriteOnce

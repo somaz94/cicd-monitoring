@@ -53,6 +53,9 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 |------|------|
 | [Upgrade / Rollback Guide](docs/upgrade-rollback-en.md) | Stack version bump, OCI chart pin bump, webhook-bypass rollback, incident playbooks. Shared with Kibana |
 | [HA Rolling Upgrade Verification](docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary on HA topology (chart 0.1.1 / Stack 9.3.3) |
+| [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort-en.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit
+| [Elasticsearch role creation](docs/create-elastic-role-en.md) | Operations guide for `scripts/create-elastic-role.sh`: idempotent PUT to /_security/role/<name>. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants |
+| [Kibana / ES user creation](docs/create-kibana-readonly-user-en.md) | Operations guide for `scripts/create-kibana-readonly-user.sh`: PUT a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing |
 
 <br/>
 

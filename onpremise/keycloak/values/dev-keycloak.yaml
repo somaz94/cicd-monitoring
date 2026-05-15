@@ -36,7 +36,7 @@ keycloak:
       cpu: 2000m
       memory: 2Gi
 
-# Realm import — disabled at first apply. Phase 3 (UI
+# Realm import — disabled at first apply. Phase 3 (UI / kcadm.sh) creates the `example` realm with GitLab brokering, then exports it back into manifests/realm-example.json and re-applies via helmfile `--set-file realmImport.realm=manifests/realm-example.json`.
 realmImport:
   enabled: false
 
@@ -56,7 +56,7 @@ httproute:
             type: PathPrefix
             value: /
       backendRefs:
-        - port: 8080                 # name defaults to "<release>-service" / name default = "<release>-service"
+        - port: 8080                 # name defaults to "<release>-service"
 
   # Companion HTTPRoute that 301-redirects HTTP → HTTPS on the http listener.
   httpsRedirect:

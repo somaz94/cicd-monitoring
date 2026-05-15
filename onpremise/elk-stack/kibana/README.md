@@ -60,7 +60,9 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
 | [Dashboards (Saved Objects management)](dashboards/README-en.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
 | [Dashboards Saved Objects workflow](docs/dashboards-saved-objects-en.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
-| [User Metrics Catalog](docs/user-metrics-catalog-en.md) | 7-panel definitions of the Dev ExampleProject Game dashboard (DAU/NU/WAU/MAU/Retention/Retention Rate). Includes small-sample caveat |
+| [User Metrics Catalog](docs/user-metrics-catalog-en.md) | 10-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard`
+| [pm-retention-dashboard — Prod templating guide](docs/pm-retention-dashboard-template-en.md) | Structure / data sources / template parameters / qa-example-project-game validation / automation strategy / prod migration recipe |
+| [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle-en.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `apply.sh --space-id` mechanics, extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
 
 <br/>
 

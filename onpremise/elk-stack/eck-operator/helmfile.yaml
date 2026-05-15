@@ -1,6 +1,6 @@
 # Deploy Elastic Cloud on Kubernetes (ECK) operator via helmfile.
-# Operator only — actual Elasticsearch
-# (../elasticsearch/, ../kibana/). G14 — operator + CR 가 별개 helmfile 로 분리 (독립 upgrade.sh 보존).
+# Operator only — actual Elasticsearch / Kibana CRs are provisioned by sibling components
+# (../elasticsearch/, ../kibana/). G14 — operator + CR split into separate helmfiles (preserves independent upgrade.sh).
 # Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
 
 repositories:

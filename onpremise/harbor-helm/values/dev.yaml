@@ -35,8 +35,8 @@ expose:
   #     nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # TLS termination at ingress
   #     nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
   route:
-    # Chart HTTPRoute name: harbor-route (helpers.tpl `harbor.route` template)
-    # Path routing: /api/, /service/, /v2/, /c/ → harbor-core; `/` → harbor-portal (chart built-in)
+    # Chart HTTPRoute name: harbor-route (helpers.tpl `harbor.route` template).
+    # Path routing: /api/, /service/, /v2/, /c/ → harbor-core; `/` → harbor-portal (chart built-in).
     hosts:
       - harbor.example.com
     parentRefs:
@@ -96,7 +96,7 @@ externalURL: https://harbor.example.com
 #       --client-secret '<phase-3 secret>' \
 #       [--dry-run] [-y]
 #
-# Harbor UI
+# Harbor UI / API equivalent:
 #   - Auth Mode:           oidc_auth   (one-way — already flipped on this cluster)
 #   - OIDC Provider Name:  Keycloak
 #   - OIDC Endpoint:       https://auth.example.com/realms/example
@@ -208,7 +208,7 @@ cache:
 nginx:
   image:
     repository: goharbor/nginx-photon
-    tag: v2.14.3
+    tag: v2.15.0
   automountServiceAccountToken: false
   replicas: 1
   revisionHistoryLimit: 10
@@ -223,7 +223,7 @@ nginx:
 portal:
   image:
     repository: goharbor/harbor-portal
-    tag: v2.14.3
+    tag: v2.15.0
   replicas: 1
   revisionHistoryLimit: 10
   resources:
@@ -237,7 +237,7 @@ portal:
 core:
   image:
     repository: goharbor/harbor-core
-    tag: v2.14.3
+    tag: v2.15.0
   replicas: 1
   resources:
     requests:
@@ -250,7 +250,7 @@ core:
 jobservice:
   image:
     repository: goharbor/harbor-jobservice
-    tag: v2.14.3
+    tag: v2.15.0
   replicas: 1
   revisionHistoryLimit: 10
   resources:
@@ -265,7 +265,7 @@ registry:
   registry:
     image:
       repository: goharbor/registry-photon
-      tag: v2.14.3
+      tag: v2.15.0
     resources:
       requests:
         memory: 256Mi
@@ -276,7 +276,7 @@ registry:
   controller:
     image:
       repository: goharbor/harbor-registryctl
-      tag: v2.14.3
+      tag: v2.15.0
     resources:
       requests:
         memory: 256Mi
@@ -298,7 +298,7 @@ trivy:
     # repository the repository for Trivy adapter image
     repository: goharbor/trivy-adapter-photon
     # tag the tag for Trivy adapter image
-    tag: v2.14.3
+    tag: v2.15.0
   replicas: 1
   resources:
     requests:
@@ -313,7 +313,7 @@ database:
   internal:
     image:
       repository: goharbor/harbor-db
-      tag: v2.14.3
+      tag: v2.15.0
     password: "exampleAdminPassword"
     # shmSizeLimit: 512Mi
     shmSizeLimit: 2048Mi
@@ -340,12 +340,12 @@ redis:
   internal:
     image:
       repository: goharbor/redis-photon
-      tag: v2.14.3
+      tag: v2.15.0
 
 exporter:
   image:
     repository: goharbor/harbor-exporter
-    tag: v2.14.3
+    tag: v2.15.0
   replicas: 1
   revisionHistoryLimit: 10
   resources:

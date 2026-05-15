@@ -433,14 +433,15 @@ extraObjects:
   #   proxy-{read,send}-timeout: 1800 → HTTPRoute timeouts.{request,backendRequest}: 1800s
   #   proxy-connect-timeout: 10      → NGF default applied (no per-listener option)
   #   limit-rps: 15                  → RateLimitPolicy rate: 15r/s (per source IP)
-  #   limit-connections: 25          → not preserved (NGF doesn't directly support limit_conn; possible via SnippetsFilter
-  #                                     but out of Phase 4 scope. Rely on app-level rate-limit)
+  #   limit-connections: 25          → not preserved (NGF doesn't directly support limit_conn;
+  #                                     possible via SnippetsFilter but out of Phase 4 scope.
+  #                                     Rely on app-level rate-limit)
   #   enable-cors: true              → relies on Vaultwarden's own CORS handling (controlled via app ENV)
   #   backend-protocol: HTTP         → default value, no extra policy needed
   #
   # Vaultwarden chart has no HTTPRoute template so injected via extraObjects (integrated with helm release lifecycle).
 
-  # Main HTTPRoute — attached to HTTPS listener (uses wildcard-example-tls)
+  # Main HTTPRoute — attached to HTTPS listener (uses wildcard-example-tls).
   - apiVersion: gateway.networking.k8s.io/v1
     kind: HTTPRoute
     metadata:
@@ -499,7 +500,7 @@ extraObjects:
       body:
         maxSize: "1024m"
 
-  # RateLimitPolicy — per-IP request frequency limit
+  # RateLimitPolicy — per-IP request frequency limit.
   - apiVersion: gateway.nginx.org/v1alpha1
     kind: RateLimitPolicy
     metadata:

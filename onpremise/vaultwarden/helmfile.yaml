@@ -10,7 +10,7 @@ releases:
   - name: vaultwarden
     chart: guerzon/vaultwarden
     namespace: vaultwarden
-    version: 0.36.3
+    version: 0.36.4
     values:
       - values/dev.yaml
 
