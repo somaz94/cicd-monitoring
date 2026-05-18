@@ -12,7 +12,7 @@ name: kibana
 
 # Elastic Stack version — must match (or be compatible with) the linked
 # Elasticsearch CR. Kibana must be <= Elasticsearch version.
-version: "9.3.3"
+version: "9.4.1"
 
 replicas: 1
 

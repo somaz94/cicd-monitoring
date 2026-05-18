@@ -13,7 +13,7 @@ name: elasticsearch
 
 # Elastic Stack version. Bump via ./upgrade.sh for rolling upgrade. Major bumps
 # require ECK operator compatibility check.
-version: "9.3.3"
+version: "9.4.1"
 
 # Password for the built-in `elastic` superuser.
 # Rendered into Secret `<name>-es-elastic-user` (key: elastic) which ECK picks up.
