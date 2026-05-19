@@ -275,6 +275,21 @@ fileConfigs:
       </record>
     </filter>
 
+    # Step 6: ES dedup key (id_key)
+    # Lift record["data"]["traceId"] to top-level _doc_id so the ES output's
+    # id_key can find it (fluent-plugin-elasticsearch's id_key does not resolve
+    # nested dot-paths). When data.traceId is absent (startup/lifecycle logs,
+    # ~20% of game records), _doc_id is nil → ES output falls back to random
+    # _id (no dedup for that subset; acceptable since those records are rare
+    # and bounded by pod restart frequency).
+    <filter example-project.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        _doc_id ${record["data"].is_a?(Hash) ? record["data"]["traceId"] : nil}
+      </record>
+    </filter>
+
   03_outputs.conf: |-
     # Output to Elasticsearch with dynamic index based on log_source
     <match example-project.**>
@@ -291,7 +306,14 @@ fileConfigs:
       index_name ${log_source}
       type_name _doc
       suppress_type_name true
-      
+
+      # Deterministic _id from data.traceId (set by 02_filters Step 6).
+      # Idempotent re-ingestion (backfill / replay / fluent-bit restart with
+      # stale offsets) overwrites instead of duplicating. When _doc_id is nil
+      # the plugin falls back to random _id (no dedup for that record).
+      id_key _doc_id
+      remove_keys _doc_id
+
       # Buffer settings for performance
       <buffer tag,log_source>
         @type file
