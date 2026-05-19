@@ -1,14 +1,46 @@
 ---
-# Fluent Bit configuration for dev environment
-kind: Deployment
-replicaCount: 1
+# =============================================================================
+# Fluent Bit DaemonSet — stdout collection (post-transition, single release)
+# =============================================================================
+# Replaces the previous NFS aggregator (single Deployment with 4 RWX PVCs
+# mounted from the NFS server) with per-node stdout tailing. /var/log/containers/
+# is the kubelet-managed symlink directory; this DaemonSet uses the standard
+# cri parser to read CRI-formatted container output.
+#
+# Coverage (4 INPUTs):
+#   - dev game    (ns dev-example-project)     → log_source dev-example-project-game
+#   - dev battle  (ns dev-example-project)     → log_source dev-example-project-battle
+#   - qa game     (ns qa-example-project)      → log_source qa-example-project-game
+#   - stg game    (ns staging-example-project) → log_source stg-example-project-game
+#
+# Each INPUT carries its own tag and DB file so state is independent and one
+# pod's tail position cannot mask another. The 4 modify filters set the same
+# log_source values the previous NFS aggregator used, so existing ES indices
+# (dev-example-project-game-*, dev-example-project-battle-*, qa-example-project-game-*,
+# stg-example-project-game-*) keep receiving — fluentd routing is unchanged.
+#
+# 🔥 PINO-PRETTY WORKAROUND (TEMPORARY)
+# dev game pods currently emit pino-pretty formatted lines:
+#   [2026-05-18 07:21:29.744 +0000] \x1b[32mINFO\x1b[39m: \x1b[90m{"level":30,...}\x1b[39m
+# The 3-filter chain (lua strip_ansi → parser pino_pretty_extract → parser
+# example-project_json_extract) extracts the embedded JSON for fluentd's Pino->Winston
+# normalization. The filter chain matches example-project.stdout.* (all 4 inputs); if
+# any component switches off pino-pretty independently, split the match patterns
+# at that time.
+#
+# 🔥 WHEN GAME TEAM DISABLES pino-pretty FOR STDOUT, delete these:
+#   - the luaScripts.strip_ansi.lua block
+#   - the [FILTER] lua strip_ansi filter
+#   - the [FILTER] parser pino_pretty_extract filter
+#   - the [PARSER] pino_pretty_extract custom parser
+#   Keep [FILTER] parser example-project_json_extract — it then operates directly on
+#   the raw ndjson stream. Search "🔥" markers below to find every removable line.
+# =============================================================================
+
+kind: DaemonSet
 
 image:
   repository: cr.fluentbit.io/fluent/fluent-bit
-  # tag omitted on purpose: chart default renders tag from Chart.AppVersion,
-  # so `./upgrade.sh` bumps both chart and image in lockstep. Override here
-  # only if an image variant outside the chart's default is required
-  # (unlike fluentd, which pins an ES-specific variant).
   pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -17,51 +49,53 @@ serviceAccount:
 
 rbac:
   create: true
-  nodeAccess: false
+  # nodeAccess: true enables the kubernetes filter to query the node's kubelet
+  # endpoint for pod metadata enrichment (namespace, labels, annotations).
+  nodeAccess: true
 
 podSecurityContext: {}
 
 securityContext:
+  # /var/log/containers and /var/log/pods are root-owned; reading them needs
+  # uid 0. fluent-bit official image runs as root by default.
   runAsUser: 0
   privileged: false
 
 resources:
   requests:
-    cpu: "100m"
+    cpu: "50m"
     memory: "100Mi"
   limits:
-    cpu: "1000m"
-    memory: "2Gi"
+    cpu: "500m"
+    memory: "500Mi"
 
+# No tolerations: DaemonSet only schedules on nodes without NoSchedule taints.
+# Cluster layout (2026-05-18):
+#   compute-01/02/03 — no taints, hosts application pods
+#   compute-04       — dedicated=ci-build:NoSchedule, gitlab-runner only (exclude)
+#   control-01/02/03 — control-plane:NoSchedule (exclude)
+# Result: 3 DaemonSet pods on compute-01/02/03; idle on nodes without target
+# pods, picks them up immediately on reschedule.
 tolerations: []
 
 nodeSelector: {}
 
 affinity: {}
 
-# RWO state PVC + SQLite — two pods mounting concurrently triggers 'database is locked' on the new pod
-updateStrategy:
-  type: Recreate
-
-# fluent-bit forwards to fluentd (not ES directly); ES credentials are not
-# needed here. Removed to avoid dead references to monitoring-ns secrets.
+# fluent-bit forwards to fluentd (not ES directly) — ES credentials not needed.
 env: []
 
-# Volume mounts for log collection
+# Per-node state directory for SQLite DB checkpoints + filesystem chunk buffer.
+# DaemonSet uses hostPath instead of PVC: each pod owns its own node's state,
+# pod restart on the same node preserves checkpoints, no RWO lock contention.
+extraVolumes:
+  - name: fluentbit-state
+    hostPath:
+      path: /var/lib/fluent-bit
+      type: DirectoryOrCreate
+
 extraVolumeMounts:
-  - name: dev-example-project-game-app-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/example-project/dev/game
-    readOnly: true
-  - name: dev-example-project-battle-app-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/example-project/dev/battle
-    readOnly: true
-  - name: stg-example-project-game-app-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/example-project/staging/game
-    readOnly: true
-  - name: qa-example-project-game-app-logs-pvc-fluentbit
-    mountPath: /fluent-bit/logs/example-project/qa/game
-    readOnly: true
-  - name: fluent-bit-state-pvc
+  - name: fluentbit-state
     mountPath: /fluent-bit/state
 
 config:
@@ -82,230 +116,229 @@ config:
         storage.backlog.mem_limit 50M
 
   inputs: |
-    # Dev ExampleProject Game logs
+    # Dev ExampleProject Game stdout (kubelet writes to /var/log/containers).
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/example-project/dev/game/*
+        Path /var/log/containers/dev-example-project-game-*_dev-example-project_*.log
         Path_Key filepath
-        Tag example-project.dev.game
-        Parser example-project_json
+        Tag example-project.stdout.dev.game.*
+        Parser cri
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
-        # Read_from_Head true: reads files from the beginning (causes re-ingestion of all historical logs on restart)
-        # Read_from_Head false: reads files from the end (only collects new log entries appended after startup)
+        # Start from EOF on first apply (avoid replaying historical lines).
+        # After DB populates, restarts resume from the last checkpoint
+        # regardless of this flag.
         Read_from_Head false
-        # Ignore_Older 0: disables age filtering (all files are processed regardless of modification time)
-        # Ignore_Older 7d: skips files not modified in the last 7 days (prevents processing months of old logs on NFS)
-        Ignore_Older 7d
         DB /fluent-bit/state/tail-dev-game.db
         DB.locking true
         DB.sync normal
         storage.type filesystem
 
-    # Dev ExampleProject Battle logs
+    # Dev ExampleProject Battle stdout
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/example-project/dev/battle/*
+        Path /var/log/containers/dev-example-project-battle-*_dev-example-project_*.log
         Path_Key filepath
-        Tag example-project.dev.battle
-        Parser example-project_json
+        Tag example-project.stdout.dev.battle.*
+        Parser cri
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
         Read_from_Head false
-        Ignore_Older 7d
         DB /fluent-bit/state/tail-dev-battle.db
         DB.locking true
         DB.sync normal
         storage.type filesystem
 
-    # Staging ExampleProject Game logs
+    # QA ExampleProject Game stdout
     [INPUT]
         Name tail
-        Path /fluent-bit/logs/example-project/staging/game/*
+        Path /var/log/containers/qa-example-project-game-*_qa-example-project_*.log
         Path_Key filepath
-        Tag example-project.stg.game
-        Parser example-project_json
+        Tag example-project.stdout.qa.game.*
+        Parser cri
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
         Refresh_Interval 10
         Read_from_Head false
-        Ignore_Older 7d
-        DB /fluent-bit/state/tail-stg-game.db
-        DB.locking true
-        DB.sync normal
-        storage.type filesystem
-
-    # QA ExampleProject Game logs
-    [INPUT]
-        Name tail
-        Path /fluent-bit/logs/example-project/qa/game/*
-        Path_Key filepath
-        Tag example-project.qa.game
-        Parser example-project_json
-        Mem_Buf_Limit 50MB
-        Skip_Long_Lines On
-        Skip_Empty_Lines On
-        Refresh_Interval 10
-        Read_from_Head false
-        Ignore_Older 7d
         DB /fluent-bit/state/tail-qa-game.db
         DB.locking true
         DB.sync normal
         storage.type filesystem
 
+    # Staging ExampleProject Game stdout (namespace is staging-example-project; log_source
+    # keeps the "stg-" prefix to match the existing ES index).
+    [INPUT]
+        Name tail
+        Path /var/log/containers/staging-example-project-game-*_staging-example-project_*.log
+        Path_Key filepath
+        Tag example-project.stdout.stg.game.*
+        Parser cri
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head false
+        DB /fluent-bit/state/tail-stg-game.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
+
   filters: |
-    # Add metadata for dev game logs
+    # Enrich with Kubernetes metadata (namespace, pod, labels, annotations) for
+    # all 4 INPUTs. Adds a nested "kubernetes" object — useful for Kibana
+    # filtering.
+    [FILTER]
+        Name kubernetes
+        Match example-project.stdout.*
+        Merge_Log Off
+        Keep_Log On
+        K8S-Logging.Parser Off
+        K8S-Logging.Exclude Off
+
+    # 🔥 PINO-PRETTY WORKAROUND BEGIN
+    # Strip ANSI CSI color sequences (\x1b[<digits>m) that pino-pretty injects.
+    # Acts on the `message` field — Parser cri stores the container log line
+    # under `message` (not `log`); Lua + parser filters below must align on the
+    # same key.
+    [FILTER]
+        Name lua
+        Match example-project.stdout.*
+        script /fluent-bit/scripts/strip_ansi.lua
+        call strip_ansi
+
+    # Extract the JSON object portion from "[<ts>] LEVEL: { ... }".
+    # The pino_pretty_extract parser regex binds the inner JSON string to a new
+    # `log` key for the next parser stage.
+    [FILTER]
+        Name parser
+        Match example-project.stdout.*
+        Key_Name message
+        Parser pino_pretty_extract
+        Reserve_Data On
+        Preserve_Key Off
+    # 🔥 PINO-PRETTY WORKAROUND END
+
+    # Parse the JSON payload — promotes level/time/req/context/data to top-level.
+    # Consumes the `log` field produced by pino_pretty_extract above (or, when
+    # pino-pretty is disabled upstream, switch Key_Name to `message` and remove
+    # the regex stage — see top-of-file 🔥 notes).
+    [FILTER]
+        Name parser
+        Match example-project.stdout.*
+        Key_Name log
+        Parser example-project_json_extract
+        Reserve_Data On
+        Preserve_Key Off
+
+    # Per-component metadata: log_source drives fluentd's dynamic index name.
     [FILTER]
         Name modify
-        Match example-project.dev.game
+        Match example-project.stdout.dev.game.*
         Set log_source dev-example-project-game
         Set environment dev
         Set app example-project
         Set component game
         Set label game
+        Set collection_path stdout
 
-    # Add metadata for dev battle logs
     [FILTER]
         Name modify
-        Match example-project.dev.battle
+        Match example-project.stdout.dev.battle.*
         Set log_source dev-example-project-battle
         Set environment dev
         Set app example-project
         Set component battle
         Set label battle
+        Set collection_path stdout
 
-    # Add metadata for staging game logs
     [FILTER]
         Name modify
-        Match example-project.stg.game
-        Set log_source stg-example-project-game
-        Set environment stg
-        Set app example-project
-        Set component game
-        Set label game
-
-    # Add metadata for qa game logs
-    [FILTER]
-        Name modify
-        Match example-project.qa.game
+        Match example-project.stdout.qa.game.*
         Set log_source qa-example-project-game
         Set environment qa
         Set app example-project
         Set component game
         Set label game
+        Set collection_path stdout
+
+    [FILTER]
+        Name modify
+        Match example-project.stdout.stg.game.*
+        Set log_source stg-example-project-game
+        Set environment stg
+        Set app example-project
+        Set component game
+        Set label game
+        Set collection_path stdout
 
   outputs: |
-    # Send to Fluentd for further processing
+    # Forward to fluentd (same target as the retired NFS aggregator). fluentd's
+    # existing <match example-project.**> block handles Pino->Winston normalization,
+    # timestamp conversion, and ES indexing — no fluentd config change required.
     [OUTPUT]
         Name forward
         Match example-project.*
         Host fluentd
         Port 24224
-        # Survive fluentd outages by retrying indefinitely and absorbing pressure on disk
         Retry_Limit no_limits
         storage.total_limit_size 2G
+        # Wire-format compatibility with fluentd in_forward.
+        # fluent-bit >= 3.2 (chart 5.0.3+) added entry-level metadata to forward
+        # events, producing [time, metadata, record] tuples that fluentd parses
+        # as time=[real_time, {}] and rejects as "skip invalid event".
+        # Send_options Off disables the option header; Time_as_Integer On encodes
+        # time as native msgpack int — both restore the legacy [time, record].
+        Send_options Off
+        Time_as_Integer On
 
   customParsers: |
+    # 🔥 PINO-PRETTY WORKAROUND parser — extracts JSON object after
+    # "[YYYY-MM-DD hh:mm:ss.SSS +zzzz] LEVEL: " prefix produced by pino-pretty.
+    # Remove this parser when stdout switches to raw ndjson.
     [PARSER]
-        Name example-project_json
-        Format json
-        Time_Keep On
-        Time_Key @timestamp
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Name pino_pretty_extract
+        Format regex
+        Regex ^\[[^\]]+\]\s+\w+:\s+(?<log>\{.*\})\s*$
 
+    # JSON parser for the extracted (or natively raw, post-pino-pretty-removal)
+    # ndjson payload. Time parsing intentionally omitted — Pino's "time" field
+    # is Unix ms, which fluentd's record_transformer normalizes downstream to
+    # "@timestamp" in Asia/Seoul ISO 8601.
     [PARSER]
-        Name docker_no_time
+        Name example-project_json_extract
         Format json
-        Time_Keep Off
-        Time_Key time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+# 🔥 PINO-PRETTY WORKAROUND — entire luaScripts block can be removed when
+# game team disables pino-pretty on stdout.
+luaScripts:
+  strip_ansi.lua: |
+    -- Strip ANSI CSI escape sequences used by pino-pretty for color output.
+    -- Pattern: ESC ('\27') '[' <digits/;>* 'm'
+    -- Operates on the `message` field produced by Parser cri (the standard key
+    -- for container log line content; not `log`).
+    function strip_ansi(tag, ts, record)
+        local msg = record["message"]
+        if msg == nil then
+            return 0, ts, record
+        end
+        record["message"] = string.gsub(msg, "\27%[[%d;]*m", "")
+        return 1, ts, record
+    end
 
 logLevel: info
 
-# PersistentVolumes for log collection
+# DaemonSet uses hostPath for state — no PVC needed. Each node owns its own
+# checkpoint; pod restart on the same node preserves it.
 persistentVolumes:
-  enabled: true
-  items:
-    - name: dev-example-project-game-app-logs-pv-fluentbit
-      storage: 5Gi
-      volumeMode: Filesystem
-      accessModes:
-        - ReadWriteMany
-      reclaimPolicy: Retain
-      storageClassName: nfs-client-nopath
-      path: /volume1/nfs/example-project/dev/server/logs/game
-      server: 192.168.1.5
-    - name: dev-example-project-battle-app-logs-pv-fluentbit
-      storage: 5Gi
-      volumeMode: Filesystem
-      accessModes:
-        - ReadWriteMany
-      reclaimPolicy: Retain
-      storageClassName: nfs-client-nopath
-      path: /volume1/nfs/example-project/dev/server/logs/battle
-      server: 192.168.1.5
-    - name: stg-example-project-game-app-logs-pv-fluentbit
-      storage: 5Gi
-      volumeMode: Filesystem
-      accessModes:
-        - ReadWriteMany
-      reclaimPolicy: Retain
-      storageClassName: nfs-client-nopath
-      path: /volume1/nfs/example-project/staging/server/logs/game
-      server: 192.168.1.5
-    - name: qa-example-project-game-app-logs-pv-fluentbit
-      storage: 5Gi
-      volumeMode: Filesystem
-      accessModes:
-        - ReadWriteMany
-      reclaimPolicy: Retain
-      storageClassName: nfs-client-nopath
-      path: /volume1/nfs/example-project/qa/server/logs/game
-      server: 192.168.1.5
+  enabled: false
 
-# PersistentVolumeClaims for log collection
 persistentVolumeClaims:
-  enabled: true
-  items:
-    - name: dev-example-project-game-app-logs-pvc-fluentbit
-      accessModes:
-        - ReadWriteMany
-      storageClassName: nfs-client-nopath
-      storage: 5Gi
-      selector:
-        volumeName: dev-example-project-game-app-logs-pv-fluentbit
-    - name: dev-example-project-battle-app-logs-pvc-fluentbit
-      accessModes:
-        - ReadWriteMany
-      storageClassName: nfs-client-nopath
-      storage: 5Gi
-      selector:
-        volumeName: dev-example-project-battle-app-logs-pv-fluentbit
-    - name: stg-example-project-game-app-logs-pvc-fluentbit
-      accessModes:
-        - ReadWriteMany
-      storageClassName: nfs-client-nopath
-      storage: 5Gi
-      selector:
-        volumeName: stg-example-project-game-app-logs-pv-fluentbit
-    - name: qa-example-project-game-app-logs-pvc-fluentbit
-      accessModes:
-        - ReadWriteMany
-      storageClassName: nfs-client-nopath
-      storage: 5Gi
-      selector:
-        volumeName: qa-example-project-game-app-logs-pv-fluentbit
-    # Single replica → RWO is sufficient and SQLite locking is safer than RWX
-    - name: fluent-bit-state-pvc
-      accessModes:
-        - ReadWriteOnce
-      storageClassName: nfs-client-server1
-      storage: 5Gi
+  enabled: false
 
 # =============================================================================
 # ServiceMonitor (Prometheus metrics for Fluent Bit)

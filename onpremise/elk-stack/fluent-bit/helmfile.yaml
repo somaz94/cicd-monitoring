@@ -4,6 +4,10 @@
 # Chart version mirrored from upstream Chart.yaml release.
 
 releases:
+  # Single DaemonSet release, tails /var/log/containers for dev/qa/stg example-project
+  # workloads. Replaces the prior NFS-aggregator Deployment (RWX PVCs from NFS).
+  # See values/dev.yaml header for the per-INPUT layout and the pino-pretty
+  # workaround notes.
   - name: fluent-bit
     namespace: logging
     chart: .
