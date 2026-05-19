@@ -167,5 +167,4 @@ This procedure is a fallback after ES index loss. A comprehensive backup strateg
 
 - Applied values: [../values/dev.yaml](../values/dev.yaml)
 - Phase 1a background: [prod-tail-config-en.md](./prod-tail-config-en.md)
-- Source plan: `~/.claude/plans/fluent-bit-prod-hardening.md` (Re-ingest procedure section)
 - Fluent Bit tail DB official docs: https://docs.fluentbit.io/manual/pipeline/inputs/tail#db

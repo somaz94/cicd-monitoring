@@ -26,6 +26,37 @@ This is *temporary* because once the application emits raw NDJSON directly, filt
 
 <br/>
 
+## 1-1. Current state (2026-05-19)
+
+- **dev.game
+- **qa.game** — still on pino-pretty. **No fixed date for the raw-NDJSON switch** — when it happens, follow §3 (full removal) to delete the lua/pino_pretty regex/parser and consolidate example-project_json_extract back to a single block (`Match example-project.stdout.*`, `Key_Name message`). A drop-in trigger prompt for the next session lives in §7
+- **stg.game** — INPUT + modify filter were removed on 2026-05-19 (staging-example-project namespace retired). Bring the INPUT and modify filter back if staging is redeployed
+
+### Two pino-pretty line shapes on qa.game (regex updated 2026-05-19)
+
+Two shapes have been observed in qa.game stdout:
+
+| Shape | Example | When it appears |
+|---|---|---|
+| A: msg is a raw JSON object | `[ts] INFO: {"level":30,"time":...,"data":{...}}` | Request-handling (most traffic) |
+| B: msg has controller-name + sub-object prefix | `[ts] INFO: CostumesController {/costumes}: {"context":...}` or `[ts] INFO: Mapped {/costumes/purchase, POST} route {"...}` | Pod boot — routing setup (NestJS-style) |
+
+The original regex `^\[[^\]]+\]\s+\w+:\s+(?<log>\{.*\})\s*$` matches only Shape A; on Shape B the greedy `\{.*\}` captures `{/costumes}: {"context":...}`, which is invalid JSON. While a qa.game pod stays running for hours, no fresh routing-setup lines are emitted and the limitation is invisible; the moment a restart happens, Shape B lines flood in and traceId / data.* promotion silently fails for those lines.
+
+The regex was updated on 2026-05-19 to cover both shapes:
+
+```
+^\[[^\]]+\]\s+\w+:\s+.*?(?<log>\{"[\w-]+":.*\})\s*$
+```
+
+- `.*?` (lazy) absorbs any controller-name / route-description prefix before the JSON
+- `\{"[\w-]+":` anchors the capture to a JSON object that *starts* with `{"<key>":`, skipping past unquoted `{sub-object}` placeholders inside the prefix
+- Verified against Shape A (backward compat), both Shape B variants, JSON with nested data, and plain-text lines (no JSON → no match → fluentd fallback handles them)
+
+Plain-text lines with no JSON (e.g. `[ts] INFO: Application started.`) fall through unchanged: regex misses → fluent-bit example-project_json_extract is skipped → fluentd's record_transformer Step 2 fallback sets level="info", message=raw text, @timestamp=receive time. fluentd's `skip invalid event` counter stays at 0 (no data loss).
+
+<br/>
+
 ## 2. Coordinate with the game team first
 
 Before changing anything, confirm the following with the game team:
@@ -153,11 +184,11 @@ The `# 🔥 PINO-PRETTY WORKAROUND (TEMPORARY)` block (~20 lines) at the top of 
 
 <br/>
 
-## 4. Partial switch — only some components on raw NDJSON
+## 4. Partial switch — only some components on raw JSON
 
-If the game team switches only `dev-example-project-game` to raw NDJSON while other components keep emitting pino-pretty:
+If the game team switches some components to raw JSON while others keep emitting pino-pretty, split the existing `Match example-project.stdout.*` into per-component patterns.
 
-Split the existing `Match example-project.stdout.*` into per-component patterns.
+> **2026-05-19 application record**: dev.game (Pino raw NDJSON) and dev.battle (Serilog raw JSON) switched to raw; qa.game stayed on pino-pretty. The stg.game INPUT was removed the same day (staging-example-project namespace retired). The examples below reflect the current applied state.
 
 ### 4-1. Split the lua and pino_pretty_extract filter Match patterns
 
@@ -167,31 +198,41 @@ Target only components that have *not* switched:
      [FILTER]
          Name lua
 -        Match example-project.stdout.*
-+        Match example-project.stdout.dev.battle.* example-project.stdout.qa.game.* example-project.stdout.stg.game.*
++        Match example-project.stdout.qa.game.*
          script /fluent-bit/scripts/strip_ansi.lua
          call strip_ansi
 
      [FILTER]
          Name parser
 -        Match example-project.stdout.*
-+        Match example-project.stdout.dev.battle.* example-project.stdout.qa.game.* example-project.stdout.stg.game.*
++        Match example-project.stdout.qa.game.*
          Key_Name message
          Parser pino_pretty_extract
          Reserve_Data On
          Preserve_Key Off
 ```
 
-> fluent-bit's `Match` accepts multiple space-separated patterns. If only dev game switched, list the other 3.
+> fluent-bit's `Match` accepts multiple space-separated patterns. If more than one component is still on pino-pretty, list them all: `Match example-project.stdout.qa.game.* example-project.stdout.dev.battle.*`.
 
 ### 4-2. Split example-project_json_extract into *two* filters
 
-Two input shapes now coexist: switched components emit raw NDJSON in `message` (from cri parser), and non-switched components have the `log` key produced by pino_pretty_extract:
+Two input shapes now coexist: switched components emit raw JSON in `message` (from the cri parser), and non-switched components have the `log` key produced by pino_pretty_extract:
 
 ```ini
-# For raw-NDJSON-switched components — parse directly from message
+# For raw-JSON-switched components — parse directly from message
+# dev.game = Pino NDJSON, dev.battle = Serilog (.NET) JSON. Both schemas are
+# normalized in fluentd's record_transformer (Pino: level int/time int;
+# Serilog: Level string/Timestamp ISO8601/MessageTemplate). See
+# fluentd values/dev.yaml 02_filters.conf Step 2/3 for the normalization logic.
+#
+# Caveat: fluent-bit's [FILTER] Match accepts a *single* wildcard pattern
+# (unlike [OUTPUT] routing — space-separated multi-patterns silently match
+# nothing here). To cover both dev.game and dev.battle, either use a single
+# wildcard like `example-project.stdout.dev.*`, or split the [FILTER] block into two.
+# The single-wildcard form is shown below:
 [FILTER]
     Name parser
-    Match example-project.stdout.dev.game.*
+    Match example-project.stdout.dev.*
     Key_Name message
     Parser example-project_json_extract
     Reserve_Data On
@@ -200,7 +241,7 @@ Two input shapes now coexist: switched components emit raw NDJSON in `message` (
 # For still-pino-pretty components — parse from the log key produced by pino_pretty_extract
 [FILTER]
     Name parser
-    Match example-project.stdout.dev.battle.* example-project.stdout.qa.game.* example-project.stdout.stg.game.*
+    Match example-project.stdout.qa.game.*
     Key_Name log
     Parser example-project_json_extract
     Reserve_Data On
@@ -208,6 +249,21 @@ Two input shapes now coexist: switched components emit raw NDJSON in `message` (
 ```
 
 Keep `luaScripts` and `[PARSER] pino_pretty_extract` as long as *any* component still emits pino-pretty. Once the final component switches, follow §3's full-removal procedure.
+
+### 4-3. Serilog schema handling (.NET applications)
+
+A .NET application such as `dev-example-project-battle` emits JSON via Serilog instead of Pino, so the key names differ and fluentd needs a normalization mapping:
+
+| Serilog key | Value shape | Normalized to |
+|---|---|---|
+| `Level` (capital L) | string (`"Verbose"`/`"Debug"`/`"Information"`/`"Warning"`/`"Error"`/`"Fatal"`) | `level` (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) |
+| `Timestamp` | ISO8601 string with offset (e.g. `"2026-05-19T04:04:16.18+00:00"`) | `@timestamp` (Asia/Seoul ISO8601) |
+| `MessageTemplate` | string with `{Placeholder}` tokens | `message` (template body verbatim) |
+| `Properties` | free-form object | preserved (ES dynamic mapping) |
+
+Additionally, the .NET application's *bootup plain-text lines* (e.g. `Now listening on: http://[::]:8081`, `info: Microsoft.Hosting.Lifetime[0]`) are not JSON, so fluent-bit's `example-project_json_extract` parser fails on them. In that case the `message` key produced by the cri parser keeps the raw text and is forwarded as-is to fluentd, where Step 2's fallback assigns `level="info"` and `message=raw text` — these lines still index cleanly.
+
+The fluentd-side normalization mapping lives in one place — `observability/logging/fluentd/values/dev.yaml`, `02_filters.conf` Step 2 (level + message) and Step 3 (`@timestamp` + `remove_keys`). The full-removal procedure in §3 of this guide does not affect Serilog handling (the fluentd-side change is self-contained).
 
 <br/>
 
@@ -253,4 +309,51 @@ git add observability/logging/fluent-bit/values/dev.yaml
 git commit -m "refactor(observability/logging/fluent-bit): drop pino-pretty workaround after game team switched stdout to raw ndjson"
 ```
 
-Record the workaround removal in `~/.claude/plans/fluent-bit-prod-aws-topology-review.md` and update the "follow-ups" section of [deployment-to-daemonset-en.md](./deployment-to-daemonset-en.md).
+After removal, update the "follow-ups" section of [deployment-to-daemonset-en.md](./deployment-to-daemonset-en.md) to leave a trail.
+
+<br/>
+
+## 7. Trigger prompt for when qa.game switches off pino-pretty
+
+When the game team finally turns off pino-pretty on qa.game stdout, drop the following prompt into Claude in the next session to start the §3 full-removal procedure automatically:
+
+```
+In ~/gitlab-project/kuberntes-infra/, qa.game stdout has switched to raw NDJSON. Please:
+
+1. Apply the §3 full-removal procedure from observability/logging/fluent-bit/docs/pino-pretty-removal-en.md:
+   - Remove the luaScripts.strip_ansi.lua block from values/dev.yaml
+   - Remove [FILTER] lua strip_ansi (Match example-project.stdout.qa.game.*)
+   - Remove [FILTER] parser pino_pretty_extract (Match example-project.stdout.qa.game.*)
+   - Remove [PARSER] pino_pretty_extract inside config.customParsers
+   - Widen the raw-branch example-project_json_extract Match from example-project.stdout.dev.*
+     to example-project.stdout.*, and delete the pino-pretty branch
+     (Match qa.game.*, Key_Name log)
+   - Remove the 🔥 PINO-PRETTY block at the top of the file, or compress it
+     to a one-line "switch completed" trail
+2. Update 4 docs:
+   - docs/pino-pretty-removal.md / -en.md: drop the qa.game line from §1-1
+     "current state", mark §4 partial-switch section as historical, and
+     remove §7 (this prompt) since it is no longer needed
+   - docs/deployment-to-daemonset.md / -en.md: add a "qa.game raw switch
+     completed (date)" trail to §8 follow-ups
+3. helmfile lint + diff + apply (require explicit user approval first)
+4. ES verification:
+   - Latest doc in dev-example-project-game / dev-example-project-battle / qa-example-project-game
+   - All three should have data.traceId / data.requestPath promoted (qa.game
+     now flows through the single raw-branch example-project_json_extract)
+   - fluentd skip invalid event count stays at 0
+5. Commit (single-line EN, Conventional Commits) + update plan (add a final
+   lessons-learned entry)
+
+This task corresponds to "후속 plan 후보 #1" in
+~/.claude/plans/gitlab-project-kuberntes-infra-fluent-bit-pino-pretty-partial-removal-crimson-egret.md.
+Once done, drop that candidate from the plan and delete §7 from these docs.
+```
+
+The prompt assumes the switch has been confirmed by:
+
+```bash
+# Confirm qa.game stdout actually switched to raw NDJSON
+kubectl -n qa-example-project logs $(kubectl -n qa-example-project get pod -l app.kubernetes.io/instance=qa-example-project-game -o jsonpath='{.items[0].metadata.name}') --tail=5
+# → If the body begins with {"level":30,...} (no \x1b, no [2026-... prefix), the switch is done.
+```

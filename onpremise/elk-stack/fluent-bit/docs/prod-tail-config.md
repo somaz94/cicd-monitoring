@@ -6,7 +6,7 @@ The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev
 > - fluent-bit: `DB` checkpoints, `storage.type filesystem`, state PVC (`fluent-bit-state-pvc`, declared 5Gi / actual 2Gi, `nfs-client-server1`), `updateStrategy: Recreate`, OUTPUT `storage.total_limit_size 2G`.
 > - fluentd: buffer `queue_limit_length 128` + `total_limit_size 4GB` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule with 7 alerts.
 > - Only `Read_from_Head` remains `false` (awaiting Phase 1b promotion).
-> - Detailed change log: `~/.claude/plans/fluent-bit-prod-hardening.md`. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure-en.md).
+> - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure-en.md).
 
 <br/>
 

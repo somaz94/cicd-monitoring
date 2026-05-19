@@ -7,34 +7,45 @@
 # is the kubelet-managed symlink directory; this DaemonSet uses the standard
 # cri parser to read CRI-formatted container output.
 #
-# Coverage (4 INPUTs):
+# Coverage (3 INPUTs):
 #   - dev game    (ns dev-example-project)     → log_source dev-example-project-game
 #   - dev battle  (ns dev-example-project)     → log_source dev-example-project-battle
 #   - qa game     (ns qa-example-project)      → log_source qa-example-project-game
-#   - stg game    (ns staging-example-project) → log_source stg-example-project-game
 #
 # Each INPUT carries its own tag and DB file so state is independent and one
-# pod's tail position cannot mask another. The 4 modify filters set the same
+# pod's tail position cannot mask another. The 3 modify filters set the same
 # log_source values the previous NFS aggregator used, so existing ES indices
-# (dev-example-project-game-*, dev-example-project-battle-*, qa-example-project-game-*,
-# stg-example-project-game-*) keep receiving — fluentd routing is unchanged.
+# (dev-example-project-game-*, dev-example-project-battle-*, qa-example-project-game-*) keep
+# receiving — fluentd routing is unchanged. The historical stg INPUT was
+# removed 2026-05-19 (staging-example-project namespace has zero pods); to bring it
+# back, re-add an INPUT + modify filter and tag with example-project.stdout.stg.game.*.
 #
-# 🔥 PINO-PRETTY WORKAROUND (TEMPORARY)
-# dev game pods currently emit pino-pretty formatted lines:
+# 🔥 PINO-PRETTY WORKAROUND (PARTIAL — qa.game only as of 2026-05-19)
+# qa.game pods still emit pino-pretty formatted lines:
 #   [2026-05-18 07:21:29.744 +0000] \x1b[32mINFO\x1b[39m: \x1b[90m{"level":30,...}\x1b[39m
 # The 3-filter chain (lua strip_ansi → parser pino_pretty_extract → parser
-# example-project_json_extract) extracts the embedded JSON for fluentd's Pino->Winston
-# normalization. The filter chain matches example-project.stdout.* (all 4 inputs); if
-# any component switches off pino-pretty independently, split the match patterns
-# at that time.
+# example-project_json_extract via Key_Name log) extracts the embedded JSON for
+# fluentd's Pino->Winston normalization. On 2026-05-19 dev.game + dev.battle
+# switched their stdout to raw JSON, so the lua/pino_pretty Match patterns are
+# narrowed to example-project.stdout.qa.game.* only; the example-project_json_extract filter
+# is split into two — a raw branch (Match example-project.stdout.dev.* covers both
+# dev.game and dev.battle, Key_Name message) and a pino-pretty branch
+# (Match example-project.stdout.qa.game.*, Key_Name log). dev.battle uses Serilog
+# schema (Level / Timestamp / MessageTemplate) which is normalized in fluentd
+# (see fluentd values/dev.yaml 02_filters.conf Step 2/3).
+# Note: fluent-bit [FILTER] Match accepts a *single* wildcard pattern; the
+# space-separated multi-pattern form valid in [OUTPUT] routing silently
+# matches nothing here, so single-wildcard tag namespaces are intentional.
 #
-# 🔥 WHEN GAME TEAM DISABLES pino-pretty FOR STDOUT, delete these:
-#   - the luaScripts.strip_ansi.lua block
-#   - the [FILTER] lua strip_ansi filter
-#   - the [FILTER] parser pino_pretty_extract filter
-#   - the [PARSER] pino_pretty_extract custom parser
-#   Keep [FILTER] parser example-project_json_extract — it then operates directly on
-#   the raw ndjson stream. Search "🔥" markers below to find every removable line.
+# 🔥 WHEN qa.game ALSO SWITCHES off pino-pretty, follow §3 (full removal) of
+# docs/pino-pretty-removal-en.md:
+#   - delete the luaScripts.strip_ansi.lua block
+#   - delete the [FILTER] lua strip_ansi filter
+#   - delete the [FILTER] parser pino_pretty_extract filter
+#   - delete the [PARSER] pino_pretty_extract custom parser
+#   - merge the two example-project_json_extract branches back into one
+#     (Match example-project.stdout.*, Key_Name message)
+#   Search "🔥" markers below to find every removable line.
 # =============================================================================
 
 kind: DaemonSet
@@ -170,27 +181,9 @@ config:
         DB.sync normal
         storage.type filesystem
 
-    # Staging ExampleProject Game stdout (namespace is staging-example-project; log_source
-    # keeps the "stg-" prefix to match the existing ES index).
-    [INPUT]
-        Name tail
-        Path /var/log/containers/staging-example-project-game-*_staging-example-project_*.log
-        Path_Key filepath
-        Tag example-project.stdout.stg.game.*
-        Parser cri
-        Mem_Buf_Limit 50MB
-        Skip_Long_Lines On
-        Skip_Empty_Lines On
-        Refresh_Interval 10
-        Read_from_Head false
-        DB /fluent-bit/state/tail-stg-game.db
-        DB.locking true
-        DB.sync normal
-        storage.type filesystem
-
   filters: |
     # Enrich with Kubernetes metadata (namespace, pod, labels, annotations) for
-    # all 4 INPUTs. Adds a nested "kubernetes" object — useful for Kibana
+    # all 3 INPUTs. Adds a nested "kubernetes" object — useful for Kibana
     # filtering.
     [FILTER]
         Name kubernetes
@@ -200,14 +193,14 @@ config:
         K8S-Logging.Parser Off
         K8S-Logging.Exclude Off
 
-    # 🔥 PINO-PRETTY WORKAROUND BEGIN
+    # 🔥 PINO-PRETTY WORKAROUND BEGIN (qa.game only as of 2026-05-19)
     # Strip ANSI CSI color sequences (\x1b[<digits>m) that pino-pretty injects.
     # Acts on the `message` field — Parser cri stores the container log line
     # under `message` (not `log`); Lua + parser filters below must align on the
     # same key.
     [FILTER]
         Name lua
-        Match example-project.stdout.*
+        Match example-project.stdout.qa.game.*
         script /fluent-bit/scripts/strip_ansi.lua
         call strip_ansi
 
@@ -216,20 +209,40 @@ config:
     # `log` key for the next parser stage.
     [FILTER]
         Name parser
-        Match example-project.stdout.*
+        Match example-project.stdout.qa.game.*
         Key_Name message
         Parser pino_pretty_extract
         Reserve_Data On
         Preserve_Key Off
     # 🔥 PINO-PRETTY WORKAROUND END
 
-    # Parse the JSON payload — promotes level/time/req/context/data to top-level.
-    # Consumes the `log` field produced by pino_pretty_extract above (or, when
-    # pino-pretty is disabled upstream, switch Key_Name to `message` and remove
-    # the regex stage — see top-of-file 🔥 notes).
+    # Raw-JSON branch — dev.game (Pino NDJSON) + dev.battle (Serilog JSON).
+    # Both components emit valid JSON as the first character of stdout, so
+    # parse straight from `message` (the cri parser key). The Match below uses
+    # a single wildcard pattern example-project.stdout.dev.* because fluent-bit's
+    # [FILTER] Match is a single-pattern string (unlike [OUTPUT] routing) —
+    # space-separated multi-patterns silently match nothing. dev.* covers
+    # dev.game + dev.battle and excludes qa.game (still pino-pretty).
+    # dev.battle uses a different key shape (Level / Timestamp / MessageTemplate
+    # / Properties); fluentd's 02_filters.conf normalizes that to level /
+    # @timestamp / message. Plain-text bootup lines (ASP.NET Core "Now
+    # listening on: ...", "info: Microsoft.Hosting.Lifetime[0]") fail JSON
+    # parse here and pass through unchanged — fluentd treats the raw text as
+    # the message body and falls back to level=info / @timestamp=receive time.
     [FILTER]
         Name parser
-        Match example-project.stdout.*
+        Match example-project.stdout.dev.*
+        Key_Name message
+        Parser example-project_json_extract
+        Reserve_Data On
+        Preserve_Key Off
+
+    # Pino-pretty branch — qa.game. Consumes the `log` field produced by
+    # pino_pretty_extract above. Promotes level/time/req/context/data to
+    # top-level for fluentd's Pino->Winston normalization.
+    [FILTER]
+        Name parser
+        Match example-project.stdout.qa.game.*
         Key_Name log
         Parser example-project_json_extract
         Reserve_Data On
@@ -266,16 +279,6 @@ config:
         Set label game
         Set collection_path stdout
 
-    [FILTER]
-        Name modify
-        Match example-project.stdout.stg.game.*
-        Set log_source stg-example-project-game
-        Set environment stg
-        Set app example-project
-        Set component game
-        Set label game
-        Set collection_path stdout
-
   outputs: |
     # Forward to fluentd (same target as the retired NFS aggregator). fluentd's
     # existing <match example-project.**> block handles Pino->Winston normalization,
@@ -299,22 +302,38 @@ config:
   customParsers: |
     # 🔥 PINO-PRETTY WORKAROUND parser — extracts JSON object after
     # "[YYYY-MM-DD hh:mm:ss.SSS +zzzz] LEVEL: " prefix produced by pino-pretty.
-    # Remove this parser when stdout switches to raw ndjson.
+    # Used by the qa.game branch only (as of 2026-05-19); remove when qa.game
+    # also switches to raw JSON stdout.
+    #
+    # Two pino-pretty line shapes are observed:
+    #   A) "[ts] LEVEL: {JSON}"                                — msg is already
+    #      a raw JSON object (typical request-handling logs).
+    #   B) "[ts] LEVEL: <controller-name> {sub}: ... {JSON}"    — msg has a
+    #      free-text prefix and sometimes intermediate "{sub-object}" tokens
+    #      that are not valid JSON (e.g. NestJS routing setup such as
+    #      "CostumesController {/costumes}: {...}" or
+    #      "Mapped {/costumes/purchase, POST} route {...}").
+    # The regex below absorbs prefix via lazy `.*?`, then anchors `log` to the
+    # last segment that *starts* with `{"key":...` — required so it skips over
+    # unquoted "{sub-object}" placeholders and only captures the trailing valid
+    # Pino payload.
     [PARSER]
         Name pino_pretty_extract
         Format regex
-        Regex ^\[[^\]]+\]\s+\w+:\s+(?<log>\{.*\})\s*$
+        Regex ^\[[^\]]+\]\s+\w+:\s+.*?(?<log>\{"[\w-]+":.*\})\s*$
 
-    # JSON parser for the extracted (or natively raw, post-pino-pretty-removal)
-    # ndjson payload. Time parsing intentionally omitted — Pino's "time" field
-    # is Unix ms, which fluentd's record_transformer normalizes downstream to
+    # JSON parser for the extracted (or natively raw) JSON payload. Used by
+    # both the raw branch (dev.game + dev.battle, Key_Name message) and the
+    # pino-pretty branch (qa.game, Key_Name log). Time parsing intentionally
+    # omitted — Pino's "time" (Unix ms int) and Serilog's "Timestamp" (ISO8601
+    # string) are both normalized in fluentd's record_transformer to
     # "@timestamp" in Asia/Seoul ISO 8601.
     [PARSER]
         Name example-project_json_extract
         Format json
 
-# 🔥 PINO-PRETTY WORKAROUND — entire luaScripts block can be removed when
-# game team disables pino-pretty on stdout.
+# 🔥 PINO-PRETTY WORKAROUND — luaScripts block stays as long as qa.game emits
+# pino-pretty. Remove together with the lua filter once qa.game also switches.
 luaScripts:
   strip_ansi.lua: |
     -- Strip ANSI CSI escape sequences used by pino-pretty for color output.

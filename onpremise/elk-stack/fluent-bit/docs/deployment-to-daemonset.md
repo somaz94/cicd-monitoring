@@ -37,7 +37,7 @@ Before the migration, the PoC release `fluent-bit-stdout` ran in parallel with t
 | stdout DaemonSet 3 pods restart | 0 |
 | fluentd `skip invalid event` | 0 |
 
-The detailed PoC plan and decision trail live in plan archives (`~/.claude/plans/fluent-bit-prod-aws-topology-review.md`, `fluent-bit-prod-aws-topology-verification-prompt.md`).
+The decision trail for the parallel-run PoC lives in the git log of fluent-bit / stdout DaemonSet commits.
 
 <br/>
 
@@ -179,5 +179,10 @@ DaemonSet stability: 3 pods restart=0 / ready=true. fluentd `skip invalid event`
 ## 8. Follow-ups
 
 - [pino-pretty removal guide](./pino-pretty-removal-en.md) — lines to delete in dev.yaml once the game team turns off pino-pretty in application stdout
+  - **2026-05-19 — partial removal applied**: dev.game (Pino raw NDJSON) and dev.battle (Serilog raw JSON) switched to raw. The lua / pino_pretty_extract Match patterns narrowed to `example-project.stdout.qa.game.*`, and example-project_json_extract was split into a raw branch and a pino-pretty branch. When qa.game also switches, follow §3 of the guide for full removal
+  - **2026-05-19 — stg.game INPUT removed**: staging-example-project namespace retired. The Coverage in §1 of this document shrank from 4 INPUTs to 3 INPUTs. Restoring staging will require re-adding both the INPUT and the modify filter
+  - **2026-05-19 — fluentd Serilog normalization added**: the dev.battle Serilog schema (Level / Timestamp / MessageTemplate) is now normalized in fluentd's `02_filters.conf` Step 2/3. Mapping details: see §4-3 of the pino-pretty removal guide
+  - **2026-05-19 — qa.game pino_pretty_extract regex updated**: now also matches NestJS routing-setup lines like `[ts] INFO: CostumesController {/costumes}: {...}`. The regex was changed to `^\[[^\]]+\]\s+\w+:\s+.*?(?<log>\{"[\w-]+":.*\})\s*$`. Backward-compatible with the original request-handling format A, also handles routing-setup format B and nested-data JSON. Plain-text lines (no JSON) are handled by the fluentd fallback. See §1-1 of the pino-pretty removal guide
+  - **qa.game follow-up — trigger prompt for the future pino-pretty OFF switch**: when the game team finally disables pino-pretty on qa.game, the prompt in §7 of the pino-pretty removal guide can be handed to the next Claude session as-is to kick off the §3 full-removal procedure
 - `fluent-bit-prod-hardening` plan — prod application is a separate plan. The combination of this migration plus AWS node-ephemerality handling goes there
 - Grafana fluent-bit dashboard's DaemonSet awareness — the DaemonSet pod labels (`app.kubernetes.io/instance: fluent-bit`) are identical to the previous Deployment, so the dashboard needs no change

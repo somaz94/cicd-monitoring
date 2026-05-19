@@ -1,4 +1,10 @@
 #!/bin/bash
+# DEPRECATED — superseded by scripts/upgrade-sync/check-versions.py (Phase 3 / MR-K5).
+# This file remains as a reference during the 1–2 week parallel-run window
+# and will be removed in a followup-removal MR (alongside the .sh deletions
+# for render-mr-body, generate-deploy-child, and auto-upgrade from
+# MR-K2 / MR-K3 / MR-K4). All callers have been switched to
+# `scripts/python/run.sh check-versions.py`.
 set -euo pipefail
 
 # ============================================================
@@ -69,6 +75,7 @@ find_managed_files() {
     -not -path '*/_deprecated/*' \
     -not -path '*/_optional/*' \
     -not -path '*/scripts/upgrade-sync/*' \
+    -not -path '*/tests/python/fixtures/*' \
     | sort
 }
 

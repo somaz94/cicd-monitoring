@@ -233,27 +233,41 @@ fileConfigs:
       emit_invalid_record_to_error false
     </filter>
 
-    # Step 2: Pino to Winston normalization
-    # Convert Pino format (numeric level, time, msg) to Winston format (string level, timestamp, message)
+    # Step 2: Pino
+    # Three input shapes converge on (level / message / label):
+    #   - Pino (Node.js): level is Integer (10/20/30/40/50/60), msg is the body
+    #   - Serilog (.NET): Level is capital-L String ("Information"/"Warning"/...),
+    #                     MessageTemplate is the body
+    #   - Plain text (ASP.NET Core bootup, fluent-bit JSON-parse miss): neither
+    #                     keyspace present → level="info", message=raw text
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
-        level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; else; record["level"] || "info"; end}
-        message ${m = record["msg"] || record["message"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
+        level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; elsif record["Level"].is_a?(String); {"Verbose"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Fatal"=>"fatal"}[record["Level"]] || record["Level"].downcase; else; record["level"] || "info"; end}
+        message ${m = record["msg"] || record["message"] || record["MessageTemplate"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
         label ${record["label"] || "unknown"}
       </record>
     </filter>
 
     # Step 3: Timestamp normalization + cleanup of unnecessary fields
-    # Pino time(Unix ms)
+    # Source-of-truth precedence:
+    #   - Pino:    time (Unix ms Integer) → Asia/Seoul ISO8601
+    #   - Serilog: Timestamp (ISO8601 String w/ offset) → Asia/Seoul ISO8601
+    #   - generic timestamp
+    #   - fallback → receive time (Asia/Seoul ISO8601)
+    # Serilog parse is wrapped in `rescue` so a malformed Timestamp falls back to
+    # the raw string instead of breaking the filter chain.
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
-        @timestamp ${if record["time"].is_a?(Integer); t = Time.at(record["time"]/1000.0); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
+        @timestamp ${if record["time"].is_a?(Integer); t = Time.at(record["time"]/1000.0); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["Timestamp"]; (Time.iso8601(record["Timestamp"]).localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z") rescue record["Timestamp"]); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
       </record>
-      remove_keys time,msg,filepath,req,log
+      # Drop original keys we already promoted to canonical names.
+      # Properties stays (Serilog free-form payload, picked up by ES dynamic
+      # mapping under the dev-example-project-battle index).
+      remove_keys time,msg,filepath,req,log,Timestamp,Level,MessageTemplate
     </filter>
 
     # Step 4: Handle nested JSON inside the data field

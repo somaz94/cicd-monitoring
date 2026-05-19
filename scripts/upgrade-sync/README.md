@@ -4,7 +4,7 @@ Canonical templates and a sync tool for the per-component `upgrade.sh` scripts.
 
 Each component directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, `observability/monitoring/node-exporter/`, etc.) has an `upgrade.sh` for version upgrades. Most components are Helm charts, but Ansible-deployed components (e.g. node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.sh](sync.sh).
 
-To survey which charts have an upstream upgrade available before touching any `upgrade.sh`, use [check-versions.sh](check-versions.sh) (read-only).
+To survey which charts have an upstream upgrade available before touching any `upgrade.sh`, use [check-versions.py](check-versions.py) (read-only).
 
 To inspect or bulk-clean the `backup/` directories across every chart at once, use [manage-backups.sh](manage-backups.sh).
 
@@ -17,7 +17,7 @@ To inspect or bulk-clean the `backup/` directories across every chart at once, u
 3. [Architecture](#architecture)
 4. [Canonical templates](#canonical-templates)
 5. [sync.sh usage](#syncsh-usage)
-6. [check-versions.sh usage](#check-versionssh-usage)
+6. [check-versions.py usage](#check-versionspy-usage)
 7. [How it works (internals)](#how-it-works-internals)
 8. [Adding a new chart](#adding-a-new-chart)
 9. [Adding a new canonical variant](#adding-a-new-canonical-variant)
@@ -36,7 +36,7 @@ scripts/upgrade-sync/
 ├── README.md                          # Korean docs
 ├── README-en.md                       # this file
 ├── sync.sh                            # sync tool (cross-platform)
-├── check-versions.sh                  # preflight upgrade scan (read-only)
+├── check-versions.py                  # preflight upgrade scan (read-only)
 ├── manage-backups.sh                  # bulk backup management (list/cleanup/purge)
 └── templates/
     ├── external-standard.sh           # external chart (helm repo) + default flow
@@ -471,7 +471,7 @@ For verifying that the canonical extraction logic is correct *before* `--insert-
 
 <br/>
 
-## check-versions.sh usage
+## check-versions.py usage
 
 A read-only preflight tool. Before running the per-chart `upgrade.sh` one by one, use this to scan every managed chart and see which ones have an upstream upgrade available. It does not modify any files — it only prints a summary table.
 
@@ -491,7 +491,7 @@ Each template uses the same upstream lookup logic its `upgrade.sh` already relie
 ### Default run
 
 ```bash
-./scripts/upgrade-sync/check-versions.sh
+./scripts/upgrade-sync/check-versions.py
 ```
 
 ```
@@ -535,17 +535,17 @@ STATUS column (main table = Stack/component version):
 
 ```bash
 # Only print rows that have an upgrade or an error
-./scripts/upgrade-sync/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.py --updates-only
 
 # Restrict by path substring (repeatable, OR-matched)
-./scripts/upgrade-sync/check-versions.sh --only observability/monitoring
-./scripts/upgrade-sync/check-versions.sh --only argo-cd --only valkey
+./scripts/upgrade-sync/check-versions.py --only observability/monitoring
+./scripts/upgrade-sync/check-versions.py --only argo-cd --only valkey
 
 # Skip `helm repo update` (faster if you just updated)
-./scripts/upgrade-sync/check-versions.sh --no-update
+./scripts/upgrade-sync/check-versions.py --no-update
 
 # Combine
-./scripts/upgrade-sync/check-versions.sh --updates-only --only observability
+./scripts/upgrade-sync/check-versions.py --updates-only --only observability
 ```
 
 <br/>
@@ -564,13 +564,13 @@ The following tools must be on `PATH` (CI runner installs them automatically via
 | Tool | Purpose | Used by |
 |---|---|---|
 | `bash` (>= 3.2 / 4+) | every sync/upgrade script | always |
-| `helm` | helm-repo lookups, OCI chart pull | `check-versions.sh` + every helm-based `upgrade.sh` |
+| `helm` | helm-repo lookups, OCI chart pull | `check-versions.py` + every helm-based `upgrade.sh` |
 | `helmfile` | helmfile sync/diff/apply | component deploys (CI `apply-components.sh`, local `helmfile apply`) |
 | `kubectl` | cluster apply / context management | invoked by helmfile, CI `helmfile-apply-component.sh` |
-| `git` | git-tags lookups, automated commit/push | `local-with-templates` (git mode), CI `auto-upgrade.sh` |
-| `curl` | upstream metadata fetch | `check-versions.sh`, every version-source template |
-| `python3` | JSON parsing (helm search / GitHub releases / Docker Hub tags responses) | `check-versions.sh`, `local-cr-version`, `external-oci-cr-version`, `ansible-github-release`, `external-oci-with-mirror`, ... |
-| `jq` | JSON processing | `auto-upgrade.sh` helpers + some helm plugins |
+| `git` | git-tags lookups, automated commit/push | `local-with-templates` (git mode), CI `auto-upgrade.py` |
+| `curl` | upstream metadata fetch | `check-versions.py`, every version-source template |
+| `python3` | JSON parsing (helm search / GitHub releases / Docker Hub tags responses) | `check-versions.py`, `local-cr-version`, `external-oci-cr-version`, `ansible-github-release`, `external-oci-with-mirror`, ... |
+| `jq` | JSON processing | some helm plugins (auto-upgrade's `jq` usage was replaced with python stdlib `json` in MR-K4) |
 | `yq` | YAML processing | CI `helmfile-apply-component.sh`, `apply-components.sh` |
 | `crane` | OCI image mirror (upstream → private registry) | `external-oci-with-mirror` template Step 7 mirror stage |
 | `tar`, `gzip` | archive handling | `helm pull --untar`, OCI chart downloads |
@@ -583,7 +583,7 @@ Same portability as sync.sh: works on macOS bash 3.2 and Linux bash 4+.
 
 ```bash
 # 1. Survey upstream versions across every managed chart
-./scripts/upgrade-sync/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.py --updates-only
 
 # 2. For each chart with an upgrade, inspect the detailed diff
 cd observability/monitoring/kube-prometheus-stack
@@ -616,7 +616,7 @@ Each chart's `upgrade.sh` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 | **Retention** | `KEEP_BACKUPS` policy (default 5). Auto-pruned via `auto_prune_backups` on every successful `upgrade.sh` run |
 | **Override** | Tune per-run via env: `KEEP_BACKUPS=1 ./upgrade.sh` |
 | **Bulk ops** | `scripts/upgrade-sync/manage-backups.sh` — `--list` / `--cleanup` / `--total-size` / `--purge` |
-| **Sync exclusion** | `sync.sh`, `check-versions.sh`, `manage-backups.sh`, and external publishing tools all skip `backup/` — backups never sync to other repos |
+| **Sync exclusion** | `sync.sh`, `check-versions.py`, `manage-backups.sh`, and external publishing tools all skip `backup/` — backups never sync to other repos |
 
 <br/>
 

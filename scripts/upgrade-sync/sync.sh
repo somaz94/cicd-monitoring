@@ -88,6 +88,7 @@ find_managed_files() {
     -not -path '*/_deprecated/*' \
     -not -path '*/_optional/*' \
     -not -path '*/scripts/upgrade-sync/*' \
+    -not -path '*/tests/python/fixtures/*' \
     | sort
 }
 
@@ -100,6 +101,7 @@ find_unmanaged_charts() {
     -not -path '*/_deprecated/*' \
     -not -path '*/_optional/*' \
     -not -path '*/templates/*' \
+    -not -path '*/tests/python/fixtures/*' \
     | while read -r chart; do
         local dir=""; dir=$(dirname "$chart")
         if [ ! -f "$dir/upgrade.sh" ]; then
