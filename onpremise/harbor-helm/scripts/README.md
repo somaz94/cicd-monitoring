@@ -17,7 +17,7 @@ cicd/harbor-helm/scripts/
 │   ├── backup/           # Original single-file script (legacy)
 │   └── README.md / README-en.md
 └── admin/                # Users / project members / OIDC group management
-    ├── harbor-admin.sh / harbor-admin-en.sh
+    ├── harbor-admin.sh
     └── README.md / README-en.md
 ```
 
@@ -43,10 +43,10 @@ Details: [`image-cleanup/README-en.md`](./image-cleanup/README-en.md)
 Manages users, project members, and OIDC group mappings via the Harbor v2.0 REST API. Pulls `harborAdminPassword` from [`cicd/harbor-helm/values/dev.yaml`](../../cicd/harbor-helm/values/dev.yaml).
 
 ```bash
-./admin/harbor-admin-en.sh users
-./admin/harbor-admin-en.sh promote admin@example.com
-./admin/harbor-admin-en.sh add-member library group:server developer
-./admin/harbor-admin-en.sh config
+./admin/harbor-admin.sh users
+./admin/harbor-admin.sh promote admin@example.com
+./admin/harbor-admin.sh add-member library group:server developer
+./admin/harbor-admin.sh config
 ```
 
 Details: [`admin/README-en.md`](./admin/README-en.md)

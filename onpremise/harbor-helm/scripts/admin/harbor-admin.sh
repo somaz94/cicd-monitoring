@@ -4,7 +4,6 @@
 # =============================================================================
 # Manages Harbor users, projects, members, and OIDC group mappings via the
 # Harbor v2.0 REST API. Designed for the example.com self-signed HTTPS setup.
-# For an alternate English-only variant, see harbor-admin-en.sh
 #
 # Dependencies: curl, python3 (stdlib only)
 #
@@ -537,8 +536,6 @@ ${BOLD}Examples${NC}
   $(basename "$0") set-oidc --name GitLab \\
     --endpoint http://gitlab.example.com \\
     --client-id 'GL_APP_ID' --client-secret 'GL_SECRET' --verify-cert false
-
-${DIM}English version: harbor-admin-en.sh${NC}
 EOF
   exit "${1:-0}"
 }

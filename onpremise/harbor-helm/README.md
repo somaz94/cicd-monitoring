@@ -26,7 +26,7 @@ harbor-helm/
 | Document | Description |
 |----------|-------------|
 | [TLS Setup](docs/tls-setup-en.md) | Self-signed cert issuance, renewal, client trust configuration |
-| [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak-en.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin-en.sh set-oidc` |
+| [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak-en.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin.sh set-oidc` |
 | [OIDC SSO — GitLab (legacy, pre-Phase 4)](docs/legacy/oidc-setup-gitlab-en.md) | Full GitLab-direct procedure preserved (rollback / fresh-environment reproduction) |
 
 <br/>
@@ -218,10 +218,10 @@ OIDC settings live in Harbor's core DB and cannot be declared via Helm values �
 User / promotion / project member / OIDC group mapping management lives in the top-level [`scripts/admin/`](scripts/admin/).
 
 ```bash
-scripts/admin/harbor-admin-en.sh users
-scripts/admin/harbor-admin-en.sh promote admin@example.com
-scripts/admin/harbor-admin-en.sh add-member library group:server developer
-scripts/admin/harbor-admin-en.sh config
+scripts/admin/harbor-admin.sh users
+scripts/admin/harbor-admin.sh promote admin@example.com
+scripts/admin/harbor-admin.sh add-member library group:server developer
+scripts/admin/harbor-admin.sh config
 ```
 
 The admin password is auto-extracted from this chart's `harborAdminPassword` by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/admin/README-en.md`](scripts/admin/README-en.md).

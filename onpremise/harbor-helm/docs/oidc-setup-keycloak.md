@@ -3,7 +3,7 @@
 Harbor ships with a native OIDC client, so **no Dex is needed** (difference from ArgoCD).
 OIDC settings are not exposed through Helm values; they live in the **Harbor core database** and must be injected via the **Harbor REST API or the Web UI**.
 
-This document covers the **Keycloak (current production IdP)** procedure, automated via [`../scripts/admin/harbor-admin-en.sh`](../scripts/admin/harbor-admin-en.sh) `set-oidc`. The legacy GitLab-direct procedure is preserved in [§7 Rollback / Legacy GitLab procedure](#7-rollback--legacy-gitlab-procedure).
+This document covers the **Keycloak (current production IdP)** procedure, automated via [`../scripts/admin/harbor-admin.sh`](../scripts/admin/harbor-admin.sh) `set-oidc`. The legacy GitLab-direct procedure is preserved in [§7 Rollback / Legacy GitLab procedure](#7-rollback--legacy-gitlab-procedure).
 
 > The first-time GitLab → Keycloak migration is documented separately in [`security/keycloak/docs/harbor-migration-en.md`](../../../security/keycloak/docs/harbor-migration-en.md).
 
@@ -59,7 +59,7 @@ kubectl -n $KC_NS exec -it keycloak-0 -- bash -lc "
 
 <br/>
 
-## 3. Inject OIDC config (recommended: `harbor-admin-en.sh set-oidc`)
+## 3. Inject OIDC config (recommended: `harbor-admin.sh set-oidc`)
 
 `set-oidc` previews the PUT body (secret masked), prompts for confirmation, then applies. Use `--dry-run` to validate without mutating.
 
@@ -68,7 +68,7 @@ cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # 1) Pre-validation (no PUT)
 HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
     --client-id harbor \
@@ -76,13 +76,13 @@ HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \
 
 # 2) Apply (interactive confirm; add -y for non-interactive)
 HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
     --client-id harbor
 
 # 3) Verify (secret never printed)
-./harbor-admin-en.sh config
+./harbor-admin.sh config
 ```
 
 Default PUT body sent by `set-oidc`:
@@ -134,7 +134,7 @@ EOF
 ### Verify the injection (secret excluded)
 
 ```bash
-./harbor-admin-en.sh config
+./harbor-admin.sh config
 # or raw:
 curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
   https://harbor.example.com/api/v2.0/configurations \
@@ -167,7 +167,7 @@ curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
 ### Confirm
 
 ```bash
-./harbor-admin-en.sh systeminfo | grep auth_mode
+./harbor-admin.sh systeminfo | grep auth_mode
 # "auth_mode": "oidc_auth"
 ```
 
@@ -195,11 +195,11 @@ If the user is not in the `server` group filter, no Harbor user record is create
 Newly onboarded OIDC users have normal privileges. Promote via API:
 
 ```bash
-./harbor-admin-en.sh users
-./harbor-admin-en.sh promote admin@example.com
+./harbor-admin.sh users
+./harbor-admin.sh promote admin@example.com
 
 # Verify
-./harbor-admin-en.sh user-info admin@example.com | grep sysadmin_flag
+./harbor-admin.sh user-info admin@example.com | grep sysadmin_flag
 ```
 
 Cluster policy: **only `admin@example.com` is promoted**. Other accounts remain standard and are granted per-project roles.
@@ -214,7 +214,7 @@ Cluster policy: **only `admin@example.com` is promoted**. Other accounts remain 
 
 ```bash
 HARBOR_OIDC_CLIENT_SECRET='<gitlab app secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name GitLab \
     --endpoint http://gitlab.example.com \
     --client-id '<gitlab application id>' \

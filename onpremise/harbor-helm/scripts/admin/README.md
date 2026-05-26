@@ -3,7 +3,7 @@
 CLI script for managing Harbor users, project members, and OIDC group mappings.
 Uses the Harbor v2.0 REST API, tailored for the example.com self-signed HTTPS setup.
 
-한국어 버전: [`harbor-admin.sh`](./harbor-admin.sh) / [README.md](./README.md)
+한국어 버전: [README.md](./README.md)
 
 <br/>
 
@@ -11,8 +11,7 @@ Uses the Harbor v2.0 REST API, tailored for the example.com self-signed HTTPS se
 
 ```
 cicd/harbor-helm/scripts/admin/
-├── harbor-admin.sh          # Korean UI (default)
-├── harbor-admin-en.sh       # English UI
+├── harbor-admin.sh          # Harbor Admin Helper
 ├── README.md
 └── README-en.md             # This file
 ```
@@ -24,7 +23,7 @@ Dependencies: `curl`, `python3` (stdlib only)
 ## Usage
 
 ```bash
-./harbor-admin-en.sh <command> [args...]
+./harbor-admin.sh <command> [args...]
 ```
 
 ### User management
@@ -68,7 +67,7 @@ Dependencies: `curl`, `python3` (stdlib only)
 ```bash
 # Switch to Keycloak (Phase 4 standard)
 HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
     --client-id harbor \
@@ -77,7 +76,7 @@ HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \
 
 # Rollback to GitLab-direct
 HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name GitLab \
     --endpoint http://gitlab.example.com \
     --client-id '<gitlab application id>' \
@@ -112,23 +111,23 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
 
 ```bash
 # 1) List current users
-./harbor-admin-en.sh users
+./harbor-admin.sh users
 
 # 2) Promote somaz to sysadmin (user must have logged in via OIDC at least once)
-./harbor-admin-en.sh promote admin@example.com
+./harbor-admin.sh promote admin@example.com
 
 # 3) Map GitLab 'server' group to 'library' project as developer
-./harbor-admin-en.sh add-member library group:server developer
+./harbor-admin.sh add-member library group:server developer
 
 # 4) Add an individual user as maintainer of 'example-project'
-./harbor-admin-en.sh add-member example-project admin@example.com maintainer
+./harbor-admin.sh add-member example-project admin@example.com maintainer
 
 # 5) Verify OIDC configuration was injected correctly
-./harbor-admin-en.sh config
+./harbor-admin.sh config
 
 # 6) Target a different admin account / different harbor instance
 HARBOR_ADMIN_PASSWORD="xxx" HARBOR_URL="https://harbor.example.com" HARBOR_NO_RESOLVE=1 \
-  ./harbor-admin-en.sh users
+  ./harbor-admin.sh users
 ```
 
 <br/>
