@@ -16,7 +16,7 @@ gitlab-runner/
 │   ├── deploy.yaml
 │   ├── old-gitlab-runner.yaml
 │   └── backup/
-├── upgrade.sh
+├── upgrade.py
 ├── backup/
 ├── README.md
 └── README-en.md
@@ -135,35 +135,35 @@ helm list -n gitlab-runner
 
 <br/>
 
-### Using upgrade.sh (Recommended)
+### Using upgrade.py (Recommended)
 
 An automated upgrade script that handles version checking, backup, diff, and rollback.
 
 ```bash
 # Show help
-./upgrade.sh -h
+./upgrade.py -h
 
 # Preview upgrade (no files changed)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Upgrade to latest version (auto backup + apply)
-./upgrade.sh
+./upgrade.py
 
 # Upgrade to a specific version
-./upgrade.sh --version 0.82.0
+./upgrade.py --version 0.82.0
 
 # Exclude legacy values file (old-gitlab-runner.yaml targets the old chart 0.70.3)
-./upgrade.sh --exclude old-gitlab-runner
-./upgrade.sh --dry-run --exclude old-gitlab-runner
+./upgrade.py --exclude old-gitlab-runner
+./upgrade.py --dry-run --exclude old-gitlab-runner
 
 # List available backups
-./upgrade.sh --list-backups
+./upgrade.py --list-backups
 
 # Rollback to a previous version
-./upgrade.sh --rollback
+./upgrade.py --rollback
 
 # Clean up old backups (keep last 5)
-./upgrade.sh --cleanup-backups
+./upgrade.py --cleanup-backups
 ```
 
 The script performs the following steps:
@@ -180,7 +180,7 @@ Note: The script updates all helmfile releases that match the current version. R
 However, the Step 6 breaking-change check compares every file under `values/*.yaml`, so the legacy values file `values/old-gitlab-runner.yaml` will produce noisy false positives against the new chart's keys. Pass `--exclude` to skip it during upgrade:
 
 ```bash
-./upgrade.sh --exclude old-gitlab-runner
+./upgrade.py --exclude old-gitlab-runner
 ```
 
 `--exclude` patterns match as substrings against filenames, and multiple patterns can be supplied comma-separated (e.g., `--exclude old-gitlab-runner,test`). Matched files are also skipped from the backup directory copy.

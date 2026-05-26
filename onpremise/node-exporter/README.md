@@ -29,7 +29,7 @@ node-exporter/
 │   ├── uninstall.yml                    # Uninstall playbook
 │   └── templates/
 │       └── node_exporter.service.j2     # systemd unit template
-├── upgrade.sh                           # Version-bump helper (managed by upgrade-sync)
+├── upgrade.py                           # Version-bump helper (managed by upgrade-sync)
 ├── README.md
 └── README-en.md
 ```
@@ -120,28 +120,28 @@ ansible-playbook -i inventory.ini playbook.yml --check
 6. Restart service
 7. Verify `/metrics` endpoint responds
 
-### Recommended: `./upgrade.sh` for version bumps
+### Recommended: `./upgrade.py` for version bumps
 
-Like the other components in this repo, `./upgrade.sh` is provided (built on the `ansible-github-release` canonical). It fetches the latest GA version from GitHub Releases and updates `ansible/group_vars/all.yml`.
+Like the other components in this repo, `./upgrade.py` is provided (built on the `ansible-github-release` canonical). It fetches the latest GA version from GitHub Releases and updates `ansible/group_vars/all.yml`.
 
 ```bash
 cd observability/monitoring/node-exporter
 
-./upgrade.sh --dry-run            # Fetch latest + preview the diff
-./upgrade.sh                      # Bump to latest
-./upgrade.sh --version 1.12.0     # Pin to a specific version
-./upgrade.sh --rollback           # Restore previous group_vars/all.yml from backup/
-./upgrade.sh --list-backups       # List backups
+./upgrade.py --dry-run            # Fetch latest + preview the diff
+./upgrade.py                      # Bump to latest
+./upgrade.py --version 1.12.0     # Pin to a specific version
+./upgrade.py --rollback           # Restore previous group_vars/all.yml from backup/
+./upgrade.py --list-backups       # List backups
 ```
 
-`./upgrade.sh` only updates the source file (`group_vars/all.yml`). **Applying the new version to remote hosts is a separate ansible-playbook run** (see below).
+`./upgrade.py` only updates the source file (`group_vars/all.yml`). **Applying the new version to remote hosts is a separate ansible-playbook run** (see below).
 
 ### Apply to remote hosts via Ansible
 
 ```bash
 cd ansible
 
-# Use the version from group_vars/all.yml (typical after ./upgrade.sh)
+# Use the version from group_vars/all.yml (typical after ./upgrade.py)
 ansible-playbook -i inventory.ini upgrade.yml
 
 # Override version via CLI without touching source files (one-off)

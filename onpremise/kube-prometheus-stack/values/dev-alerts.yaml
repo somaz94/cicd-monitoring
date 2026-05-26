@@ -287,7 +287,7 @@ additionalPrometheusRulesMap:
               group: argocd
             annotations:
               summary: "ArgoCD application-controller reconcile stuck (no activity 30+ min)"
-              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue
+              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue / sharding issue or v3.3.7 goroutine leak (see ghost-alarm-incident-2026-04-23.md, Post-incident follow-up section). Recover with: kubectl rollout restart statefulset/argocd-application-controller -n argocd"
 
           # --- Option A rules (disabled by default) ---
           # Uncomment the block below to enable Option A (move app-level health to Alertmanager)

@@ -66,7 +66,7 @@ Helmfile does not enforce cross-component dependencies — order is documented i
 | HTTPRoute does not attach to the NGF Gateway | This component — `httproute.parentRefs` (Gateway name/namespace) |
 | `pg_dump: connection refused` | This component — PostgreSQL Pod / Secret / Service |
 | Operator: `forbidden: cannot list resource "keycloaks"` | Operator component — check RBAC ClusterRole |
-| New CRD field missing after chart upgrade | Operator component — bump via `./upgrade.sh` |
+| New CRD field missing after chart upgrade | Operator component — bump via `./upgrade.py` |
 
 <br/>
 

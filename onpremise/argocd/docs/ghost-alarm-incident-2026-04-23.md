@@ -23,10 +23,10 @@ All times show UTC and KST. CI commit times are based on the commit date in the 
 
 | UTC | KST | Event |
 |---|---|---|
-| 2026-04-21 08:32 | 2026-04-21 17:32 | **commit `678c8b4`** (`somaz`) — `argo-cd` helm chart `9.5.1 → 9.5.2` upgrade. Backup folder `backup/20260421_173002/` created. `upgrade.sh` applied to the cluster at the same time. |
+| 2026-04-21 08:32 | 2026-04-21 17:32 | **commit `678c8b4`** (`somaz`) — `argo-cd` helm chart `9.5.1 → 9.5.2` upgrade. Backup folder `backup/20260421_173002/` created. `upgrade.py` applied to the cluster at the same time. |
 | 2026-04-21 21:11 | 2026-04-22 06:11 | `reconciledAt` of `dev1-secondary-project-admin`, `qa-example-project-app-admin`, `staging-example-project-admin`, `qa-example-project-admin` froze here (no further update for 24+ hours). |
 | 2026-04-22 03:03 | 2026-04-22 12:03 | **commit `996e330`** (`somaz`) — `fix: argocd notifiactions rules`. Added `oncePer` dedup keys and buffer conditions to every trigger in `dev-notifications.yaml`. |
-| 2026-04-22 06:27 (approx) | 2026-04-22 15:27 | Rerun of `upgrade.sh` applied the above change to the `argocd-notifications-cm` in the cluster (based on file mtime). |
+| 2026-04-22 06:27 (approx) | 2026-04-22 15:27 | Rerun of `upgrade.py` applied the above change to the `argocd-notifications-cm` in the cluster (based on file mtime). |
 | 2026-04-22 08:34 | 2026-04-22 17:34 | `dev-example-project-game` last healthy sync (rev `412cd4c6`). |
 | 2026-04-22 08:54 | 2026-04-22 17:54 | `dev-example-project-game` sync `18f0cb44` finished → **12 h 39 min reconcile gap begins**. |
 | 2026-04-22 08:54 – 10:18 | 2026-04-22 17:54 – 19:18 | `cicd@example.com` bot pushed 5 commits including the `b4482c5f` tag (game/admin/app-admin) — ArgoCD failed to detect them. |
@@ -315,7 +315,7 @@ Changes relevant to this incident:
    - Add `argocd_app_reconcile` histogram, `reconciledAt` age distribution, and work-queue depth panels to Grafana.
    - Add an Alertmanager rule for "Application `reconciledAt` older than 30 minutes" (early stuck detection).
 
-7. **Automate a smoke test after `upgrade.sh`.** Right after running `upgrade.sh`, run a minimal check:
+7. **Automate a smoke test after `upgrade.py`.** Right after running `upgrade.py`, run a minimal check:
    - Every Application's `reconciledAt` is within the last 10 minutes.
    - No ERROR in `argocd-application-controller` logs.
    - `argocd-notifications-controller` pod health.
@@ -437,7 +437,7 @@ oncePer: app.status.operationState.finishedAt
 
 ```bash
 # 1) Edit and commit
-cd ~/gitlab-project/kuberntes-infra
+cd .
 vi cicd/argo-cd/values/dev-notifications.yaml
 git diff cicd/argo-cd/values/dev-notifications.yaml
 git add cicd/argo-cd/values/dev-notifications.yaml
@@ -445,7 +445,7 @@ git commit -m "fix(cicd/argo-cd): use finishedAt as oncePer key to prevent dupli
 
 # 2) Apply to the cluster (requires operator approval)
 cd cicd/argo-cd
-./upgrade.sh           # helmfile apply
+./upgrade.py           # helmfile apply
 
 # 3) Verify
 kubectl get cm argocd-notifications-cm -n argocd \
@@ -511,10 +511,10 @@ Uncomment the "Option A" blocks in three files.
 3. **`observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml`** — uncomment the ArgoCD inhibit_rule.
 4. Apply:
     ```bash
-    cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd && helmfile apply
+    cd cicd/argo-cd && helmfile apply
     kubectl rollout restart deployment/argocd-notifications-controller -n argocd
 
-    cd ~/gitlab-project/kuberntes-infra/observability/monitoring/kube-prometheus-stack && helmfile apply
+    cd observability/monitoring/kube-prometheus-stack && helmfile apply
     kubectl rollout restart statefulset/alertmanager-kube-prometheus-stack-alertmanager -n monitoring
     ```
 
@@ -745,7 +745,7 @@ kubectl logs -n argocd deployment/argocd-notifications-controller --since=24h | 
 kubectl get rs -n <NAMESPACE> --sort-by='.metadata.creationTimestamp'
 
 # 6) Compare the current config against the backup
-cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
+cd cicd/argo-cd
 diff -u backup/<BACKUP_DIR>/dev-notifications.yaml values/dev-notifications.yaml
 ```
 
@@ -943,7 +943,7 @@ After ~30 minutes of healthy operation on v3.3.6, the following was confirmed an
 
 ```bash
 # 1) Diagnose
-cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
+cd cicd/argo-cd
 ./scripts/notify-rule-change.sh status
 
 # 2) If stuck (completed reconciles in the last window = 0), restart immediately
@@ -952,7 +952,7 @@ kubectl rollout status statefulset/argocd-application-controller -n argocd --tim
 
 # 3) If a stall reappears on v3.3.8, roll back to a known-good version:
 #    - First choice: v3.3.6 (chart 9.5.1). Originals preserved in backup/20260421_173002/.
-#    - Or roll back to the pre-v3.3.8 snapshot via ./upgrade.sh --rollback
+#    - Or roll back to the pre-v3.3.8 snapshot via ./upgrade.py --rollback
 #      (restores backup/20260424_111248/, the upgrade-time snapshot).
 #    cp backup/20260421_173002/Chart.yaml .
 #    cp backup/20260421_173002/helmfile.yaml .
@@ -972,7 +972,7 @@ After maintainer `@blakepettersson` responded on upstream #27516 with "Try 3.3.8
 
 | Time | Event |
 |---|---|
-| 11:12 | `./upgrade.sh --version 9.5.4` — bumped Chart.yaml / helmfile.yaml / values.yaml, preserved the v3.3.6 snapshot in `backup/20260424_111248/` |
+| 11:12 | `./upgrade.py --version 9.5.4` — bumped Chart.yaml / helmfile.yaml / values.yaml, preserved the v3.3.6 snapshot in `backup/20260424_111248/` |
 | 11:13 | Commit `95d72f5`: `feat(cicd/argo-cd): upgrade argocd v3.3.6 -> v3.3.8 (chart 9.5.1 -> 9.5.4)` |
 | 11:15:31 | `helmfile apply` succeeded (44s). All component images `v3.3.6 → v3.3.8`, helm release revision 27. |
 | 11:16 | First reconcile round on the new controller |

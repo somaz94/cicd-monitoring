@@ -11,10 +11,17 @@
 #   ./scripts/notify-rule-change.sh post     — after apply: sent count + goroutine check + completion notice
 #   ./scripts/notify-rule-change.sh status   — controller state (goroutine / reconcile activity)
 #
+# Options:
+#   --dry-run    Skip the outbound Slack POST for pre/post commands; analysis +
+#                kubectl read-only queries still run and the would-be Slack body
+#                is printed to stdout.
+#
 # Requirements: kubectl, jq, curl, git
 # =============================================================================
 
 set -euo pipefail
+
+DRY_RUN=0
 
 # Resolve script path portably across bash and zsh (BASH_SOURCE → $0 fallback).
 _SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
@@ -81,10 +88,17 @@ get_slack_token() {
 
 slack_post() {
   local text=$1
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "(dry-run) Slack POST → $SLACK_CHANNEL"
+    echo "---"
+    echo "$text"
+    echo "---"
+    return 0
+  fi
   local token
   token=$(get_slack_token)
   if [ -z "$token" ]; then
-    echo "WARN: Slack bot token 조회 실패 — Slack 발송 생략 (stdout 에만 출력)" >&2
+    echo "WARN: failed to fetch Slack bot token -- skipping Slack post (stdout only)" >&2
     echo "---"
     echo "$text"
     echo "---"
@@ -98,9 +112,9 @@ slack_post() {
   local ok
   ok=$(echo "$response" | jq -r '.ok // "error"' 2>/dev/null)
   if [ "$ok" = "true" ]; then
-    echo "Slack 발송 성공 → $SLACK_CHANNEL"
+    echo "Slack post succeeded -> $SLACK_CHANNEL"
   else
-    echo "WARN: Slack 발송 실패: $(echo "$response" | jq -r '.error // .' 2>/dev/null)" >&2
+    echo "WARN: Slack post failed: $(echo "$response" | jq -r '.error // .' 2>/dev/null)" >&2
   fi
 }
 
@@ -120,21 +134,21 @@ recent_reconcile_log_lines() {
 
 cmd_check() {
   require kubectl git
-  echo "== git diff 기반 영향 분석 (values/dev-notifications.yaml) =="
+  echo "== git diff based impact analysis (values/dev-notifications.yaml) =="
   local impacted
   impacted=$(detect_impacted_triggers || true)
   if [ -z "$impacted" ]; then
-    echo "영향받는 trigger 없음 (oncePer/when/send 관련 변경 미감지)"
+    echo "no impacted triggers (no oncePer/when/send changes detected)"
     return 0
   fi
-  echo "영향받는 trigger:"
+  echo "impacted triggers:"
   echo "$impacted" | sed 's/^/  - /'
   local app_count trigger_count
   app_count=$(count_applications)
   trigger_count=$(echo "$impacted" | wc -l | tr -d ' ')
   echo ""
-  echo "예상 재발송량 (상한): $((app_count * trigger_count)) 건 = ${app_count} apps × ${trigger_count} triggers"
-  echo "(실제 발송은 각 trigger 의 when 조건이 현재 맞는 앱에 한정됨)"
+  echo "expected resend volume (upper bound): $((app_count * trigger_count)) events = ${app_count} apps x ${trigger_count} triggers"
+  echo "(actual sends are limited to apps currently matching each trigger's when clause)"
 }
 
 cmd_pre() {
@@ -143,80 +157,80 @@ cmd_pre() {
   local impacted
   impacted=$(detect_impacted_triggers || true)
   if [ -z "$impacted" ]; then
-    echo "(dedup 영향 없음, Slack 공지 생략)"
+    echo "(no dedup impact, skipping Slack notice)"
     return 0
   fi
   local app_count trigger_count text
   app_count=$(count_applications)
   trigger_count=$(echo "$impacted" | wc -l | tr -d ' ')
-  text=":warning: *ArgoCD notification rule 변경 예정*
-• 변경 대상: $(echo "$impacted" | paste -sd, - | sed 's/,/, /g')
-• 예상 재발송량: 최대 $((app_count * trigger_count)) 건 (${app_count} apps × ${trigger_count} triggers)
-• 이후 수 분간 배포/재시작 알람이 실제 이벤트 없이 발생할 수 있음. 무시해도 됨.
+  text=":warning: *ArgoCD notification rule change pending*
+• Targets: $(echo "$impacted" | paste -sd, - | sed 's/,/, /g')
+• Expected resend volume: up to $((app_count * trigger_count)) events (${app_count} apps x ${trigger_count} triggers)
+• Deploy/restart alerts may fire over the next several minutes without real events. Safe to ignore.
 • See: cicd/argo-cd/docs/notification-rule-change-playbook.md"
   echo ""
-  echo "== Slack 공지 발송 =="
+  echo "== sending Slack notice =="
   slack_post "$text"
 }
 
 cmd_post() {
   require kubectl git jq curl
-  echo "== 변경 후 실제 발송량 집계 =="
+  echo "== actual post-change send volume =="
   local sent already
   sent=$(kubectl logs -n "$NS_ARGOCD" "deployment/${NOTIFICATIONS_DEPLOY}" --since=15m 2>/dev/null \
     | grep -c "Sending notification" || true)
   already=$(kubectl logs -n "$NS_ARGOCD" "deployment/${NOTIFICATIONS_DEPLOY}" --since=15m 2>/dev/null \
     | grep -c "already sent" || true)
-  echo "최근 15분: 실제 발송 ${sent} 건
+  echo "last 15 min: ${sent} sent / ${already} suppressed (already sent)"
 
   echo ""
-  echo "== Controller goroutine check (informational)
+  echo "== Controller goroutine check (informational) =="
   local g
   g=$(get_goroutines || true)
   if [ -z "$g" ]; then
-    echo "goroutine count unavailable (stats log pending, printed every 10 min)
+    echo "goroutine count unavailable (stats log pending, printed every 10 min)"
   elif [ "$g" -gt "$GOROUTINE_INFO_THRESHOLD" ]; then
-    echo "Goroutines=$g — above baseline threshold ${GOROUTINE_INFO_THRESHOLD}. Unusual; capture pprof and investigate.
+    echo "Goroutines=$g -- above baseline threshold ${GOROUTINE_INFO_THRESHOLD}. Unusual; capture pprof and investigate."
   else
-    echo "Goroutines=$g (within baseline; count alone does not indicate stuck — see reconcile activity)
+    echo "Goroutines=$g (within baseline; count alone does not indicate stuck -- see reconcile activity)"
   fi
 
   echo ""
-  echo "== Slack 완료 공지 =="
-  local text="$(printf ':white_check_mark: *ArgoCD notification rule 변경 완료*\n• 실제 발송: %s 건 (dedup 억제: %s 건)\n• Controller goroutines: %s\n• 이후 알람은 정상 이벤트로 간주' "$sent" "$already" "${g:-unknown}")"
+  echo "== Slack completion notice =="
+  local text="$(printf ':white_check_mark: *ArgoCD notification rule change complete*\n• Actual sends: %s (dedup suppressed: %s)\n• Controller goroutines: %s\n• Subsequent alerts should be treated as real events' "$sent" "$already" "${g:-unknown}")"
   slack_post "$text"
 }
 
 cmd_status() {
   require kubectl
-  echo "== Controller 현재 상태 / Controller state =="
+  echo "== Controller state =="
   local g
   g=$(get_goroutines || true)
   if [ -z "$g" ]; then
-    echo "Goroutines: unknown (stats log not emitted yet, printed every 10 min
+    echo "Goroutines: unknown (stats log not emitted yet, printed every 10 min)"
   else
-    printf "Goroutines: %s (informational only; baseline depends on app count)
-    [ "$g" -gt "$GOROUTINE_INFO_THRESHOLD" ] && printf "  [unusually high, investigate
+    printf "Goroutines: %s (informational only; baseline depends on app count)" "$g"
+    [ "$g" -gt "$GOROUTINE_INFO_THRESHOLD" ] && printf "  [unusually high, investigate]"
     echo ""
   fi
   local lines
   lines=$(recent_reconcile_log_lines)
-  printf "최근 11분 로그 라인 / log lines (last 11m): %s" "$lines"
-  [ "$lines" -lt 1 ] && printf "  [no stats line — complete halt
+  printf "log lines (last 11m): %s" "$lines"
+  [ "$lines" -lt 1 ] && printf "  [no stats line -- complete halt]"
   echo ""
 
   # Real stuck detection: reconcile activity over RECONCILE_WINDOW.
   local reconciles
   reconciles=$(kubectl logs -n "$NS_ARGOCD" "$CONTROLLER_POD" --since="$RECONCILE_WINDOW" 2>/dev/null \
     | grep -cE "Reconciliation completed" || true)
-  printf "최근 %s reconcile 완료 건수 / completed reconciles in last %s: %s" "$RECONCILE_WINDOW" "$RECONCILE_WINDOW" "$reconciles"
+  printf "completed reconciles in last %s: %s" "$RECONCILE_WINDOW" "$reconciles"
   if [ "$reconciles" -eq 0 ]; then
-    printf "  ⚠️  STUCK — no reconcile activity, restart required
+    printf "  ⚠️  STUCK -- no reconcile activity, restart required"
   fi
   echo ""
 
   echo ""
-  echo "== 앱별 reconciledAt 오래된 순 (상위 5) =="
+  echo "== oldest reconciledAt per app (top 5) =="
   kubectl get applications -n "$NS_ARGOCD" -o json 2>/dev/null \
     | jq -r '.items[] | [.status.reconciledAt, .metadata.name] | @tsv' \
     | sort | head -5 \
@@ -227,13 +241,20 @@ cmd_status() {
         cmd | getline epoch
         close(cmd)
         age = int((now - epoch) / 60)
-        printf "  %-40s reconciledAt=%s (%d분 전)\n", $2, $1, age
+        printf "  %-40s reconciledAt=%s (%d min ago)\n", $2, $1, age
       }'
 }
 
 # -----------------------------------------------------------------------------
 # entrypoint
 # -----------------------------------------------------------------------------
+
+while [[ $# -gt 0 ]]; do
+  case "${1:-}" in
+    --dry-run) DRY_RUN=1; shift ;;
+    *) break ;;
+  esac
+done
 
 case "${1:-help}" in
   check)  cmd_check ;;

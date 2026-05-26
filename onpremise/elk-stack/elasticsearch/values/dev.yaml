@@ -11,7 +11,7 @@
 # rebind rely on unchanged naming).
 name: elasticsearch
 
-# Elastic Stack version. Bump via ./upgrade.sh for rolling upgrade. Major bumps
+# Elastic Stack version. Bump via ./upgrade.py for rolling upgrade. Major bumps
 # require ECK operator compatibility check.
 version: "9.4.1"
 

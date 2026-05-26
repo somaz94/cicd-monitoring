@@ -21,7 +21,7 @@ The OIDC `sub` of existing users changes — they re-onboard as new accounts, re
 
 ## User impact (current inventory)
 
-From `scripts/harbor/admin/harbor-admin-en.sh users / projects / project-members`:
+From `cicd/harbor-helm/scripts/admin/harbor-admin-en.sh users / projects / project-members`:
 
 | Item | Value | Impact |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ From `scripts/harbor/admin/harbor-admin-en.sh users / projects / project-members
 ### Step 1. Snapshot pre-migration state (read-only)
 
 ```bash
-cd kuberntes-infra/scripts/harbor/admin
+cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 ./harbor-admin-en.sh config        > /tmp/harbor-pre-phase4-config.txt
 ./harbor-admin-en.sh users         > /tmp/harbor-pre-phase4-users.txt
@@ -68,7 +68,7 @@ curl -s https://auth.example.com/realms/example/.well-known/openid-configuration
 ### Step 3. Dry-run the PUT body
 
 ```bash
-cd kuberntes-infra/scripts/harbor/admin
+cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # Pass secret via env var (no shell history)
 # ⚠️ This cluster uses a self-signed wildcard cert → must pass --verify-cert false
@@ -124,7 +124,7 @@ HARBOR_OIDC_CLIENT_SECRET='dg75ZmB20aP3XJKFBtSgHqG80PEp7mif' \
 For this environment (1 user, yourself) the simpler **Option B (re-join)** is sufficient:
 
 ```bash
-cd kuberntes-infra/scripts/harbor/admin
+cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # 7-1. Confirm new user appears (after Step 6's first login)
 ./harbor-admin-en.sh users
@@ -174,7 +174,7 @@ cd kuberntes-infra/scripts/harbor/admin
 Reverting to GitLab is one `set-oidc` call (no helm change):
 
 ```bash
-cd kuberntes-infra/scripts/harbor/admin
+cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # GitLab Application creds (recover from admin/Applications)
 HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
@@ -193,7 +193,7 @@ Rollback flips the OIDC `sub` back to GitLab basis → re-run Step 7 to clean us
 
 - ✅ [`cicd/harbor-helm/values/dev.yaml`](../../../cicd/harbor-helm/values/dev.yaml) SSO comment block rewritten for Keycloak (GitLab procedure preserved as a commented rollback section)
 - ✅ [`cicd/harbor-helm/docs/oidc-setup-keycloak.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak.md) + [`oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md) rewritten for Keycloak (full legacy GitLab procedure preserved at [`docs/legacy/oidc-setup-gitlab-en.md`](../../../cicd/harbor-helm/docs/legacy/oidc-setup-gitlab-en.md))
-- ✅ [`scripts/harbor/admin/harbor-admin.sh`](../../../scripts/harbor/admin/harbor-admin.sh) gained the `set-oidc` command
+- ✅ [`cicd/harbor-helm/scripts/admin/harbor-admin.sh`](../../../cicd/harbor-helm/scripts/admin/harbor-admin.sh) gained the `set-oidc` command
 - ⏳ Phase 8: decide whether to remove the legacy GitLab `Harbor` Application — keep through Phase 5/6 in case rollback is needed, then prune
 
 <br/>
@@ -201,6 +201,6 @@ Rollback flips the OIDC `sub` back to GitLab basis → re-run Step 7 to clean us
 ## References
 
 - [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md) — Keycloak OIDC standard procedure (§7 rollback + legacy full link)
-- [`scripts/harbor/admin/README-en.md`](../../../scripts/harbor/admin/README-en.md) — `harbor-admin-en.sh` command reference (incl. `set-oidc`)
+- [`cicd/harbor-helm/scripts/admin/README-en.md`](../../../cicd/harbor-helm/scripts/admin/README-en.md) — `harbor-admin-en.sh` command reference (incl. `set-oidc`)
 - [Phase 5 vaultwarden migration](./vaultwarden-migration-en.md), [Phase 6 ArgoCD migration](./argocd-migration-en.md) — follow-up phases
 - [architecture-en.md](./architecture-en.md) — auth flow & user impact summary

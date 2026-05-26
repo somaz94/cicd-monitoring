@@ -98,7 +98,7 @@ Recommended order when changing a notification rule. Example scenario: adjust th
 ### 1) Edit the values file
 
 ```bash
-cd ~/gitlab-project/kuberntes-infra/cicd/argo-cd
+cd cicd/argo-cd
 vi values/dev-notifications.yaml
 ```
 

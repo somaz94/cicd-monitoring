@@ -11,11 +11,11 @@ ECK Operator is the official operator from Elastic that lets you run Elasticsear
 ```
 eck-operator/
 ├── .helmignore
-├── Chart.yaml                  # upstream chart metadata (maintained by upgrade.sh)
+├── Chart.yaml                  # upstream chart metadata (maintained by upgrade.py)
 ├── helmfile.yaml               # Helmfile release definition
 ├── values/
 │   └── dev.yaml               # custom values (managedNamespaces, etc.)
-├── upgrade.sh                  # external-standard version-tracking script
+├── upgrade.py                  # external-standard version-tracking script
 ├── README.md
 └── README-en.md
 ```
@@ -91,16 +91,16 @@ kubectl -n elastic-system logs -l control-plane=elastic-operator -f
 
 ```bash
 # Check latest version and upgrade
-./upgrade.sh
+./upgrade.py
 
 # Dry-run
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Upgrade to a specific version
-./upgrade.sh --version 3.3.2
+./upgrade.py --version 3.3.2
 
 # Rollback
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 <br/>

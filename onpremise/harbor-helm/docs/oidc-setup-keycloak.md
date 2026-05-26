@@ -3,7 +3,7 @@
 Harbor ships with a native OIDC client, so **no Dex is needed** (difference from ArgoCD).
 OIDC settings are not exposed through Helm values; they live in the **Harbor core database** and must be injected via the **Harbor REST API or the Web UI**.
 
-This document covers the **Keycloak (current production IdP)** procedure, automated via [`scripts/harbor/admin/harbor-admin-en.sh`](../../../scripts/harbor/admin/harbor-admin-en.sh) `set-oidc`. The legacy GitLab-direct procedure is preserved in [§7 Rollback / Legacy GitLab procedure](#7-rollback--legacy-gitlab-procedure).
+This document covers the **Keycloak (current production IdP)** procedure, automated via [`../scripts/admin/harbor-admin-en.sh`](../scripts/admin/harbor-admin-en.sh) `set-oidc`. The legacy GitLab-direct procedure is preserved in [§7 Rollback / Legacy GitLab procedure](#7-rollback--legacy-gitlab-procedure).
 
 > The first-time GitLab → Keycloak migration is documented separately in [`security/keycloak/docs/harbor-migration-en.md`](../../../security/keycloak/docs/harbor-migration-en.md).
 
@@ -64,7 +64,7 @@ kubectl -n $KC_NS exec -it keycloak-0 -- bash -lc "
 `set-oidc` previews the PUT body (secret masked), prompts for confirmation, then applies. Use `--dry-run` to validate without mutating.
 
 ```bash
-cd kuberntes-infra/scripts/harbor/admin
+cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # 1) Pre-validation (no PUT)
 HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \

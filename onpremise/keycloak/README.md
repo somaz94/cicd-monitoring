@@ -42,8 +42,8 @@ security/keycloak/
 │   ├── kcadm-bootstrap.sh              # realm + groups + clients + GitLab IdP + master admin (-h)
 │   └── kcadm-verify.sh                 # read-only verification of all of the above (-h, exit 1 on fail)
 ├── docs/                               # Korean / English pairs
-├── upgrade.sh                          # external-oci template (tracks somaz94/keycloak-cr)
-├── backup/                             # upgrade.sh rollback trail
+├── upgrade.py                          # external-oci template (tracks somaz94/keycloak-cr)
+├── backup/                             # upgrade.py rollback trail
 ├── README.md                           # Korean version
 └── README-en.md                        # (this file)
 ```
@@ -111,12 +111,12 @@ Next: [docs/realm-setup-en.md](docs/realm-setup-en.md) for Phase 3 realm setup.
 
 ### Track new chart versions
 
-`upgrade.sh` tracks the **keycloak-cr chart only** (postgresql is on its own cycle).
+`upgrade.py` tracks the **keycloak-cr chart only** (postgresql is on its own cycle).
 
 ```bash
-./upgrade.sh --dry-run                         # Preview
-./upgrade.sh                                   # Apply (rewrites helmfile.yaml version)
-./upgrade.sh --rollback                        # Restore from backup/<timestamp>/
+./upgrade.py --dry-run                         # Preview
+./upgrade.py                                   # Apply (rewrites helmfile.yaml version)
+./upgrade.py --rollback                        # Restore from backup/<timestamp>/
 ```
 
 For the PostgreSQL chart version, edit the `keycloak-postgresql` release `version:` in `helmfile.yaml` directly, then `helmfile diff` → `apply`.

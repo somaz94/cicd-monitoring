@@ -79,7 +79,6 @@ list_backups() {
 
   local i=1
   # Reverse-sorted glob via sort -r: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     local dirname=""; dirname=$(basename "$dir")
@@ -102,7 +101,6 @@ do_rollback() {
 
   local backups=()
   # Reverse-sorted glob: backup dirs use YYYYMMDD_HHMMSS so name desc == time desc.
-  # 백업 디렉토리는 YYYYMMDD_HHMMSS 형식이라 이름 내림차순 == 시간 내림차순.
   while IFS= read -r dir; do
     [ -d "$dir" ] || continue
     backups+=("$dir")

@@ -78,7 +78,7 @@ metrics:
           severity: critical
         annotations:
           summary: "Fluentd aggregator down (logging ns)"
-          description: "fluent-bit forward 가 차단됨. fluent-bit storage 가 흡수 중이며 fluentd 복구 시 자동 재개. {{ $labels.pod }} on {{ $labels.instance }}"
+          description: "fluent-bit forward is blocked. fluent-bit storage is absorbing logs and will auto-resume once fluentd recovers. {{ $labels.pod }} on {{ $labels.instance }}"
 
       # Scrape missing (job disappeared)
       - alert: FluentdScrapeMissing
@@ -89,7 +89,7 @@ metrics:
           severity: warning
         annotations:
           summary: "Fluentd metrics scrape missing"
-          description: "ServiceMonitor
+          description: "suspected ServiceMonitor / Service / Pod label mismatch"
 
       # Buffer queue length high (~40% of queue_limit_length 128)
       - alert: FluentdBufferQueueHigh
@@ -100,7 +100,7 @@ metrics:
           severity: warning
         annotations:
           summary: "Fluentd ES output buffer queue rising"
-          description: "queue={{ $value }}/128 chunks. ES 처리량 또는 fluentd flush_thread 한계 의심. {{ $labels.pod }}"
+          description: "queue={{ $value }}/128 chunks. suspected ES throughput or fluentd flush_thread limit. {{ $labels.pod }}"
 
       # Buffer queue critical — almost full (~78%)
       - alert: FluentdBufferQueueCritical
@@ -111,7 +111,7 @@ metrics:
           severity: critical
         annotations:
           summary: "Fluentd ES buffer queue near limit"
-          description: "queue={{ $value }}/128. 곧 overflow → fluent-bit 으로 block. ES 즉시 점검 필요"
+          description: "queue={{ $value }}/128. overflow imminent -> will block back to fluent-bit. inspect ES immediately"
 
       # Buffer disk size > 75% of total_limit_size (4GB → 3GB threshold)
       - alert: FluentdBufferDiskHigh
@@ -122,7 +122,7 @@ metrics:
           severity: warning
         annotations:
           summary: "Fluentd buffer disk usage > 3GB"
-          description: "buffer={{ $value | humanize1024 }}B
+          description: "buffer={{ $value | humanize1024 }}B / 4GB. PVC has space but approaching total_limit_size"
 
       # Retry rate non-zero — possible transient ES failure or throttling
       - alert: FluentdRetryRising
@@ -133,7 +133,7 @@ metrics:
           severity: warning
         annotations:
           summary: "Fluentd → ES retry rate elevated"
-          description: "최근 10분간 retry 발생 중. ES cluster status
+          description: "retries occurring over the last 10 minutes. check ES cluster status / fluentd-0 logs"
 
       # Pipeline stalled — buffer has chunks (input arrived) but ES emit is zero
       #
@@ -150,7 +150,7 @@ metrics:
           severity: critical
         annotations:
           summary: "Fluentd ingest stalled (buffer non-empty but no records → ES)"
-          description: "10분간 ES 로 emit 0 + buffer 에 chunk 잔존 = 진짜 정체. ES cluster status
+          description: "10 minutes of zero emit to ES + chunks still in buffer = true stall. check ES cluster status / network / fluentd-0 logs"
 
 dashboards:
   enabled: "false"
@@ -234,18 +234,22 @@ fileConfigs:
     </filter>
 
     # Step 2: Pino
-    # Three input shapes converge on (level / message / label):
-    #   - Pino (Node.js): level is Integer (10/20/30/40/50/60), msg is the body
-    #   - Serilog (.NET): Level is capital-L String ("Information"/"Warning"/...),
-    #                     MessageTemplate is the body
-    #   - Plain text (ASP.NET Core bootup, fluent-bit JSON-parse miss): neither
-    #                     keyspace present → level="info", message=raw text
+    # Four input shapes converge on (level / message / label):
+    #   - Pino (Node.js):   level is Integer (10/20/30/40/50/60), msg is the body
+    #   - Serilog (.NET):   Level is capital-L String ("Information"/"Warning"/...),
+    #                       MessageTemplate is the body
+    #   - ZLogger (.NET):   LogLevel is capital-LL String (Microsoft.Extensions.Logging
+    #                       enum: "Information"/"Warning"/"Critical"/...),
+    #                       Message is the already-rendered body
+    #   - Plain text (ASP.NET Core bootup, fluent-bit JSON-parse miss): no keyspace
+    #                       present → level="info", message=raw text
+    # Serilog "Fatal" and ZLogger "Critical" both map to fluentd "fatal".
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
-        level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; elsif record["Level"].is_a?(String); {"Verbose"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Fatal"=>"fatal"}[record["Level"]] || record["Level"].downcase; else; record["level"] || "info"; end}
-        message ${m = record["msg"] || record["message"] || record["MessageTemplate"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
+        level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; elsif record["Level"].is_a?(String); {"Verbose"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Fatal"=>"fatal"}[record["Level"]] || record["Level"].downcase; elsif record["LogLevel"].is_a?(String); {"Trace"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Critical"=>"fatal","None"=>"info"}[record["LogLevel"]] || record["LogLevel"].downcase; else; record["level"] || "info"; end}
+        message ${m = record["msg"] || record["message"] || record["MessageTemplate"] || record["Message"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
         label ${record["label"] || "unknown"}
       </record>
     </filter>
@@ -254,20 +258,24 @@ fileConfigs:
     # Source-of-truth precedence:
     #   - Pino:    time (Unix ms Integer) → Asia/Seoul ISO8601
     #   - Serilog: Timestamp (ISO8601 String w/ offset) → Asia/Seoul ISO8601
+    #   - ZLogger: Timestamp (ISO8601 String w/ offset, same capital-T shape as
+    #              Serilog) → handled by the same branch
     #   - generic timestamp
     #   - fallback → receive time (Asia/Seoul ISO8601)
-    # Serilog parse is wrapped in `rescue` so a malformed Timestamp falls back to
-    # the raw string instead of breaking the filter chain.
+    # Serilog/ZLogger parse is wrapped in `rescue` so a malformed Timestamp
+    # falls back to the raw string instead of breaking the filter chain.
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
         @timestamp ${if record["time"].is_a?(Integer); t = Time.at(record["time"]/1000.0); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["Timestamp"]; (Time.iso8601(record["Timestamp"]).localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z") rescue record["Timestamp"]); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
       </record>
-      # Drop original keys we already promoted to canonical names.
-      # Properties stays (Serilog free-form payload, picked up by ES dynamic
-      # mapping under the dev-example-project-battle index).
-      remove_keys time,msg,filepath,req,log,Timestamp,Level,MessageTemplate
+      # Drop original keys we already promoted to canonical names. ZLogger's
+      # LogLevel / Message are normalized to level / message in Step 2 above.
+      # Category (ZLogger class name) and Properties (Serilog free-form payload)
+      # are intentionally preserved — useful for Kibana filtering and picked up
+      # by ES dynamic mapping under the dev-example-project-battle index.
+      remove_keys time,msg,filepath,req,log,Timestamp,Level,MessageTemplate,LogLevel,Message
     </filter>
 
     # Step 4: Handle nested JSON inside the data field
@@ -287,6 +295,30 @@ fileConfigs:
       <record>
         stack ${s = record["stack"]; s.is_a?(Array) ? s.map do |l| l.to_s.gsub('\\n', "\n").gsub('\\"', '"') end : s rescue s}
       </record>
+    </filter>
+
+    # Step 5.5: ZLogger placeholder-key normalization (dev.battle only)
+    # ZLogger emits message-template placeholders using the caller-argument
+    # expression as the property key (e.g. ZLogInformation(
+    # $"http: requestBody={JsonSerializer.Serialize(requestBody)}") produces a
+    # property named literally "JsonSerializer.Serialize(requestBody)"). The
+    # resulting ES field names contain dots / parens / spaces and exceed the
+    # default keyword ignore_above (256B), landing in _ignored.
+    #
+    # This filter renames the known expression keys to canonical names and
+    # removes the originals. When a new expression key appears in stdout,
+    # register it here — otherwise ES dynamic mapping will keep absorbing
+    # arbitrary expression-shaped fields. Match scope is dev.battle only
+    # because dev.game (Pino) and qa.game (Pino) do not have this issue.
+    <filter example-project.stdout.dev.battle.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        requestPath ${record["requestPath ?? string.Empty"] || record["requestPath"]}
+        requestBody ${record["JsonSerializer.Serialize(requestBody)"] || record["requestBody"]}
+        responseBody ${record["JsonSerializer.Serialize(responseBody)"] || record["responseBody"]}
+      </record>
+      remove_keys $['requestPath ?? string.Empty'],$['JsonSerializer.Serialize(requestBody)'],$['JsonSerializer.Serialize(responseBody)']
     </filter>
 
     # Step 6: ES dedup key (id_key)

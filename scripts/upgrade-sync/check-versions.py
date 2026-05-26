@@ -2,11 +2,8 @@
 """check-versions.py — read-only preflight that reports which managed charts
 have an upstream upgrade available.
 
-Python rewrite of scripts/upgrade-sync/check-versions.sh (Phase 3 of the
-shell-to-python migration). The bash CLI contract is preserved byte-for-byte
-so existing callers — `scripts/ci/auto-upgrade.py`,
-`.gitlab/ci/upgrade-pipeline.yml`'s `check_versions` job, and any human
-invocation — keep working with no flag or output changes:
+Callers — `scripts/ci/auto-upgrade.py`, `.gitlab/ci/upgrade-pipeline.yml`'s
+`check_versions` job, and any human invocation — share one CLI:
 
   check-versions.py [--only <substring>]... [--no-update] [--updates-only]
 
@@ -44,6 +41,24 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# upgrade_sync package bootstrap — share discovery / parse-header helpers
+# with sync.py and auto-upgrade.py. Ancestor-walk pattern mirrors the
+# consumer upgrade.py files so the import resolves under both venv and the
+# CI helmfile-tools image.
+# ---------------------------------------------------------------------------
+_here = Path(__file__).resolve().parent
+for _anc in [_here, *_here.parents]:
+    if (_anc / "scripts" / "python" / "upgrade_sync").is_dir():
+        sys.path.insert(0, str(_anc / "scripts" / "python"))
+        break
+
+from upgrade_sync.discovery import (  # noqa: E402
+    find_managed_files,
+    parse_template_header,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -159,47 +174,12 @@ class ChartRow:
 
 
 # ---------------------------------------------------------------------------
-# File discovery + CONFIG parsing.
+# CONFIG block parsing.
+#
+# ``find_managed_files`` and ``parse_template_header`` are imported from
+# ``upgrade_sync.discovery`` (single source of truth shared with sync.py
+# and auto-upgrade.py — see top-of-file bootstrap).
 # ---------------------------------------------------------------------------
-
-
-def find_managed_files(repo_root: Path) -> list[Path]:
-    """Mirror sync.sh's find_managed_files: every upgrade.sh except backup,
-    deprecated/optional, the sync tool itself, and the test fixtures dir.
-    """
-    excluded_substrings = (
-        "/backup/",
-        "/_deprecated/",
-        "/_optional/",
-        "/scripts/upgrade-sync/",
-        "/tests/python/fixtures/",
-    )
-    matches: list[Path] = []
-    for path in repo_root.rglob("upgrade.sh"):
-        if not path.is_file():
-            continue
-        rel = str(path.relative_to(repo_root))
-        if any(s.lstrip("/") in rel for s in excluded_substrings):
-            continue
-        matches.append(path)
-    return sorted(matches)
-
-
-def parse_template_header(upgrade_sh: Path) -> str:
-    """Return the `# upgrade-template: <name>` value on line 2.
-
-    Same contract as auto-upgrade.py's parse_template_header — returns ""
-    when the header is absent.
-    """
-    try:
-        with upgrade_sh.open("r", encoding="utf-8") as fh:
-            next(fh)  # skip shebang
-            line = next(fh, "")
-    except OSError:
-        return ""
-    line = line.rstrip("\n")
-    prefix = "# upgrade-template: "
-    return line[len(prefix):] if line.startswith(prefix) else ""
 
 
 # CONFIG block boundary — bash's `extract_config_block` walked from the
@@ -207,11 +187,20 @@ def parse_template_header(upgrade_sh: Path) -> str:
 # wrap the CONFIG section in every canonical upgrade.sh template.
 CONFIG_BLOCK_FENCE = re.compile(r"^# ={10,}$")
 
-# CONFIG-line shape: KEY="VALUE" or KEY='VALUE' or KEY=VALUE (bare).
+# CONFIG-line shape for bash templates: KEY="VALUE" / KEY='VALUE' / KEY=VALUE.
 # Captures the key + the raw value text up to the first `#` (comment) or
 # the end of line. Trailing whitespace + surrounding quotes are stripped in
 # `_clean_value()` below.
 CONFIG_LINE = re.compile(r'^([A-Z_][A-Z0-9_]*)=(.*)$')
+
+# CONFIG-line shape for Python dict templates: "KEY": "VALUE",  (with optional
+# whitespace + trailing comma + trailing `# comment`). Used by K6+ canonical
+# templates (`*.py`) which carry CONFIG as a Python dict literal instead of
+# bash variable assignments. Trailing comma and surrounding quotes are
+# stripped in `_clean_value()`.
+CONFIG_LINE_PY = re.compile(
+    r'^\s*"([A-Z_][A-Z0-9_]*)"\s*:\s*(.*?)\s*,?\s*$'
+)
 
 
 # Shell parameter expansion: `${VAR:-default}` or `${VAR-default}`. The bash
@@ -224,12 +213,20 @@ SHELL_PARAM_DEFAULT = re.compile(r'^\$\{([A-Z_][A-Z0-9_]*):?-([^}]*)\}$')
 def _clean_value(raw: str) -> str:
     """Strip surrounding quotes + trailing whitespace/comment from a CONFIG
     value, then resolve `${VAR:-default}` to <default> (the bash-eval result
-    when VAR is unset, which is always the case in our CONFIG blocks).
+    when VAR is unset, which is always the case in bash CONFIG blocks).
+
+    Handles both bash form (``KEY="value"``) and Python dict form
+    (``"KEY": "value",``) — the trailing comma in Python dict lines is
+    stripped before quote handling so ``"value",`` cleans to ``value``.
     """
     # Drop trailing inline comment (` # ...`) — same as bash's awk strip.
     if " #" in raw:
         raw = raw[: raw.index(" #")]
     raw = raw.strip()
+    # Strip trailing comma (Python dict line shape — bash has no trailing
+    # comma so this is a no-op for `.sh` consumers).
+    if raw.endswith(","):
+        raw = raw[:-1].rstrip()
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ('"', "'"):
         raw = raw[1:-1]
     m = SHELL_PARAM_DEFAULT.match(raw)
@@ -238,18 +235,23 @@ def _clean_value(raw: str) -> str:
     return raw
 
 
-def parse_config_block(upgrade_sh: Path) -> ConfigVars:
+def parse_config_block(upgrade_script: Path) -> ConfigVars:
     """Read the CONFIG block (first `# ===` through third) and pull the
     scalar assignments into a ConfigVars instance.
 
-    No `eval` — every KEY=VALUE line is matched against `CONFIG_LINE` and
-    routed to a known ConfigVars field. Unknown keys are silently ignored
-    (matches the bash version's `set +u` tolerance).
+    Handles both bash (``KEY="VALUE"``) and Python dict
+    (``"KEY": "VALUE",``) line shapes — the K6+ canonical templates
+    switched from `.sh` to `.py` over Phase 4 / MR-K6 .. K13, so the
+    CONFIG block now comes in two flavors. Bash form is tried first; on
+    miss the Python dict form is tried. Unknown keys are silently
+    ignored (matches the bash version's ``set +u`` tolerance).
+
+    No ``eval`` — pure regex extraction.
     """
     fence_count = 0
     values: dict[str, str] = {}
     try:
-        with upgrade_sh.open("r", encoding="utf-8") as fh:
+        with upgrade_script.open("r", encoding="utf-8") as fh:
             for line in fh:
                 stripped = line.rstrip("\n")
                 if CONFIG_BLOCK_FENCE.match(stripped):
@@ -260,6 +262,8 @@ def parse_config_block(upgrade_sh: Path) -> ConfigVars:
                 if fence_count < 1:
                     continue
                 m = CONFIG_LINE.match(stripped)
+                if m is None:
+                    m = CONFIG_LINE_PY.match(stripped)
                 if not m:
                     continue
                 key = m.group(1)
@@ -1031,7 +1035,7 @@ def main(argv: list[str]) -> int:
     script_dir = Path(__file__).resolve().parent
     repo_root = script_dir.parent.parent
 
-    print("Collecting managed upgrade.sh configs...")
+    print("Collecting managed upgrade.{sh,py} configs...")
     rows, chart_rows, helm_repos, total, skipped, filtered = parse_managed_files(
         repo_root, args.only,
     )
@@ -1066,7 +1070,7 @@ def main(argv: list[str]) -> int:
         print(f"Summary: OK={ok}  UPDATE={update}  ERROR={error}  (total={len(rows)})")
     if update > 0:
         print(
-            "Upgrades are available. Run 'cd <path> && ./upgrade.sh --dry-run' "
+            "Upgrades are available. Run 'cd <path> && ./upgrade.py --dry-run' "
             "in each directory above."
         )
     elif error == 0 and no_image == 0:
@@ -1090,9 +1094,9 @@ def main(argv: list[str]) -> int:
         )
         if chart_update > 0:
             print("Chart pin updates available. In each path above:")
-            print("  ./upgrade.sh --check-chart              # details")
-            print("  ./upgrade.sh --upgrade-chart --dry-run  # preview + render diff")
-            print("  ./upgrade.sh --upgrade-chart            # apply")
+            print("  ./upgrade.py --check-chart              # details")
+            print("  ./upgrade.py --upgrade-chart --dry-run  # preview + render diff")
+            print("  ./upgrade.py --upgrade-chart            # apply")
         if chart_error > 0:
             any_error = True
 

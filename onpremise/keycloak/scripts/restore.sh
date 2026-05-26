@@ -2,7 +2,7 @@
 # Restore Keycloak's PostgreSQL database from a pg_dump file.
 usage() {
   cat <<EOF
-Usage: $(basename "$0") <dump-file|latest> [-h]
+Usage: $(basename "$0") [--dry-run] <dump-file|latest> [-h]
 
 Restore the Keycloak PostgreSQL database from a pg_dump file. The Keycloak
 StatefulSet must be scaled to 0 instances first (the script verifies and aborts
@@ -12,6 +12,13 @@ Arguments:
   <dump-file>  path to a local pg_dump .sql file (kubectl cp into the pod)
   latest       restore from the most recent /var/lib/postgresql/backup/*.sql
                file already inside the postgres pod
+
+Options:
+  --dry-run    Print every kubectl invocation that would mutate cluster state
+               (cp into the pod + psql restore) without executing them. The
+               pre-flight Keycloak-instances check still runs against the live
+               cluster so the dry-run reports realistic state.
+  -h, --help   Show this help and exit.
 
 Env overrides (with defaults):
   NAMESPACE  keycloak namespace                       (default: keycloak)
@@ -29,7 +36,16 @@ After restore, scale Keycloak back up:
   kubectl -n \$NAMESPACE patch keycloak keycloak --type=merge -p '{"spec":{"instances":1}}'
 EOF
 }
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
+DRY_RUN=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *)  break ;;
+  esac
+done
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-keycloak}"
@@ -39,11 +55,15 @@ DB_USER="${DB_USER:-keycloak}"
 DUMP_FILE="${1:-}"
 
 if [[ -z "$DUMP_FILE" ]]; then
-  echo "Usage: $0 <dump-file|latest>"
+  echo "Usage: $0 [--dry-run] <dump-file|latest>"
   exit 1
 fi
 
-echo "[$(date)] Restoring DB '$DB_NAME' on pod '$POD' from '$DUMP_FILE'..."
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "[$(date)] (dry-run) Would restore DB '$DB_NAME' on pod '$POD' from '$DUMP_FILE'..."
+else
+  echo "[$(date)] Restoring DB '$DB_NAME' on pod '$POD' from '$DUMP_FILE'..."
+fi
 
 # 1. Confirm Keycloak is scaled down (otherwise restore corrupts running schema).
 INSTANCES=$(kubectl -n "$NAMESPACE" get keycloak keycloak -o jsonpath='{.spec.instances}' 2>/dev/null || echo "0")
@@ -55,7 +75,11 @@ fi
 
 # 2. Copy dump to pod (skip if "latest" — assumed already in pod).
 if [[ "$DUMP_FILE" != "latest" ]]; then
-  kubectl -n "$NAMESPACE" cp "$DUMP_FILE" "$POD:/tmp/restore.sql"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "    (dry-run) kubectl -n $NAMESPACE cp $DUMP_FILE $POD:/tmp/restore.sql"
+  else
+    kubectl -n "$NAMESPACE" cp "$DUMP_FILE" "$POD:/tmp/restore.sql"
+  fi
   REMOTE_FILE="/tmp/restore.sql"
 else
   REMOTE_FILE=$(kubectl -n "$NAMESPACE" exec "$POD" -- ls -t /var/lib/postgresql/backup 2>/dev/null | head -1 || echo "")
@@ -64,8 +88,16 @@ else
 fi
 
 # 3. Restore.
-kubectl -n "$NAMESPACE" exec -i "$POD" -- \
-  bash -c "psql -U $DB_USER -d $DB_NAME < $REMOTE_FILE"
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "    (dry-run) kubectl -n $NAMESPACE exec -i $POD -- bash -c \"psql -U $DB_USER -d $DB_NAME < $REMOTE_FILE\""
+else
+  kubectl -n "$NAMESPACE" exec -i "$POD" -- \
+    bash -c "psql -U $DB_USER -d $DB_NAME < $REMOTE_FILE"
+fi
 
-echo "[$(date)] Restore complete. Re-scale Keycloak:"
-echo "  kubectl -n $NAMESPACE patch keycloak keycloak --type=merge -p '{\"spec\":{\"instances\":1}}'"
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "[$(date)] (dry-run) complete — no changes made. Re-run without --dry-run to actually restore."
+else
+  echo "[$(date)] Restore complete. Re-scale Keycloak:"
+  echo "  kubectl -n $NAMESPACE patch keycloak keycloak --type=merge -p '{\"spec\":{\"instances\":1}}'"
+fi

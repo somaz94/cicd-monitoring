@@ -35,7 +35,7 @@ kibana/
 ├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/kibana-eck, version: <pin>
 ├── values/
 │   └── dev.yaml               # Kibana CR values (`version` = Stack version)
-├── upgrade.sh                  # external-oci-cr-version based Stack version tracker
+├── upgrade.py                  # external-oci-cr-version based Stack version tracker
 ├── dashboards/                 # Saved Objects (Lens + Dashboard) NDJSON + apply/export scripts
 │   ├── apply.sh                # repo NDJSON → live Kibana
 │   ├── export.sh               # live Kibana → repo NDJSON
@@ -56,7 +56,7 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | Document | Description |
 |------|------|
 | [Upgrade / Rollback (Kibana-specific)](docs/upgrade-rollback-en.md) | ES dependency notes + link to shared guide |
-| [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback-en.md) | `upgrade.sh` safety features, OCI chart pin bump, webhook-bypass rollback (primary doc) |
+| [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback-en.md) | `upgrade.py` safety features, OCI chart pin bump, webhook-bypass rollback (primary doc) |
 | [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
 | [Dashboards (Saved Objects management)](dashboards/README-en.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
 | [Dashboards Saved Objects workflow](docs/dashboards-saved-objects-en.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
@@ -72,25 +72,25 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 
 | Version | Where it lives | How to bump |
 |---|---|---|
-| **Stack version** | `values/dev.yaml` `.version` | `./upgrade.sh` |
-| **OCI chart version** | `helmfile.yaml` `.releases[0].version` | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
+| **Stack version** | `values/dev.yaml` `.version` | `./upgrade.py` |
+| **OCI chart version** | `helmfile.yaml` `.releases[0].version` | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 <br/>
 
 ## Stack Version Upgrades
 
-`upgrade.sh` is based on the [external-oci-cr-version](../../../scripts/upgrade-sync/templates/external-oci-cr-version.sh) canonical template. It queries the Elastic artifacts API for the latest GA and updates `values/dev.yaml` `version` (9.x major line pinned).
+`upgrade.py` is based on the [external-oci-cr-version](../../../scripts/upgrade-sync/templates/external-oci-cr-version.py) canonical template. It queries the Elastic artifacts API for the latest GA and updates `values/dev.yaml` `version` (9.x major line pinned).
 
 ```bash
-./upgrade.sh --dry-run              # show latest only
-./upgrade.sh                         # bump to latest 9.x GA
-./upgrade.sh --version 9.1.2        # pin to a specific version
-./upgrade.sh --rollback              # restore from backup (auto webhook handling)
+./upgrade.py --dry-run              # show latest only
+./upgrade.py                         # bump to latest 9.x GA
+./upgrade.py --version 9.1.2        # pin to a specific version
+./upgrade.py --rollback              # restore from backup (auto webhook handling)
 ```
 
 **Rule**: keep Kibana on the same Stack version as Elasticsearch. Upgrade order: **Elasticsearch first, Kibana second**. (Kibana against a newer ES is OK; the reverse breaks compatibility.)
 
-Kibana's `upgrade.sh` enforces this via `DEPENDENCY_CR_KIND=elasticsearch` — Step 5 reads the ES CR version and **aborts automatically if Kibana target version > ES version**.
+Kibana's `upgrade.py` enforces this via `DEPENDENCY_CR_KIND=elasticsearch` — Step 5 reads the ES CR version and **aborts automatically if Kibana target version > ES version**.
 
 Apply the change:
 ```bash
@@ -103,29 +103,29 @@ helmfile diff && helmfile apply
 
 ## OCI chart pin bump
 
-On top of Stack version tracking, `upgrade.sh` also tracks `helmfile.yaml`'s `version:` (publisher chart release tag):
+On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `version:` (publisher chart release tag):
 
 ```bash
 # Compare the current pin with the latest publisher release (read-only)
-./upgrade.sh --check-chart
+./upgrade.py --check-chart
 
 # Dry-run bump: pull both charts, render each with the active values file,
 # show a unified diff. No files touched.
-./upgrade.sh --upgrade-chart --dry-run
+./upgrade.py --upgrade-chart --dry-run
 
 # Apply: review the diff, confirm, back up helmfile.yaml, bump the pin
-./upgrade.sh --upgrade-chart
+./upgrade.py --upgrade-chart
 
 # Pin to a specific chart version
-./upgrade.sh --upgrade-chart --chart-version 0.1.2
+./upgrade.py --upgrade-chart --chart-version 0.1.2
 
 # Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 **Note**: Keep Kibana's chart pin **≤ Elasticsearch chart pin** for Stack compatibility. When bumping both charts, **bump Elasticsearch first, Kibana second**.
 
-Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched. Chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately from Stack backups and auto-detected by `--rollback`. To survey chart-pin status across every managed chart, run `./scripts/upgrade-sync/check-versions.sh` from the repo root.
+Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched. Chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately from Stack backups and auto-detected by `--rollback`. To survey chart-pin status across every managed chart, run `./scripts/upgrade-sync/check-versions.py` from the repo root.
 
 <br/>
 

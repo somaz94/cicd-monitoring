@@ -16,7 +16,7 @@ argo-cd/
 │   ├── dev-server.yaml        # controller, dex, server, repoServer, applicationSet
 │   ├── dev-redis.yaml         # redis, redis-ha, redisSecretInit
 │   └── dev-notifications.yaml # notifications controller (Slack templates/triggers)
-├── upgrade.sh
+├── upgrade.py
 ├── backup/
 ├── docs/
 │   ├── ghost-alarm-incident-2026-04-23.md      # 2026-04-23 ghost-alarm incident analysis + Notification rules design
@@ -260,31 +260,31 @@ helm list -n argocd
 
 <br/>
 
-### Using upgrade.sh (Recommended)
+### Using upgrade.py (Recommended)
 
 An automated upgrade script that handles version checking, backup, diff, and rollback.
 
 ```bash
 # Show help
-./upgrade.sh -h
+./upgrade.py -h
 
 # Preview upgrade (no files changed)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Upgrade to latest version (auto backup + apply)
-./upgrade.sh
+./upgrade.py
 
 # Upgrade to a specific version
-./upgrade.sh --version 9.3.0
+./upgrade.py --version 9.3.0
 
 # List available backups
-./upgrade.sh --list-backups
+./upgrade.py --list-backups
 
 # Rollback to a previous version
-./upgrade.sh --rollback
+./upgrade.py --rollback
 
 # Clean up old backups (keep last 5)
-./upgrade.sh --cleanup-backups
+./upgrade.py --cleanup-backups
 ```
 
 The script performs the following steps:

@@ -12,21 +12,21 @@
 #
 # Examples:
 #   # default — read_only_role over all indices
-#   ./create-elastic-role.sh --confirm
+#   ./create-elastic-role.sh --yes
 #
 #   # restrict to a specific index family
 #   ./create-elastic-role.sh --role-name pm_viewer \
-#     --indices 'example-project-*,dev-example-project-game*' --confirm
+#     --indices 'example-project-*,dev-example-project-game*' --yes
 #
 #   # writer role for dev pipelines
 #   ./create-elastic-role.sh --role-name dev_writer \
 #     --indices 'dev-*' \
 #     --index-privileges 'read,write,create,create_index,view_index_metadata' \
-#     --kibana-privileges all --confirm
+#     --kibana-privileges all --yes
 #
 #   # Kibana-only role (no ES indices privileges)
 #   ./create-elastic-role.sh --role-name kibana_only \
-#     --indices '' --kibana-privileges read --confirm
+#     --indices '' --kibana-privileges read --yes
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -50,7 +50,7 @@ CONFIRM_PROMPT=1
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--role-name NAME] [permission flags] [--dry-run] [--confirm]
+Usage: $(basename "$0") [--role-name NAME] [permission flags] [--dry-run] [--yes]
 
 Creates (or updates) an Elasticsearch role via the Security API. All defaults
 compose a safe read-only role — override individual flags to build different
@@ -83,7 +83,7 @@ Options:
                                   '*' = all spaces. Use 'space:<id>' for a specific space.
 
   --dry-run                       Print the curl payload without contacting ES.
-  --confirm                       Skip the interactive confirmation prompt (CI use).
+  -y, --yes                       Skip the interactive confirmation prompt (CI use).
   -h | --help                     Show this help and exit.
 
 Env overrides (rarely needed):
@@ -127,7 +127,7 @@ while [ $# -gt 0 ]; do
       KIBANA_RESOURCES="$1"
       ;;
     --dry-run) DRY_RUN=1 ;;
-    --confirm) CONFIRM_PROMPT=0 ;;
+    -y|--yes) CONFIRM_PROMPT=0 ;;
     -h|--help) usage; exit 0 ;;
     *) err "unknown arg: $1"; usage; exit 2 ;;
   esac

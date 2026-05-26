@@ -8,7 +8,7 @@ When a symptom similar to the 2026-04-23 incident recurs (ArgoCD Slack alarms ar
 
 Supply the following together with the prompt (or make it readable by Claude):
 - Raw Slack alarm text (include timestamp, application name, all visible fields)
-- When helpful, point Claude to `~/gitlab-project/kuberntes-infra/cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23-en.md` for full background.
+- When helpful, point Claude to `kuberntes-infra/cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23-en.md` for full background.
 
 <br/>
 
@@ -108,4 +108,4 @@ kubectl get cm argocd-notifications-cm -n argocd \
 
 - [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23-en.md) — original incident analysis
 - `values/dev-notifications.yaml` — current trigger definitions
-- `upgrade.sh` — script that applies changes
+- `upgrade.py` — script that applies changes

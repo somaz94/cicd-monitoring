@@ -65,7 +65,7 @@ Options:
   --full-name NAME            Optional 'full_name' field for the user record.
   --email EMAIL               Optional 'email' field for the user record.
   --dry-run                   Print the curl payloads (password masked) without contacting ES.
-  --confirm                   Skip the interactive 'create user' confirmation prompt.
+  -y, --yes                   Skip the interactive 'create user' confirmation prompt.
   -h | --help                 Show this help and exit.
 
 Env overrides (rarely needed):
@@ -79,7 +79,7 @@ Examples:
   $(basename "$0") -u viewer
 
   # from stdin (CI / wrapping)
-  echo "\$NEW_PASSWORD" | $(basename "$0") -u viewer --password-stdin --confirm
+  echo "\$NEW_PASSWORD" | $(basename "$0") -u viewer --password-stdin --yes
 
   # attach to a different role created by create-elastic-role.sh
   $(basename "$0") -u pm-viewer --role-name pm_viewer
@@ -116,7 +116,7 @@ while [ $# -gt 0 ]; do
       EMAIL="$1"
       ;;
     --dry-run) DRY_RUN=1 ;;
-    --confirm) CONFIRM_PROMPT=0 ;;
+    -y|--yes) CONFIRM_PROMPT=0 ;;
     -h|--help) usage; exit 0 ;;
     *) err "unknown arg: $1"; usage; exit 2 ;;
   esac
@@ -240,7 +240,7 @@ preflight_role_exists() {
       ;;
     404)
       err "role '${ROLE_NAME}' not found — create it first:"
-      err "    ./create-elastic-role.sh --role-name '${ROLE_NAME}' [permission flags] --confirm"
+      err "    ./create-elastic-role.sh --role-name '${ROLE_NAME}' [permission flags] --yes"
       exit 1
       ;;
     *)

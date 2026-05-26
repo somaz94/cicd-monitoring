@@ -24,7 +24,7 @@ This script does not create roles. Step 0 aborts cleanly when the role is missin
 
 ```
 ✗ role 'read_only_role' not found — create it first:
-    ./create-elastic-role.sh --role-name 'read_only_role' [permission flags] --confirm
+    ./create-elastic-role.sh --role-name 'read_only_role' [permission flags] --yes
 ```
 
 Create the role first via [create-elastic-role-en.md](create-elastic-role-en.md) and then attach a user with this script.
@@ -41,20 +41,20 @@ Create the role first via [create-elastic-role-en.md](create-elastic-role-en.md)
 ./create-kibana-readonly-user.sh -u viewer
 
 # Stdin (CI / wrapper)
-echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u viewer --password-stdin --confirm
+echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u viewer --password-stdin --yes
 
 # Env var (avoids process-list leak)
-NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --confirm
+NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --yes
 
 # Direct flag (discouraged — leaks via ps / history)
-./create-kibana-readonly-user.sh -u viewer -p 'StrongPassword123!' --confirm
+./create-kibana-readonly-user.sh -u viewer -p 'StrongPassword123!' --yes
 
 # Attach to a different role (must exist first)
-./create-elastic-role.sh --role-name pm_viewer --indices 'example-project-*' --confirm
+./create-elastic-role.sh --role-name pm_viewer --indices 'example-project-*' --yes
 ./create-kibana-readonly-user.sh -u pm-viewer --role-name pm_viewer
 
 # Validate the call flow without PUT
-NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --dry-run --confirm
+NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --dry-run --yes
 ```
 
 <br/>
@@ -71,7 +71,7 @@ NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --
 | `--full-name NAME` | optional account metadata — `full_name` field |
 | `--email EMAIL` | optional account metadata — `email` field |
 | `--dry-run` | print the payloads (password masked) without contacting ES |
-| `--confirm` | skip the interactive 'create user' confirmation prompt (CI use) |
+| `--yes` | skip the interactive 'create user' confirmation prompt (CI use) |
 | `-h`, `--help` | usage |
 
 > Provide at most one password input flag (none ⇒ prompt). The script aborts when the password is shorter than 8 characters and warns under 12. Backslash / double-quote are auto-escaped for JSON.
@@ -112,7 +112,7 @@ Operator's responsibility:
 ### Password rotation
 
 ```bash
-echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u <username> --password-stdin --confirm
+echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u <username> --password-stdin --yes
 ```
 
 For an existing user, the PUT overwrites the password (and the role). Right after rotation, the old password may still authenticate for a few seconds (ES-cached tokens).

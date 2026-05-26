@@ -32,7 +32,7 @@ kube-prometheus-stack/
 │   ├── dashboards-en.md
 │   ├── slack-alert-format-en.md
 │   └── troubleshooting-en.md
-├── upgrade.sh              # Version upgrade script
+├── upgrade.py              # Version upgrade script
 ├── backup/                 # Auto backup on upgrade
 └── README.md
 ```
@@ -77,10 +77,10 @@ helmfile apply
 ## Upgrade
 
 ```bash
-./upgrade.sh                              # Check latest version and upgrade
-./upgrade.sh --version <VERSION>          # Upgrade to specific version
-./upgrade.sh --dry-run                    # Preview only
-./upgrade.sh --dry-run --version <VERSION>  # Combine flags
+./upgrade.py                              # Check latest version and upgrade
+./upgrade.py --version <VERSION>          # Upgrade to specific version
+./upgrade.py --dry-run                    # Preview only
+./upgrade.py --dry-run --version <VERSION>  # Combine flags
 ```
 
 <br/>

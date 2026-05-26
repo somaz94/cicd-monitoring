@@ -1,50 +1,29 @@
 #!/usr/bin/env bash
 # Reset the ExampleProject raw + cohort indices for the given environment (any
-# DNS-label-ish prefix — qa, dev, stg, prd, ...) and let the cohort transform
+# DNS-label-ish prefix — qa, dev, stg, prod, ...) and let the cohort transform
 # repopulate from fresh data only.
 #
-# Operational intent: keep ONLY logs that arrive strictly after the delete
-# moment. Anything fluent-bit had already read before the delete (its tail
-# SQLite checkpoint) or fluentd had buffered (its filesystem buffer)
-# represents pre-delete data and must NOT bleed back into the new raw index.
+# Operational intent: ES-side reset only — transform stop / cohort+raw DELETE
+# / transform start, with a fluent-bit DaemonSet rollout restart so the next
+# polled log file starts at EOF after pod rotation.
 #
-# This script automates the ES-side reset (transform + indices) and the
-# fluent-bit rollout restart. The full "delete-and-only-new-logs" workflow
-# also requires wiping fluent-bit tail SQLite + fluentd buffer; see the
-# README in this directory for the manual procedure and the rationale.
+# Out-of-scope: fluent-bit tail SQLite + fluentd buffer wipe (legacy "scenario
+# A"). That branch was retired on 2026-05-22 — the cleanup-Job pattern assumed
+# a Deployment + RWO PVC layout, which no longer exists after the 2026-05-19
+# DaemonSet + hostPath migration. The script now targets a single,
+# unambiguous flow. If you really need to drop in-flight fluent-bit /
+# fluentd state, follow the manual per-node cleanup section in
+# docs/reset-example-project-cohort.md — it is intentionally not automated.
 #
 # Steps (numbered in script output):
-#   0. Pre-flight                — transform exists, fluentd buffer queue empty
+#   0. Pre-flight                — transform exists
 #   1. Stop transform            POST /_transform/<id>/_stop
 #   2. Delete cohort dest index  DELETE /<env>-example-project-game-user-cohort
 #   3. Delete raw index          DELETE /<env>-example-project-game
-#   3a. (opt) Wipe fluentd buffer    scale fluentd 0 → cleanup Job → scale 1
-#   3b. (opt) Wipe fluent-bit state  scale fluent-bit 0 → cleanup Job → scale 1
-#   4.  (skipped if 3b ran)      kubectl rollout restart deployment/fluent-bit
+#   4. fluent-bit rollout restart (DaemonSet)  (skip with --skip-fluent-bit-restart)
 #   5. Wait for raw index re-creation from new fluent-bit forwards
 #   6. Start transform           POST /_transform/<id>/_start
 #   7. Verify                    raw docs.count + cohort first_seen sample
-#
-# Step 0 reads fluentd's `fluentd_output_status_buffer_queue_length` metric and
-# aborts if it is non-zero, because retry_forever + flush_at_shutdown=true would
-# re-emit those queued chunks into the new raw index. Override the abort with
-# --force-with-fluentd-buffer or --reset-fluentd-buffer (which makes the buffer
-# check moot, since the buffer is about to be wiped).
-#
-# Scenario flags (opt-in; default behavior unchanged):
-#   --reset-fluent-bit-checkpoint  Run step 3b — wipe the env-specific tail
-#                                  SQLite DB *and* the whole storage/ dir
-#                                  (storage chunks are shared across env, so
-#                                  this also drops dev/stg in-flight data —
-#                                  usually a few seconds' worth).
-#   --reset-fluentd-buffer         Run step 3a — wipe the fluentd buffer PVC
-#                                  (`elasticsearch-buffers/*`), again shared
-#                                  across env.
-#   --scenario-a                   Macro for the "post-delete only" flow:
-#                                  enables --reset-fluent-bit-checkpoint +
-#                                  --reset-fluentd-buffer + --skip-fluent-bit-restart
-#                                  (the explicit cleanup of step 3b already
-#                                  brings the pod back up, so step 4 is moot).
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -54,11 +33,8 @@ set -euo pipefail
 ENV_NAME=""
 DRY_RUN=0
 SKIP_FB_RESTART=0
-WAIT_DATA_SECONDS=120
+WAIT_DATA_SECONDS=10
 CONFIRM_PROMPT=1
-FORCE_WITH_BUFFER=0
-RESET_FB_CHECKPOINT=0
-RESET_FD_BUFFER=0
 
 NAMESPACE_ES="${NAMESPACE_ES:-logging}"
 NAMESPACE_FB="${NAMESPACE_FB:-logging}"
@@ -69,11 +45,8 @@ ES_PORT="${ES_PORT:-9200}"
 ES_SCHEME="${ES_SCHEME:-https}"
 ES_SECRET="${ES_SECRET:-elasticsearch-es-elastic-user}"
 ES_USER="${ES_USER:-elastic}"
-FB_DEPLOYMENT="${FB_DEPLOYMENT:-fluent-bit}"
-FB_STATE_PVC="${FB_STATE_PVC:-fluent-bit-state-pvc}"
-FD_STATEFULSET="${FD_STATEFULSET:-fluentd}"
-FD_POD="${FD_POD:-fluentd-0}"
-CLEANUP_IMAGE="${CLEANUP_IMAGE:-busybox:1.36}"
+# Single fluent-bit workload — DaemonSet only since the 2026-05-19 migration.
+FB_DAEMONSET="${FB_DAEMONSET:-fluent-bit}"
 
 # --- pretty print -------------------------------------------------------------
 
@@ -92,42 +65,24 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") --env NAME [options]
 
-Resets the ExampleProject raw and cohort indices for the chosen environment (a.k.a.
-index prefix), restarts fluent-bit (default), waits for the raw index to be
-re-created from new logs, then re-starts the cohort transform.
+Resets the ExampleProject raw + cohort indices for the chosen environment (a.k.a.
+index prefix), rolls the fluent-bit DaemonSet, waits for the raw index to
+be re-created from new logs, then re-starts the cohort transform.
 
 Required:
-  --env NAME                  Environment / index prefix (e.g. qa, dev, stg, prd).
+  --env NAME                  Environment / index prefix (e.g. qa, dev, stg, prod).
                               Resolved index / transform names:
                                 raw index   = <NAME>-example-project-game
                                 cohort idx  = <NAME>-example-project-game-user-cohort
                                 transform   = <NAME>-example-project-game-user-cohort
-                              The fluent-bit tail SQLite DB for step 3b is
-                              <FB_STATE_PVC>/tail-<NAME>-game.db* — make sure
-                              that file actually exists if you use
-                              --reset-fluent-bit-checkpoint or --scenario-a.
 
 Options:
   --dry-run                     Print the actions without contacting ES or kubectl.
-  --skip-fluent-bit-restart     Do not restart fluent-bit (use only when you have
-                                already rotated the pod and the tail DB has caught
-                                up to the new userId range).
+  --skip-fluent-bit-restart     Do not roll the fluent-bit DaemonSet (use only
+                                when you have just rotated it manually).
   --wait-data-seconds N         Max seconds to wait for the raw index to come back
                                 after the fluent-bit restart. Default: ${WAIT_DATA_SECONDS}.
-  --confirm                     Skip the interactive confirmation prompt (CI use).
-  --force-with-fluentd-buffer   Proceed even when the fluentd output buffer queue
-                                is non-empty. Read the warning in the script
-                                header before using this.
-  --reset-fluent-bit-checkpoint Wipe the env tail SQLite DB AND the shared
-                                storage/ chunk dir on the fluent-bit state PVC.
-                                Required for scenario A. Also bypasses step 4.
-                                Affects dev/stg in-flight chunks too.
-  --reset-fluentd-buffer        Wipe the fluentd elasticsearch-buffers/ dir on
-                                the fluentd buffer PVC. Required for scenario A.
-                                Affects dev/stg buffered chunks too.
-  --scenario-a                  Macro: enable --reset-fluent-bit-checkpoint +
-                                --reset-fluentd-buffer + --skip-fluent-bit-restart.
-                                Use for the "post-delete only" intent (QA DB reset).
+  -y, --yes                     Skip the interactive 'reset <env>' confirmation prompt (CI use).
   -h | --help                   Show this help and exit.
 
 Env overrides (rarely needed):
@@ -135,9 +90,15 @@ Env overrides (rarely needed):
   ES_POD=${ES_POD}  ES_CONTAINER=${ES_CONTAINER}
   ES_SVC=${ES_SVC}  ES_PORT=${ES_PORT}  ES_SCHEME=${ES_SCHEME}
   ES_SECRET=${ES_SECRET}  ES_USER=${ES_USER}
-  FB_DEPLOYMENT=${FB_DEPLOYMENT}  FB_STATE_PVC=${FB_STATE_PVC}
-  FD_STATEFULSET=${FD_STATEFULSET}  FD_POD=${FD_POD}
-  CLEANUP_IMAGE=${CLEANUP_IMAGE}
+  FB_DAEMONSET=${FB_DAEMONSET}
+
+Out of scope:
+  fluent-bit tail SQLite + fluentd buffer wipe (legacy "scenario A") was
+  removed on 2026-05-22 — the cleanup-Job pattern assumed a Deployment + RWO
+  PVC layout. With fluent-bit on a DaemonSet + hostPath /var/lib/fluent-bit
+  (per-node state), wipe needs per-node privileged access; that procedure
+  is documented as a manual fallback in docs/reset-example-project-cohort.md and
+  is intentionally not automated here.
 EOF
 }
 
@@ -155,34 +116,15 @@ while [ $# -gt 0 ]; do
       shift; [ $# -gt 0 ] || { err "--wait-data-seconds requires N"; exit 2; }
       WAIT_DATA_SECONDS="$1"
       ;;
-    --confirm)                     CONFIRM_PROMPT=0 ;;
-    --force-with-fluentd-buffer)   FORCE_WITH_BUFFER=1 ;;
-    --reset-fluent-bit-checkpoint) RESET_FB_CHECKPOINT=1 ;;
-    --reset-fluentd-buffer)        RESET_FD_BUFFER=1 ;;
-    --scenario-a)
-      RESET_FB_CHECKPOINT=1
-      RESET_FD_BUFFER=1
-      SKIP_FB_RESTART=1
-      ;;
+    -y|--yes)                      CONFIRM_PROMPT=0 ;;
     -h|--help)                     usage; exit 0 ;;
     *) err "unknown arg: $1"; usage; exit 2 ;;
   esac
   shift
 done
 
-# A wiped buffer cannot leak old chunks → the queue-length safety check is moot.
-if [ "$RESET_FD_BUFFER" = "1" ]; then
-  FORCE_WITH_BUFFER=1
-fi
-
-# Wiping fluent-bit state implies "fluent-bit will be re-scheduled by the
-# cleanup flow", so the trailing rollout-restart in step 4 is redundant.
-if [ "$RESET_FB_CHECKPOINT" = "1" ]; then
-  SKIP_FB_RESTART=1
-fi
-
 if [ -z "$ENV_NAME" ]; then
-  err "--env NAME is required (e.g. qa, dev, stg, prd, ...)"
+  err "--env NAME is required (e.g. qa, dev, stg, prod, ...)"
   usage
   exit 2
 fi
@@ -225,7 +167,7 @@ es_curl() {
     printf "    (dry-run) curl -X %s %s%s\n" "$method" "$ES_URL" "$path" >&2
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" \
       -H 'Content-Type: application/json' \
       -X "$method" "${ES_URL}${path}" "$@"
@@ -238,7 +180,7 @@ es_status() {
     echo "000"
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       -X "$method" "${ES_URL}${path}"
 }
@@ -253,12 +195,9 @@ print_plan() {
   log "  cohort index:         ${COHORT_INDEX}"
   log "  transform:            ${TRANSFORM_ID}"
   log "  ES pod:               ${NAMESPACE_ES}/${ES_POD} (container=${ES_CONTAINER})"
-  log "  fluent-bit:           ${NAMESPACE_FB}/deployment/${FB_DEPLOYMENT}  restart=$([ "$SKIP_FB_RESTART" = 1 ] && echo no || echo yes)"
+  log "  fluent-bit:           ${NAMESPACE_FB}/daemonset/${FB_DAEMONSET}  restart=$([ "$SKIP_FB_RESTART" = 1 ] && echo no || echo yes)"
   log "  wait-data:            ${WAIT_DATA_SECONDS}s"
   log "  dry-run:              $([ "$DRY_RUN" = 1 ] && echo yes || echo no)"
-  log "  force w/fd buffer:    $([ "$FORCE_WITH_BUFFER" = 1 ] && echo yes || echo no)"
-  log "  reset fb checkpoint:  $([ "$RESET_FB_CHECKPOINT" = 1 ] && echo "yes (tail-${ENV_NAME}-game.db* + storage/*)" || echo no)"
-  log "  reset fd buffer:      $([ "$RESET_FD_BUFFER" = 1 ] && echo "yes (elasticsearch-buffers/*)" || echo no)"
 }
 
 confirm_or_exit() {
@@ -291,47 +230,6 @@ preflight_transform_exists() {
   ok "transform exists"
 }
 
-preflight_fluentd_buffer() {
-  if [ "$RESET_FD_BUFFER" = "1" ]; then
-    ok "fluentd buffer queue check skipped (--reset-fluentd-buffer will wipe it)"
-    return 0
-  fi
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) skipping fluentd buffer queue inspection"
-    return 0
-  fi
-  local fluentd_pod queue_line queue
-  fluentd_pod=$(kubectl -n "$NAMESPACE_FB" get pod \
-    -l 'app.kubernetes.io/name=fluentd' \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-  if [ -z "$fluentd_pod" ]; then
-    warn "fluentd pod not found via label app.kubernetes.io/name=fluentd — skipping buffer check"
-    return 0
-  fi
-  queue_line=$(kubectl -n "$NAMESPACE_FB" exec "$fluentd_pod" -- \
-    sh -c 'curl -sf http://127.0.0.1:24231/metrics 2>/dev/null \
-      | grep -E "^fluentd_output_status_buffer_queue_length\{[^}]*type=\"elasticsearch\"" \
-      | head -n1' 2>/dev/null || true)
-  if [ -z "$queue_line" ]; then
-    warn "could not read fluentd_output_status_buffer_queue_length — skipping (metric not exposed?)"
-    return 0
-  fi
-  queue=$(printf '%s\n' "$queue_line" | awk '{print $NF}')
-  # Treat any non-zero (incl. floats like "3.0") as "queue has chunks".
-  if [ "$queue" = "0" ] || [ "$queue" = "0.0" ]; then
-    ok "fluentd buffer queue is empty (queue_length=${queue})"
-    return 0
-  fi
-  warn "fluentd buffer queue is non-empty (queue_length=${queue})"
-  warn "  → those queued chunks will be re-flushed into the new raw index right after delete."
-  warn "  → drain or inspect the buffer before continuing, or rerun with --force-with-fluentd-buffer."
-  if [ "$FORCE_WITH_BUFFER" = "0" ]; then
-    err "aborting (use --force-with-fluentd-buffer to override)"
-    exit 1
-  fi
-  warn "  → continuing because --force-with-fluentd-buffer was given"
-}
-
 # --- step 1: stop transform ---------------------------------------------------
 
 stop_transform() {
@@ -350,26 +248,24 @@ stop_transform() {
 # --- step 2 + 3: delete indices ----------------------------------------------
 
 delete_index() {
+  # DELETE is idempotent at the ES API level — issue it directly and read the
+  # response. Avoids a HEAD pre-check (curl -X HEAD hangs waiting for a body
+  # that the server never sends).
   local idx="$1"
-  local code
-  code=$(es_status HEAD "/${idx}")
   if [ "$DRY_RUN" = "1" ]; then
     log "    (dry-run) DELETE /${idx}"
     return 0
   fi
-  case "$code" in
-    200)
-      es_curl DELETE "/${idx}" >/dev/null || { err "DELETE /${idx} failed"; exit 1; }
-      ok "deleted index ${idx}"
-      ;;
-    404)
-      warn "index ${idx} did not exist — nothing to delete"
-      ;;
-    *)
-      err "unexpected HEAD /${idx} → HTTP ${code}"
-      exit 1
-      ;;
-  esac
+  local resp
+  resp=$(es_curl DELETE "/${idx}" || true)
+  if printf '%s' "$resp" | grep -q '"acknowledged":true'; then
+    ok "deleted index ${idx}"
+  elif printf '%s' "$resp" | grep -qE '"type":"index_not_found_exception"'; then
+    warn "index ${idx} did not exist — nothing to delete"
+  else
+    err "DELETE /${idx} failed: $resp"
+    exit 1
+  fi
 }
 
 delete_cohort_index() {
@@ -382,172 +278,22 @@ delete_raw_index() {
   delete_index "$RAW_INDEX"
 }
 
-# --- step 3a / 3b: cleanup Job helpers ---------------------------------------
-
-# Lookup the PVC name backing fluentd's buffer volume. Tries the live pod first,
-# then falls back to the StatefulSet volumeClaimTemplate convention.
-discover_fluentd_buffer_pvc() {
-  local pvc=""
-  pvc=$(kubectl -n "$NAMESPACE_FB" get pod "$FD_POD" \
-    -o jsonpath='{range .spec.volumes[?(@.persistentVolumeClaim)]}{.persistentVolumeClaim.claimName}{"\n"}{end}' \
-    2>/dev/null | head -n1 || true)
-  if [ -z "$pvc" ]; then
-    local vct
-    vct=$(kubectl -n "$NAMESPACE_FB" get statefulset "$FD_STATEFULSET" \
-      -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.name}' 2>/dev/null || true)
-    [ -n "$vct" ] && pvc="${vct}-${FD_POD}"
-  fi
-  printf '%s\n' "$pvc"
-}
-
-# Apply a single-shot cleanup Job that mounts a PVC and runs a shell command,
-# waits for completion, prints its logs, then deletes the Job. Exits non-zero
-# on failure.
-run_cleanup_job() {
-  local job_name="$1" pvc="$2" mount_path="$3" cmd="$4"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) apply Job '${job_name}' (pvc=${pvc}, mount=${mount_path})"
-    log "    (dry-run) cmd: ${cmd}"
-    log "    (dry-run) wait Job '${job_name}' --for=condition=complete --timeout=120s"
-    log "    (dry-run) delete Job '${job_name}'"
-    return 0
-  fi
-  kubectl -n "$NAMESPACE_FB" delete "job/${job_name}" --ignore-not-found=true \
-    --wait=true --timeout=60s >/dev/null 2>&1 || true
-  cat <<EOF | kubectl -n "$NAMESPACE_FB" apply -f - >/dev/null
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: ${job_name}
-spec:
-  backoffLimit: 1
-  ttlSecondsAfterFinished: 300
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: cleanup
-          image: ${CLEANUP_IMAGE}
-          command: ["sh", "-c", "${cmd}"]
-          volumeMounts:
-            - name: target
-              mountPath: ${mount_path}
-      volumes:
-        - name: target
-          persistentVolumeClaim:
-            claimName: ${pvc}
-EOF
-  if ! kubectl -n "$NAMESPACE_FB" wait "job/${job_name}" \
-       --for=condition=complete --timeout=120s >/dev/null 2>&1; then
-    err "cleanup Job '${job_name}' did not complete within 120s"
-    kubectl -n "$NAMESPACE_FB" logs "job/${job_name}" --tail=50 || true
-    exit 1
-  fi
-  kubectl -n "$NAMESPACE_FB" logs "job/${job_name}" --tail=50 \
-    | sed 's/^/    /' || true
-  kubectl -n "$NAMESPACE_FB" delete "job/${job_name}" --wait=false >/dev/null 2>&1 || true
-}
-
-# Wait for every pod matched by a label selector to leave (PVC unmount).
-# Idempotent when zero pods match.
-wait_pods_deleted() {
-  local selector="$1" timeout="${2:-90s}"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) wait pods -l ${selector} --for=delete --timeout=${timeout}"
-    return 0
-  fi
-  local pods
-  pods=$(kubectl -n "$NAMESPACE_FB" get pod -l "$selector" \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
-  [ -z "$pods" ] && return 0
-  # `kubectl wait --for=delete` requires individual resource names.
-  echo "$pods" | xargs -I{} kubectl -n "$NAMESPACE_FB" wait "pod/{}" \
-    --for=delete --timeout="$timeout" >/dev/null 2>&1 || true
-}
-
-# --- step 3a: wipe fluentd buffer --------------------------------------------
-
-reset_fluentd_buffer() {
-  [ "$RESET_FD_BUFFER" = "1" ] || return 0
-  step "3a" "Wipe fluentd buffer (StatefulSet '${FD_STATEFULSET}', dir 'elasticsearch-buffers/*')"
-  warn "  this wipes ALL env buffer chunks (dev/qa/stg) — chunks for other env are dropped too."
-  local pvc=""
-  if [ "$DRY_RUN" = "1" ]; then
-    pvc="<lookup-deferred>"
-    log "    (dry-run) discover fluentd buffer PVC via pod '${FD_POD}' or StatefulSet vct"
-  else
-    pvc=$(discover_fluentd_buffer_pvc)
-    [ -n "$pvc" ] || { err "could not resolve fluentd buffer PVC (pod=${FD_POD}, sts=${FD_STATEFULSET})"; exit 1; }
-    log "    fluentd buffer PVC: ${pvc}"
-  fi
-
-  log "  scaling fluentd to 0 to release the PVC lock"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} scale statefulset/${FD_STATEFULSET} --replicas=0"
-  else
-    kubectl -n "$NAMESPACE_FB" scale "statefulset/${FD_STATEFULSET}" --replicas=0 >/dev/null
-    wait_pods_deleted "statefulset.kubernetes.io/pod-name=${FD_POD}" 120s
-  fi
-
-  run_cleanup_job "fluentd-buffer-cleanup-${ENV_NAME}" "$pvc" "/buffers" \
-    "rm -rfv /buffers/elasticsearch-buffers/* 2>/dev/null; rm -rfv /buffers/elasticsearch-buffers/.??* 2>/dev/null; ls -la /buffers/elasticsearch-buffers/ 2>/dev/null || true"
-
-  log "  scaling fluentd back to 1"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} scale statefulset/${FD_STATEFULSET} --replicas=1"
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout status statefulset/${FD_STATEFULSET} --timeout=120s"
-  else
-    kubectl -n "$NAMESPACE_FB" scale "statefulset/${FD_STATEFULSET}" --replicas=1 >/dev/null
-    kubectl -n "$NAMESPACE_FB" rollout status "statefulset/${FD_STATEFULSET}" --timeout=120s
-  fi
-  ok "fluentd buffer wiped"
-}
-
-# --- step 3b: wipe fluent-bit state ------------------------------------------
-
-reset_fluent_bit_state() {
-  [ "$RESET_FB_CHECKPOINT" = "1" ] || return 0
-  step "3b" "Wipe fluent-bit state (PVC '${FB_STATE_PVC}', files 'tail-${ENV_NAME}-game.db*' + 'storage/*')"
-  warn "  storage/ wipe drops the input chunks of all env (typically a few seconds' worth of in-flight data)."
-
-  log "  scaling fluent-bit to 0 to release the PVC lock"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} scale deployment/${FB_DEPLOYMENT} --replicas=0"
-  else
-    kubectl -n "$NAMESPACE_FB" scale "deployment/${FB_DEPLOYMENT}" --replicas=0 >/dev/null
-    wait_pods_deleted "app.kubernetes.io/name=fluent-bit" 120s
-  fi
-
-  run_cleanup_job "fluent-bit-state-cleanup-${ENV_NAME}" "$FB_STATE_PVC" "/state" \
-    "rm -fv /state/tail-${ENV_NAME}-game.db* 2>/dev/null; rm -rfv /state/storage/* 2>/dev/null; ls -la /state 2>/dev/null || true"
-
-  log "  scaling fluent-bit back to 1"
-  if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} scale deployment/${FB_DEPLOYMENT} --replicas=1"
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout status deployment/${FB_DEPLOYMENT} --timeout=120s"
-  else
-    kubectl -n "$NAMESPACE_FB" scale "deployment/${FB_DEPLOYMENT}" --replicas=1 >/dev/null
-    kubectl -n "$NAMESPACE_FB" rollout status "deployment/${FB_DEPLOYMENT}" --timeout=120s
-  fi
-  ok "fluent-bit state wiped"
-}
-
-# --- step 4: restart fluent-bit ----------------------------------------------
+# --- step 4: restart fluent-bit DaemonSet ------------------------------------
 
 restart_fluent_bit() {
-  step 4 "Restart fluent-bit deployment '${FB_DEPLOYMENT}' (-n ${NAMESPACE_FB})"
+  step 4 "Restart fluent-bit DaemonSet 'daemonset/${FB_DAEMONSET}' (-n ${NAMESPACE_FB})"
   if [ "$SKIP_FB_RESTART" = "1" ]; then
     warn "  --skip-fluent-bit-restart was set, leaving fluent-bit untouched"
     return 0
   fi
   if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout restart deployment/${FB_DEPLOYMENT}"
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout status deployment/${FB_DEPLOYMENT} --timeout=120s"
+    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout restart daemonset/${FB_DAEMONSET}"
+    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout status daemonset/${FB_DAEMONSET} --timeout=180s"
     return 0
   fi
-  kubectl -n "$NAMESPACE_FB" rollout restart "deployment/${FB_DEPLOYMENT}"
-  kubectl -n "$NAMESPACE_FB" rollout status "deployment/${FB_DEPLOYMENT}" --timeout=120s
-  ok "fluent-bit restarted"
+  kubectl -n "$NAMESPACE_FB" rollout restart "daemonset/${FB_DAEMONSET}"
+  kubectl -n "$NAMESPACE_FB" rollout status "daemonset/${FB_DAEMONSET}" --timeout=180s
+  ok "fluent-bit DaemonSet rolled"
 }
 
 # --- step 5: wait for raw index to come back --------------------------------
@@ -563,9 +309,20 @@ wait_for_raw_index() {
   while :; do
     now=$(date +%s)
     if [ "$now" -ge "$deadline" ]; then
-      err "raw index '${RAW_INDEX}' did not receive any document within ${WAIT_DATA_SECONDS}s"
-      err "  → check fluent-bit pod logs and the source NFS path"
-      exit 1
+      # Idle environments (no traffic yet) are legitimate. ES rejects
+      # _transform/_start with `validation_exception: no such index` when the
+      # source is missing, so create an empty placeholder index — fluent-bit
+      # will populate it later via dynamic mapping when the first doc arrives.
+      warn "raw index '${RAW_INDEX}' has no docs yet after ${WAIT_DATA_SECONDS}s — creating empty placeholder so the transform can start"
+      local put_resp
+      put_resp=$(es_curl PUT "/${RAW_INDEX}" || true)
+      if printf '%s' "$put_resp" | grep -qE '"acknowledged":true|"resource_already_exists_exception"'; then
+        ok "empty raw index '${RAW_INDEX}' ready — fluent-bit will populate it as traffic arrives"
+      else
+        err "failed to PUT empty index ${RAW_INDEX}: $put_resp"
+        exit 1
+      fi
+      return 0
     fi
     count_resp=$(es_curl GET "/${RAW_INDEX}/_count" 2>/dev/null || true)
     count=$(printf '%s' "$count_resp" | python3 -c "
@@ -604,16 +361,20 @@ start_transform() {
 verify() {
   step 7 "Verify cohort first_seen / raw count"
   if [ "$DRY_RUN" = "1" ]; then
+    log "    (dry-run) GET /_cat/indices/${ENV_NAME}-example-project-game*?v"
     log "    (dry-run) GET /${RAW_INDEX}/_count"
     log "    (dry-run) GET /${COHORT_INDEX}/_search?size=3"
     return 0
   fi
   # Give the transform a moment to write its first checkpoint.
   sleep 15
-  local raw_count_resp cohort_search_resp
+  local indices_resp raw_count_resp cohort_search_resp
+  indices_resp=$(es_curl GET "/_cat/indices/${ENV_NAME}-example-project-game*?v" || true)
   raw_count_resp=$(es_curl GET "/${RAW_INDEX}/_count" || true)
   cohort_search_resp=$(es_curl GET "/${COHORT_INDEX}/_search?size=3" || true)
   log ""
+  log "  indices (${ENV_NAME}-example-project-game*):"
+  printf '%s\n' "$indices_resp" | sed 's/^/    /' || true
   log "  raw index _count:"
   printf '%s\n' "$raw_count_resp" | python3 -c "
 import json, sys
@@ -645,13 +406,10 @@ main() {
 
   step 0 "Pre-flight checks"
   preflight_transform_exists
-  preflight_fluentd_buffer
 
   stop_transform
   delete_cohort_index
   delete_raw_index
-  reset_fluentd_buffer
-  reset_fluent_bit_state
   restart_fluent_bit
   wait_for_raw_index
   start_transform

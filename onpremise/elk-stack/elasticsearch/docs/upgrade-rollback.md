@@ -1,10 +1,10 @@
 # ECK Stack Upgrade / Rollback Guide
 
-Covers both Elasticsearch and Kibana. Describes the safety features in `upgrade.sh`, the automatic rollback flow, and incident response procedures.
+Covers both Elasticsearch and Kibana. Describes the safety features in `upgrade.py`, the automatic rollback flow, and incident response procedures.
 
 Both ES and Kibana use the `external-oci-cr-version` canonical template, so this guide applies to both.
 
-> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/dev.yaml` (the rolling-update path), **and** bumping the **OCI chart pin** in `helmfile.yaml` via `upgrade.sh --check-chart` / `--upgrade-chart` (which absorbs chart template/values schema changes).
+> **Scope of this doc**: bumping the **Stack version** (image tag) in `values/dev.yaml` (the rolling-update path), **and** bumping the **OCI chart pin** in `helmfile.yaml` via `upgrade.py --check-chart` / `--upgrade-chart` (which absorbs chart template/values schema changes).
 >
 > Stack version and OCI chart pin are **two independent axes**. The bulk of this guide covers the Stack-version path; the final section [OCI chart pin bump](#oci-chart-pin-bump-separate-path) covers the chart-pin path separately.
 
@@ -24,10 +24,10 @@ Both ES and Kibana use the `external-oci-cr-version` canonical template, so this
 
 ## Background: 2026-04-16 incident
 
-`./upgrade.sh` detected `9.4.0` as the latest GA from the Elastic artifacts API and applied it, but the image had not yet been published on `docker.elastic.co`. Result:
+`./upgrade.py` detected `9.4.0` as the latest GA from the Elastic artifacts API and applied it, but the image had not yet been published on `docker.elastic.co`. Result:
 
 1. **ImagePullBackOff**: ES/Kibana pods stuck in Init with missing `9.4.0` image
-2. **Rollback blocked**: After `./upgrade.sh --rollback`, running `helmfile apply` was denied by the ECK admission webhook:
+2. **Rollback blocked**: After `./upgrade.py --rollback`, running `helmfile apply` was denied by the ECK admission webhook:
    ```
    admission webhook "elastic-es-validation-v1.k8s.elastic.co" denied the request:
    spec.version: Invalid value: "9.0.0": Downgrades are not supported
@@ -65,7 +65,7 @@ All four issues are now prevented or automatically recovered by the safety featu
 
 | Feature | Location |
 |---|---|
-| `check-versions.sh` **NO_IMG status** — prevents mis-reporting unavailable versions as UPDATE | [check-versions.sh](../../../../scripts/upgrade-sync/check-versions.sh) |
+| `check-versions.py` **NO_IMG status** — prevents mis-reporting unavailable versions as UPDATE | [check-versions.py](../../../../scripts/upgrade-sync/check-versions.py) |
 | **Downgrade detection** — auto-detects during rollback → offers webhook handling | `do_rollback()` |
 
 <br/>
@@ -76,10 +76,10 @@ All four issues are now prevented or automatically recovered by the safety featu
 cd observability/logging/elasticsearch
 
 # 1. Dry-run (checks health + image availability + dependencies)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # 2. Apply (updates values/dev.yaml; there is no local Chart.yaml)
-./upgrade.sh
+./upgrade.py
 
 # 3. Push to cluster
 helmfile diff
@@ -87,7 +87,7 @@ helmfile apply
 
 # 4. Keep Kibana on the same Stack version (ES first, Kibana later)
 cd ../kibana
-./upgrade.sh
+./upgrade.py
 helmfile apply
 ```
 
@@ -146,12 +146,12 @@ Proceeding with `y` without a snapshot leaves no recovery option on failure.
 ### Preflight across all charts
 
 ```bash
-./scripts/upgrade-sync/check-versions.sh --updates-only
+./scripts/upgrade-sync/check-versions.py --updates-only
 ```
 
 ```
-UPDATE   local-with-templates      0.56.0   0.57.2           observability/logging/_optional/fluent-bit-aws/upgrade.sh
-NO_IMG   external-oci-cr-version     9.0.0    9.4.0 (→9.3.3)   observability/logging/elasticsearch/upgrade.sh
+UPDATE   local-with-templates      0.56.0   0.57.2           observability/logging/_optional/fluent-bit-aws/upgrade.py
+NO_IMG   external-oci-cr-version     9.0.0    9.4.0 (→9.3.3)   observability/logging/elasticsearch/upgrade.py
          -> 9.4.0 image missing; latest available: 9.3.3 (use --version 9.3.3)
 ```
 
@@ -165,7 +165,7 @@ The arrow notation (`9.4.0 (→9.3.3)`) shows the latest version in the feed and
 
 ```bash
 cd observability/logging/elasticsearch   # or kibana
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 Script behavior:
@@ -206,10 +206,10 @@ Each component is independent:
 
 ```bash
 cd observability/logging/elasticsearch
-./upgrade.sh --rollback
+./upgrade.py --rollback
 
 cd ../kibana
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 The operator/webhook gets bounced twice (once per component). Slight redundancy but the result is correct.
@@ -236,7 +236,7 @@ elasticsearch-es-default-0   0/1   Init:ImagePullBackOff
    ```
 2. If image is missing, run the auto-rollback:
    ```bash
-   ./upgrade.sh --rollback
+   ./upgrade.py --rollback
    ```
 
 ### Scenario 2: `helmfile apply` blocked by webhook
@@ -248,7 +248,7 @@ denied the request: spec.version: Downgrades are not supported
 
 **Cause**: Files rolled back, then `helmfile apply` was run manually (bypassing the webhook handler).
 
-**Response**: Run `./upgrade.sh --rollback` again and answer `y`. The Helm failed state is also auto-recovered in Step 3.
+**Response**: Run `./upgrade.py --rollback` again and answer `y`. The Helm failed state is also auto-recovered in Step 3.
 
 ### Scenario 3: ECK operator `CrashLoopBackOff`
 
@@ -290,7 +290,7 @@ helm rollback <release> <last-successful-revision> -n logging
 helmfile apply
 ```
 
-Covered automatically by `./upgrade.sh --rollback` Step 3.
+Covered automatically by `./upgrade.py --rollback` Step 3.
 
 <br/>
 
@@ -343,8 +343,8 @@ kubectl -n logging wait kibana/kibana \
 
 Before upgrade:
 
-- [ ] `./scripts/upgrade-sync/check-versions.sh --updates-only` — no `NO_IMG` status
-- [ ] `./upgrade.sh --dry-run` — Step 2 health, Step 4 image, Step 5 dependency all pass
+- [ ] `./scripts/upgrade-sync/check-versions.py --updates-only` — no `NO_IMG` status
+- [ ] `./upgrade.py --dry-run` — Step 2 health, Step 4 image, Step 5 dependency all pass
 - [ ] ECK Operator supports the target Stack version ([Compatibility matrix](https://www.elastic.co/support/matrix))
 - [ ] ES and Kibana on the same Stack version (ES first, then Kibana)
 - [ ] For major bumps (8.x → 9.x): **take an Elasticsearch snapshot first** — no recovery possible otherwise
@@ -353,30 +353,30 @@ Before upgrade:
 Before rollback:
 
 - [ ] `kubectl` context points to the correct cluster (`kubectl config current-context`)
-- [ ] Target backup exists (`./upgrade.sh --list-backups`)
+- [ ] Target backup exists (`./upgrade.py --list-backups`)
 - [ ] For downgrades, answer `y` to the auto-handler prompt → full automated flow
 
 <br/>
 
 ## OCI chart pin bump (separate path)
 
-Tracks `helmfile.yaml`'s `version:` (publisher chart release tag) independently of the Stack version, via the `--check-chart` / `--upgrade-chart` sub-commands of `upgrade.sh`.
+Tracks `helmfile.yaml`'s `version:` (publisher chart release tag) independently of the Stack version, via the `--check-chart` / `--upgrade-chart` sub-commands of `upgrade.py`.
 
 ```bash
 # 1. Compare the current pin with the latest publisher release (read-only)
-./upgrade.sh --check-chart
+./upgrade.py --check-chart
 
 # 2. Preview via dry-run: pull both chart versions, render each with the
 #    active values file, print a unified diff. No files touched. Values-schema
 #    breakage surfaces as a helm template failure on the target chart.
-./upgrade.sh --upgrade-chart --dry-run
+./upgrade.py --upgrade-chart --dry-run
 
 # 3. Apply: review the diff, confirm, then back up helmfile.yaml to
 #    backup/<TIMESTAMP>-chart/ and bump the pin
-./upgrade.sh --upgrade-chart
+./upgrade.py --upgrade-chart
 
 # 4. Pin to a specific version
-./upgrade.sh --upgrade-chart --chart-version 0.1.2
+./upgrade.py --upgrade-chart --chart-version 0.1.2
 
 # 5. Reflect in the cluster
 helmfile diff && helmfile apply
@@ -386,16 +386,16 @@ helmfile diff && helmfile apply
 
 **Schema-breakage preflight**: `--upgrade-chart` runs `helm template` on both the current and target chart. If the target chart's values schema changed in a way your `values/dev.yaml` can't satisfy, the script aborts before touching any file and prints the release notes URL.
 
-**Chart pin rollback**: `./upgrade.sh --rollback` — pick the entry whose timestamp ends in `-chart`. Only `helmfile.yaml` is restored. No live CR version change, so the webhook bypass path is skipped. Cluster-level rollback (`helm rollback elasticsearch <previous-revision> -n logging`) remains available if needed.
+**Chart pin rollback**: `./upgrade.py --rollback` — pick the entry whose timestamp ends in `-chart`. Only `helmfile.yaml` is restored. No live CR version change, so the webhook bypass path is skipped. Cluster-level rollback (`helm rollback elasticsearch <previous-revision> -n logging`) remains available if needed.
 
-**Fleet-wide survey**: from the repo root, `./scripts/upgrade-sync/check-versions.sh` — the bottom "OCI chart pin status" table shows chart-pin drift across elasticsearch and kibana at a glance.
+**Fleet-wide survey**: from the repo root, `./scripts/upgrade-sync/check-versions.py` — the bottom "OCI chart pin status" table shows chart-pin drift across elasticsearch and kibana at a glance.
 
 <br/>
 
 ## References
 
 - [upgrade-sync system guide](../../../../scripts/upgrade-sync/README-en.md)
-- [external-oci-cr-version canonical template](../../../../scripts/upgrade-sync/templates/external-oci-cr-version.sh)
+- [external-oci-cr-version canonical template](../../../../scripts/upgrade-sync/templates/external-oci-cr-version.py)
 - [ECK Operator chart](../../eck-operator/)
 - [elasticsearch-eck chart source (maintainer repo)](https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck)
 - [kibana-eck chart source](https://github.com/somaz94/helm-charts/tree/main/charts/kibana-eck)

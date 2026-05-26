@@ -10,7 +10,7 @@ Kibana and Elasticsearch share the same ECK operator/webhook and are managed by 
 
 ### Dependency CR constraint
 
-Kibana's `upgrade.sh` is configured with:
+Kibana's `upgrade.py` is configured with:
 
 ```bash
 DEPENDENCY_CR_KIND="elasticsearch"
@@ -23,13 +23,13 @@ This means **Elasticsearch must be upgraded first** before Kibana can be upgrade
 
 ### Upgrade order
 
-1. In `observability/logging/elasticsearch/`: `./upgrade.sh && helmfile apply`
+1. In `observability/logging/elasticsearch/`: `./upgrade.py && helmfile apply`
 2. Wait for ES CR to become Ready on the new version
-3. In `observability/logging/kibana/`: `./upgrade.sh && helmfile apply`
+3. In `observability/logging/kibana/`: `./upgrade.py && helmfile apply`
 
 ### Rollback order
 
-No specific order required. Run `./upgrade.sh --rollback` independently in each component. The auto-handler (webhook, helm failed release, operator management) works identically for downgrades.
+No specific order required. Run `./upgrade.py --rollback` independently in each component. The auto-handler (webhook, helm failed release, operator management) works identically for downgrades.
 
 <br/>
 

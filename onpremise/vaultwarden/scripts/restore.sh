@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # ============================================================
@@ -8,6 +8,7 @@ set -euo pipefail
 #   ./restore.sh              # List available backups
 #   ./restore.sh latest       # Restore from most recent backup
 #   ./restore.sh 20260408     # Restore from specific date
+#   ./restore.sh --dry-run latest   # Print every mutating kubectl call without executing
 # ============================================================
 
 NAMESPACE="vaultwarden"
@@ -20,9 +21,11 @@ RESTORE_IMAGE="busybox:latest"
 # Functions
 # -----------------------------------------------
 
+DRY_RUN=0
+
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [DATE|latest]
+Usage: $(basename "$0") [--dry-run] [DATE|latest]
 
 Vaultwarden Backup Restore Script
 
@@ -31,10 +34,14 @@ Commands:
   latest        Restore from the most recent backup
   YYYYMMDD      Restore from a specific date (e.g., 20260408)
 
+Options:
+  --dry-run     Print every mutating kubectl call (scale / restore Pod / wait)
+                without executing. Read-only steps (backup listing) still run.
+
 Examples:
   $(basename "$0")              # List backups
   $(basename "$0") latest       # Restore latest
-  $(basename "$0") 20260408     # Restore from April 8, 2026
+  $(basename "$0") --dry-run 20260408   # Print restore plan for April 8, 2026
 EOF
   exit 0
 }
@@ -114,47 +121,68 @@ do_restore() {
   # Step 1: Scale down
   echo ""
   echo "[Step 1/4] Stopping Vaultwarden..."
-  kubectl scale statefulset "$STATEFULSET" --replicas=0 -n "$NAMESPACE"
-  echo "  Waiting for pod to terminate..."
-  kubectl wait --for=delete pod/"${STATEFULSET}-0" -n "$NAMESPACE" --timeout=60s 2>/dev/null || true
-  echo "  Stopped."
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "    (dry-run) kubectl scale statefulset $STATEFULSET --replicas=0 -n $NAMESPACE"
+    echo "    (dry-run) kubectl wait --for=delete pod/${STATEFULSET}-0 -n $NAMESPACE --timeout=60s"
+  else
+    kubectl scale statefulset "$STATEFULSET" --replicas=0 -n "$NAMESPACE"
+    echo "  Waiting for pod to terminate..."
+    kubectl wait --for=delete pod/"${STATEFULSET}-0" -n "$NAMESPACE" --timeout=60s 2>/dev/null || true
+    echo "  Stopped."
+  fi
 
   # Step 2: Restore
   echo ""
   echo "[Step 2/4] Restoring from backup db-${DATE}.sqlite3..."
-  kubectl run vw-restore --rm -it --restart=Never \
-    --image="$RESTORE_IMAGE" -n "$NAMESPACE" \
-    --overrides="{
-      \"spec\": {
-        \"containers\": [{
-          \"name\": \"restore\",
-          \"image\": \"$RESTORE_IMAGE\",
-          \"command\": [\"sh\", \"-c\", \"set -e; if [ ! -f /backup-data/db-${DATE}.sqlite3 ]; then echo 'ERROR: db-${DATE}.sqlite3 not found'; exit 1; fi; cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3; cp /backup-data/rsa_key-${DATE}.pem /data/rsa_key.pem 2>/dev/null || echo 'WARNING: rsa_key not found in backup, keeping current'; echo 'Restore complete: db-${DATE}.sqlite3 -> /data/db.sqlite3'\"],
-          \"volumeMounts\": [
-            {\"name\": \"data\", \"mountPath\": \"/data\"},
-            {\"name\": \"backup\", \"mountPath\": \"/backup-data\", \"readOnly\": true}
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "    (dry-run) kubectl run vw-restore --rm -it --restart=Never --image=$RESTORE_IMAGE -n $NAMESPACE --overrides=... (would 'cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3 + rsa_key')"
+  else
+    kubectl run vw-restore --rm -it --restart=Never \
+      --image="$RESTORE_IMAGE" -n "$NAMESPACE" \
+      --overrides="{
+        \"spec\": {
+          \"containers\": [{
+            \"name\": \"restore\",
+            \"image\": \"$RESTORE_IMAGE\",
+            \"command\": [\"sh\", \"-c\", \"set -e; if [ ! -f /backup-data/db-${DATE}.sqlite3 ]; then echo 'ERROR: db-${DATE}.sqlite3 not found'; exit 1; fi; cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3; cp /backup-data/rsa_key-${DATE}.pem /data/rsa_key.pem 2>/dev/null || echo 'WARNING: rsa_key not found in backup, keeping current'; echo 'Restore complete: db-${DATE}.sqlite3 -> /data/db.sqlite3'\"],
+            \"volumeMounts\": [
+              {\"name\": \"data\", \"mountPath\": \"/data\"},
+              {\"name\": \"backup\", \"mountPath\": \"/backup-data\", \"readOnly\": true}
+            ]
+          }],
+          \"volumes\": [
+            {\"name\": \"data\", \"persistentVolumeClaim\": {\"claimName\": \"$DATA_PVC\"}},
+            {\"name\": \"backup\", \"persistentVolumeClaim\": {\"claimName\": \"$BACKUP_PVC\"}}
           ]
-        }],
-        \"volumes\": [
-          {\"name\": \"data\", \"persistentVolumeClaim\": {\"claimName\": \"$DATA_PVC\"}},
-          {\"name\": \"backup\", \"persistentVolumeClaim\": {\"claimName\": \"$BACKUP_PVC\"}}
-        ]
-      }
-    }"
+        }
+      }"
+  fi
 
   # Step 3: Scale up
   echo ""
   echo "[Step 3/4] Starting Vaultwarden..."
-  kubectl scale statefulset "$STATEFULSET" --replicas=1 -n "$NAMESPACE"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "    (dry-run) kubectl scale statefulset $STATEFULSET --replicas=1 -n $NAMESPACE"
+  else
+    kubectl scale statefulset "$STATEFULSET" --replicas=1 -n "$NAMESPACE"
+  fi
 
   # Step 4: Wait for ready
   echo ""
   echo "[Step 4/4] Waiting for pod to be ready..."
-  kubectl wait --for=condition=ready pod/"${STATEFULSET}-0" -n "$NAMESPACE" --timeout=120s
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "    (dry-run) kubectl wait --for=condition=ready pod/${STATEFULSET}-0 -n $NAMESPACE --timeout=120s"
+  else
+    kubectl wait --for=condition=ready pod/"${STATEFULSET}-0" -n "$NAMESPACE" --timeout=120s
+  fi
 
   echo ""
   echo "============================================"
-  echo " Restore complete!"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo " (dry-run) Vaultwarden restore plan printed — no changes made."
+  else
+    echo " Restore complete!"
+  fi
   echo " Restored from: db-${DATE}.sqlite3"
   echo " Verify: https://vault.example.com"
   echo "============================================"
@@ -164,8 +192,17 @@ do_restore() {
 # Main
 # -----------------------------------------------
 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage ;;
+    --) shift; break ;;
+    -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *)  break ;;
+  esac
+done
+
 case "${1:-}" in
-  -h|--help) usage ;;
   "")        list_backups ;;
   *)         do_restore "$1" ;;
 esac

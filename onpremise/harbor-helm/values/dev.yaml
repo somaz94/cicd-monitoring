@@ -89,7 +89,7 @@ externalURL: https://harbor.example.com
 # Harbor's core database. Configure via API/UI AFTER `helmfile apply` succeeds.
 #
 # Standard procedure (recommended automation):
-#   ./scripts/harbor/admin/harbor-admin.sh set-oidc \
+#   ./scripts/admin/harbor-admin.sh set-oidc \
 #       --name Keycloak \
 #       --endpoint https://auth.example.com/realms/example \
 #       --client-id harbor \
@@ -114,7 +114,7 @@ externalURL: https://harbor.example.com
 #   security/keycloak/docs/harbor-migration.md (Phase 4 step-by-step)
 # Detailed reference: cicd/harbor-helm/docs/oidc-setup-keycloak.md
 # Legacy GitLab full procedure: cicd/harbor-helm/docs/legacy/oidc-setup-gitlab.md
-# Permissions helper: scripts/harbor/admin/harbor-admin.sh
+# Permissions helper: scripts/admin/harbor-admin.sh
 #
 # -----------------------------------------------------------------------------
 # Legacy: GitLab-direct OIDC (pre-Phase 4) — preserved for rollback only
@@ -130,7 +130,7 @@ externalURL: https://harbor.example.com
 #     2. Copy Application ID and Secret.
 #
 #   Apply via harbor-admin.sh:
-#     ./scripts/harbor/admin/harbor-admin.sh set-oidc \
+#     ./scripts/admin/harbor-admin.sh set-oidc \
 #         --name GitLab \
 #         --endpoint http://gitlab.example.com \
 #         --client-id '<gitlab application id>' \

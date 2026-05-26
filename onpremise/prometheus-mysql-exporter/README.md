@@ -23,7 +23,7 @@ prometheus-mysql-exporter/
 ├── values/
 │   └── dev-example-project.yaml       # ExampleProject DB connection info, ServiceMonitor settings
 │   # └── projectb.yaml     # Add new project values file here
-├── upgrade.sh
+├── upgrade.py
 ├── backup/
 └── README.md
 ```

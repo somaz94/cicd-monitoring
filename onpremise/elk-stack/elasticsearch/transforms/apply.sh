@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Apply (PUT + start) ES Transform jobs from JSON definitions in this directory.
-# 이 디렉토리의 JSON 정의를 ES Transform job 으로 PUT + start.
 #
 # Each "<name>.json" produces a transform with id="<name>". Re-running is safe:
 # PUT with `defer_validation=false` will fail when an existing transform is running,
 # so the script first stops & deletes (or updates) when --replace is given.
-# 각 "<name>.json" 은 id="<name>" 인 transform 으로 등록. 재실행 시:
-# --replace 면 기존을 stop+delete 후 재등록, 기본은 존재 시 skip(idempotent).
+# bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE
+# enabling shell options. The body uses ``mapfile`` (bash 4+ only) so a
+# zsh interpreter would fail.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 set -euo pipefail
-
-[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
 TRANSFORMS_DIR="$(cd "$(dirname "$0")" && pwd)"
 NAMESPACE="${NAMESPACE:-logging}"

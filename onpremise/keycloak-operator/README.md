@@ -16,8 +16,8 @@ security/keycloak-operator/
 ├── helmfile.yaml          # single release: keycloak-operator @ keycloak-system ns
 ├── values/
 │   └── dev.yaml          # dev (example dev) overrides (watchNamespaces, resources)
-├── upgrade.sh             # external-oci template (tracks somaz94 OCI chart version)
-├── backup/                # rollback trail written by upgrade.sh
+├── upgrade.py             # external-oci template (tracks somaz94 OCI chart version)
+├── backup/                # rollback trail written by upgrade.py
 ├── README.md              # Korean version
 └── README-en.md           # (this file)
 ```
@@ -71,12 +71,12 @@ helmfile -f helmfile.yaml -e dev apply        # ⚠️ Cluster change — user a
 ### Track new chart versions
 
 ```bash
-./upgrade.sh --dry-run                         # Preview (chart diff + breaking-key check)
-./upgrade.sh                                   # Apply (rewrites helmfile.yaml version + values)
-./upgrade.sh --rollback                        # Restore from backup/<timestamp>/
+./upgrade.py --dry-run                         # Preview (chart diff + breaking-key check)
+./upgrade.py                                   # Apply (rewrites helmfile.yaml version + values)
+./upgrade.py --rollback                        # Restore from backup/<timestamp>/
 ```
 
-> The body of `upgrade.sh` is kept in sync with [`scripts/upgrade-sync/templates/external-oci.sh`](../../scripts/upgrade-sync/templates/external-oci.sh). Edit the canonical, not this file.
+> The body of `upgrade.py` is kept in sync with [`scripts/upgrade-sync/templates/external-oci.py`](../../scripts/upgrade-sync/templates/external-oci.py). Edit the canonical, not this file.
 
 <br/>
 
@@ -111,4 +111,4 @@ helmfile -f ../keycloak/helmfile.yaml -e dev apply
 - [somaz94/helm-charts/charts/keycloak-operator/README.md](https://github.com/somaz94/helm-charts/tree/main/charts/keycloak-operator) — chart values reference
 - [Keycloak Operator Documentation](https://www.keycloak.org/operator/installation)
 - [`security/keycloak/`](../keycloak) — sibling component (Keycloak CR + DB + realm)
-- [`scripts/upgrade-sync/`](../../scripts/upgrade-sync/) — upgrade.sh canonical management
+- [`scripts/upgrade-sync/`](../../scripts/upgrade-sync/) — upgrade.py canonical management

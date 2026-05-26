@@ -10,10 +10,10 @@ Manages the [Fluentd](https://www.fluentd.org/) DaemonSet for Kubernetes log col
 fluentd/
 ├── Chart.yaml          # Version tracking (no local templates)
 ├── helmfile.yaml       # Helmfile release definition (uses remote chart)
-├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml       # Custom values (manually managed)
-├── upgrade.sh          # Version upgrade script
+├── upgrade.py          # Version upgrade script
 ├── backup/             # Auto-backup during upgrades
 └── README.md
 ```
@@ -49,26 +49,26 @@ helmfile destroy
 
 ## Upgrade
 
-Use `upgrade.sh` to perform version upgrades.
+Use `upgrade.py` to perform version upgrades.
 
 ```bash
 # Check latest version and upgrade
-./upgrade.sh
+./upgrade.py
 
 # Preview changes only (no file modifications)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Upgrade to a specific version
-./upgrade.sh --version 0.6.0
+./upgrade.py --version 0.6.0
 
 # Combine flags
-./upgrade.sh --dry-run --version 0.6.0
+./upgrade.py --dry-run --version 0.6.0
 
 # Exclude specific values files from comparison
-./upgrade.sh --exclude old-release,test
+./upgrade.py --exclude old-release,test
 ```
 
-upgrade.sh automatically performs the following:
+upgrade.py automatically performs the following:
 1. Checks current/latest version
 2. Downloads Chart.yaml, values.yaml and shows diff comparison
 3. Inspects `values/*.yaml` for breaking changes (removed/new top-level keys)
@@ -80,7 +80,7 @@ This chart manages the **chart version** and the **container image tag** separat
 
 | Target | Managed by | Reason |
 |---|---|---|
-| Helm chart version (`fluent/fluentd`) | `./upgrade.sh` (automated) | Standard flow |
+| Helm chart version (`fluent/fluentd`) | `./upgrade.py` (automated) | Standard flow |
 | Container image (`fluent/fluentd-kubernetes-daemonset:<tag>`) | `image.tag` in `values/dev.yaml` (manual) | Upstream chart's default image uses `-elasticsearch7-*` / `-elasticsearch8-*` variants; ES 9 operation requires a specific compatible image. `-elasticsearch9-*` variant is not yet published upstream. |
 
 **image.tag upgrade procedure** (manual):
@@ -91,19 +91,19 @@ This chart manages the **chart version** and the **container image tag** separat
 **When to bump**:
 - Upgrade variant + tag once fluentd publishes an official `-elasticsearch9-*` variant.
 - Bump tag for security/patch-level releases (e.g., `...-elasticsearch8-1.5`).
-- `./upgrade.sh` chart upgrade and image upgrade can be performed **independently**.
+- `./upgrade.py` chart upgrade and image upgrade can be performed **independently**.
 
 ### Rollback
 
 ```bash
 # List backups
-./upgrade.sh --list-backups
+./upgrade.py --list-backups
 
 # Restore from backup
-./upgrade.sh --rollback
+./upgrade.py --rollback
 
 # Clean up old backups (keep only the latest 5)
-./upgrade.sh --cleanup-backups
+./upgrade.py --cleanup-backups
 ```
 
 ### Deploy After Upgrade

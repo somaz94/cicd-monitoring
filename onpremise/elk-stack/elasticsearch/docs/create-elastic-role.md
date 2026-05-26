@@ -46,13 +46,13 @@ Each section is opt-out — set the corresponding flag to `''` (empty string) to
 ./create-elastic-role.sh -h
 
 # === Default — read_only_role over all indices ===
-./create-elastic-role.sh --confirm
+./create-elastic-role.sh --yes
 
 # === Restrict to a specific index family ===
 ./create-elastic-role.sh \
   --role-name pm_viewer \
   --indices 'example-project-*,dev-example-project-game*,qa-example-project-game*' \
-  --confirm
+  --yes
 
 # === Read-write role ===
 ./create-elastic-role.sh \
@@ -60,29 +60,29 @@ Each section is opt-out — set the corresponding flag to `''` (empty string) to
   --indices 'dev-*' \
   --index-privileges 'read,write,create,create_index,view_index_metadata' \
   --kibana-privileges all \
-  --confirm
+  --yes
 
 # === Include Dev Tools (admin-grade) — be deliberate ===
 ./create-elastic-role.sh \
   --role-name kibana_power_user \
   --kibana-privileges all \
-  --confirm
+  --yes
 
 # === Kibana-only role (no ES indices privileges) ===
 ./create-elastic-role.sh \
   --role-name kibana_only \
   --indices '' \
   --kibana-privileges read \
-  --confirm
+  --yes
 
 # === ES-only role (no Kibana access) ===
 ./create-elastic-role.sh \
   --role-name es_search \
   --kibana-application '' \
-  --confirm
+  --yes
 
 # === Dry-run ===
-./create-elastic-role.sh --role-name foo --dry-run --confirm
+./create-elastic-role.sh --role-name foo --dry-run --yes
 ```
 
 <br/>
@@ -99,7 +99,7 @@ Each section is opt-out — set the corresponding flag to `''` (empty string) to
 | `--kibana-privileges PRIV[,PRIV]` | comma-separated Kibana privileges. Default `read`. Other values: `all`, `read_dashboard`, `feature_discover.read`, ... |
 | `--kibana-resources RES[,RES...]` | Kibana resources. Default `*` (all spaces) |
 | `--dry-run` | print the payload without contacting ES |
-| `--confirm` | skip the interactive prompt (CI use) |
+| `--yes` | skip the interactive prompt (CI use) |
 | `-h`, `--help` | usage |
 
 <br/>

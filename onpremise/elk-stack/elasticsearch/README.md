@@ -35,7 +35,7 @@ elasticsearch/
 ├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/elasticsearch-eck, version: <pin>
 ├── values/
 │   └── dev.yaml               # Elasticsearch CR values (`version` = Stack version)
-├── upgrade.sh                  # external-oci-cr-version based Stack version tracker
+├── upgrade.py                  # external-oci-cr-version based Stack version tracker
 ├── docs/
 │   ├── upgrade-rollback.md     # Upgrade/rollback guide (Korean, shared with Kibana)
 │   └── upgrade-rollback-en.md  # English mirror
@@ -65,8 +65,8 @@ After the OCI migration, **two independent version pins** live in this directory
 
 | Version | Where it lives | Tracks | Frequency | Who bumps | How |
 |---|---|---|---|---|---|
-| **Stack version** (Elasticsearch image) | `values/dev.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.sh` |
-| **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.sh --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
+| **Stack version** (Elasticsearch image) | `values/dev.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.py` |
+| **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 The two are **independent**: you can bump Stack to 9.3.4 without touching the chart pin, or vice versa.
 
@@ -130,22 +130,22 @@ helmfile destroy
 
 ## Stack Version Upgrades
 
-`upgrade.sh` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
+`upgrade.py` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
 
-**Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.sh` when ready to track 10.x.
+**Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.py` when ready to track 10.x.
 
 ```bash
 # Check the latest 9.x GA and apply
-./upgrade.sh
+./upgrade.py
 
 # Dry-run (no file changes, only show the latest)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Pin to a specific version
-./upgrade.sh --version 9.1.2
+./upgrade.py --version 9.1.2
 
 # Roll back using a previous backup (auto webhook handling)
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 After the bump, run `helmfile diff` → `helmfile apply` to propagate. ECK performs a rolling StatefulSet upgrade.
@@ -155,37 +155,37 @@ After the bump, run `helmfile diff` → `helmfile apply` to propagate. ECK perfo
 
 Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `version` together).
 
-**Safety features / incident response**: `upgrade.sh` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md).
+**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md).
 
 <br/>
 
 ## OCI chart pin bump
 
-On top of Stack version tracking, `upgrade.sh` also tracks `helmfile.yaml`'s `version:` (the publisher's chart release tag). The `CHART_SOURCE_TYPE` / `CHART_SOURCE_REPO` / `CHART_NAME` variables in the CONFIG block activate the two sub-commands:
+On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `version:` (the publisher's chart release tag). The `CHART_SOURCE_TYPE` / `CHART_SOURCE_REPO` / `CHART_NAME` variables in the CONFIG block activate the two sub-commands:
 
 ```bash
 # Compare the current pin with the latest publisher release (read-only)
-./upgrade.sh --check-chart
+./upgrade.py --check-chart
 
 # Bump to the latest chart (dry-run): pulls both chart versions, renders each
 # with the active values file, and shows a unified diff. No files touched.
-./upgrade.sh --upgrade-chart --dry-run
+./upgrade.py --upgrade-chart --dry-run
 
 # Apply: review the diff, confirm, then back up helmfile.yaml and update the pin
-./upgrade.sh --upgrade-chart
+./upgrade.py --upgrade-chart
 
 # Pin to a specific chart version
-./upgrade.sh --upgrade-chart --chart-version 0.1.2
+./upgrade.py --upgrade-chart --chart-version 0.1.2
 
 # Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
-./upgrade.sh --rollback
+./upgrade.py --rollback
 ```
 
 Key points:
 - `--upgrade-chart` runs `helm template` on both the current and target chart with your active values file and diffs the rendered manifests. Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched.
 - Stack backups (`backup/<TIMESTAMP>/`) and chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately. `--rollback` auto-detects the backup type and restores only the relevant file.
 - Chart bumps may still carry **schema or feature changes** — skim the [chart changelog](https://github.com/somaz94/helm-charts/blob/main/charts/elasticsearch-eck/README.md) alongside the render diff.
-- To survey chart-pin status across every managed chart at once, run `./scripts/upgrade-sync/check-versions.sh` from the repo root (see the secondary OCI chart pin table).
+- To survey chart-pin status across every managed chart at once, run `./scripts/upgrade-sync/check-versions.py` from the repo root (see the secondary OCI chart pin table).
 
 <br/>
 

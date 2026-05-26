@@ -4,9 +4,13 @@
 # Default behaviour: imports every *.ndjson in this directory that is NOT a data-view
 # bootstrap file (filename matching *-data-view.ndjson). Use --include-data-view to
 # also import data-view bootstrap files, or --file to target a specific NDJSON.
+# bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE
+# enabling shell options. The body uses ``mapfile`` (bash 4+ only) and
+# ``declare -a SPACE_IDS=()`` so a zsh interpreter would fail.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 set -euo pipefail
-
-[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
 DASHBOARDS_DIR="$(cd "$(dirname "$0")" && pwd)"
 NAMESPACE="${NAMESPACE:-logging}"

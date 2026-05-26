@@ -10,13 +10,13 @@ Manages the [Fluent Bit](https://fluentbit.io/) DaemonSet for Kubernetes log col
 fluent-bit/
 ├── Chart.yaml          # Local chart definition
 ├── helmfile.yaml       # Helmfile release definition (uses local chart)
-├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
+├── values.yaml         # Upstream default values (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml       # Custom values (manually managed)
 ├── templates/          # Local Helm templates (synced with upstream)
 ├── ci/                 # CI test values (synced with upstream)
 ├── dashboards/         # Grafana dashboards (synced with upstream)
-├── upgrade.sh          # Version upgrade script
+├── upgrade.py          # Version upgrade script
 ├── backup/             # Auto-backup during upgrades
 ├── docs/               # Topic-specific guides (Korean + English mirror)
 └── README.md
@@ -66,23 +66,23 @@ helmfile destroy
 
 ## Upgrade
 
-Use `upgrade.sh` to perform version upgrades.
+Use `upgrade.py` to perform version upgrades.
 
 ```bash
 # Check latest version and upgrade
-./upgrade.sh
+./upgrade.py
 
 # Preview changes only (no file modifications)
-./upgrade.sh --dry-run
+./upgrade.py --dry-run
 
 # Upgrade to a specific version
-./upgrade.sh --version 0.57.0
+./upgrade.py --version 0.57.0
 
 # Exclude specific values files from comparison
-./upgrade.sh --exclude old-release,test
+./upgrade.py --exclude old-release,test
 ```
 
-upgrade.sh automatically performs the following:
+upgrade.py automatically performs the following:
 1. Checks current/latest version
 2. Downloads Chart.yaml, values.yaml, templates/ and shows diff comparison
 3. Syncs ci/, dashboards/ directories
@@ -92,19 +92,19 @@ upgrade.sh automatically performs the following:
 
 ### Image tag policy
 
-Do not set `image.tag` in `values/dev.yaml`. The chart default renders the tag from `Chart.AppVersion`, so running `./upgrade.sh` bumps the chart and the container image in lockstep. Unlike fluentd, the upstream fluent-bit image has no ES-specific variant that requires pinning. Override `image.tag` in values only when a variant other than the chart default is required.
+Do not set `image.tag` in `values/dev.yaml`. The chart default renders the tag from `Chart.AppVersion`, so running `./upgrade.py` bumps the chart and the container image in lockstep. Unlike fluentd, the upstream fluent-bit image has no ES-specific variant that requires pinning. Override `image.tag` in values only when a variant other than the chart default is required.
 
 ### Rollback
 
 ```bash
 # List backups
-./upgrade.sh --list-backups
+./upgrade.py --list-backups
 
 # Restore from backup
-./upgrade.sh --rollback
+./upgrade.py --rollback
 
 # Clean up old backups (keep only the latest 5)
-./upgrade.sh --cleanup-backups
+./upgrade.py --cleanup-backups
 ```
 
 ### Deploy After Upgrade

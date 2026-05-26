@@ -35,10 +35,10 @@ helmfile apply
 helmfile diff
 
 # Chart version upgrade
-./upgrade.sh              # Check and upgrade to latest
-./upgrade.sh --dry-run    # Preview only
-./upgrade.sh --version X  # Specific version
-./upgrade.sh --rollback   # Rollback
+./upgrade.py              # Check and upgrade to latest
+./upgrade.py --dry-run    # Preview only
+./upgrade.py --version X  # Specific version
+./upgrade.py --rollback   # Rollback
 ```
 
 <br/>

@@ -1,70 +1,128 @@
 # ExampleProject raw + cohort index reset guide
 
-Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/reset-example-project-cohort.sh). Used at moments where `userId` restarts from 1 (e.g. the QA DB reset scheduled for 2026-05-20), so the raw / cohort indices are cleared and the cohort transform repopulates from fresh data only.
+Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/reset-example-project-cohort.sh). Used at moments where `userId` restarts from 1 (or jumps to a new sequence) — e.g. a QA DB reset — so the raw / cohort indices are cleared and the cohort transform repopulates from fresh data only.
 
-`--env NAME` accepts any DNS-label-ish prefix — `qa`, `dev`, `stg`, `prd`, etc. The index / transform names resolve to `<NAME>-example-project-game` / `<NAME>-example-project-game-user-cohort`.
+`--env NAME` accepts any DNS-label-ish prefix — `qa`, `dev`, `stg`, `prod`, etc. The index / transform names resolve to `<NAME>-example-project-game` / `<NAME>-example-project-game-user-cohort`.
+
+> **Scope (2026-05-22 cleanup)** — the script only automates the **ES-side reset** (transform stop
 
 <br/>
 
 ## What it does
 
-The steps below run in order. Steps 3a and 3b are opt-in.
+| Step | Action |
+|---|---|
+| 0 | Pre-flight — confirm transform exists |
+| 1 | `POST /_transform/<env>-example-project-game-user-cohort/_stop?wait_for_completion=true&force=true` |
+| 2 | `DELETE /<env>-example-project-game-user-cohort` (cohort destination index) |
+| 3 | `DELETE /<env>-example-project-game` (raw index) |
+| 4 | `kubectl -n logging rollout restart daemonset/fluent-bit` + `rollout status` (skip with `--skip-fluent-bit-restart`) |
+| 5 | Poll `_count > 0` until the raw index has been auto-recreated (default 10s). On timeout, PUT an empty raw index as a placeholder — step 6's `_transform/_start` requires the source to exist. fluent-bit populates it via dynamic mapping when the first doc arrives. |
+| 6 | `POST /_transform/<env>-example-project-game-user-cohort/_start` |
+| 7 | `GET /<raw>/_count` + `GET /<cohort>/_search?size=3` plus a manual-verify reminder |
 
-| Step | Action | Default | Scenario A |
-|---|---|---|---|
-| 0 | Pre-flight — confirm transform exists, assert fluentd buffer queue is empty | ✓ | ✓ (queue check skipped) |
-| 1 | `POST /_transform/<env>-example-project-game-user-cohort/_stop?wait_for_completion=true&force=true` | ✓ | ✓ |
-| 2 | `DELETE /<env>-example-project-game-user-cohort` (cohort destination index) | ✓ | ✓ |
-| 3 | `DELETE /<env>-example-project-game` (raw index) | ✓ | ✓ |
-| **3a** | Wipe fluentd buffer (`StatefulSet/fluentd` scale 0 → cleanup Job → scale 1) | — | ✓ (`--reset-fluentd-buffer`) |
-| **3b** | Wipe fluent-bit state (`Deployment/fluent-bit` scale 0 → cleanup Job → scale 1) | — | ✓ (`--reset-fluent-bit-checkpoint`) |
-| 4 | `kubectl -n logging rollout restart deployment/fluent-bit` | ✓ | skipped (step 3b already brought a fresh pod up) |
-| 5 | Poll `_count > 0` until the raw index has been auto-recreated (default 120s) | ✓ | ✓ |
-| 6 | `POST /_transform/<env>-example-project-game-user-cohort/_start` | ✓ | ✓ |
-| 7 | `GET /<raw>/_count` + `GET /<cohort>/_search?size=3` plus a manual-verify reminder | ✓ | ✓ |
+The step 4 rollout restart is the key piece — when fluent-bit's new pod reopens the hostPath SQLite checkpoint, if the file it points to has become stale (the QA pod restarted or the log rotated, so the inode changed) it falls back to EOF-polling on the new file. That means the new raw index sees post-reset data only without explicitly wiping the checkpoint — unless the fluentd buffer holds old chunks, in which case verification's `min_ts` catches it.
+
+The step 5 polling is a sanity check that fluent-bit's chain is forwarding new traffic after the rollout. In an idle environment (off-hours, lunch break, no traffic) the timeout is the expected outcome — the script then PUTs an empty raw index so step 6's `_transform/_start` clears ES's source-existence check (`validation_exception: no such index`) and the transform starts in idle polling mode until fluent-bit's first doc lands.
 
 <br/>
 
-## Usage
+## Execution
+
+Both paths produce the same result (ES-side reset + fluent-bit rollout). The difference is depth of automation.
+
+| Path | When |
+|---|---|
+| **Manual procedure** ([Option A](#option-a--manual-procedure) below) | Run each command yourself when watching progress step by step. Useful for learning or debugging. |
+| **Script automation** ([Option B](#option-b--script-automation) below) | Repetitive ops / automation. fluent-bit rollout restart + raw repopulation polling + verify all in one go. |
+
+<br/>
+
+### Option A — Manual procedure
 
 ```bash
-# Show help
+# [0] Export the Elasticsearch password (~15 min validity)
+export PASS=$(kubectl -n logging get secret elasticsearch-es-elastic-user \
+  -o jsonpath='{.data.elastic}' | base64 -d)
+
+# [1] Stop the transform (wait_for_completion=true blocks until stop completes)
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -X POST \
+  "https://localhost:9200/_transform/qa-example-project-game-user-cohort/_stop?wait_for_completion=true&force=true"
+
+# [2] DELETE the cohort destination index
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -X DELETE \
+  "https://localhost:9200/qa-example-project-game-user-cohort"
+
+# [3] DELETE the raw index
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -X DELETE \
+  "https://localhost:9200/qa-example-project-game"
+
+# [4] (optional) Roll the fluent-bit DaemonSet — the new pod reopens the hostPath
+#     checkpoint and falls back to EOF-polling on the rotated log file.
+#     Skip when the source pod has just been restarted itself.
+kubectl -n logging rollout restart daemonset/fluent-bit
+kubectl -n logging rollout status daemonset/fluent-bit --timeout=180s
+
+# [5] Start the transform — the raw index is auto-recreated when fluent-bit
+#     forwards the next new doc.
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -X POST \
+  "https://localhost:9200/_transform/qa-example-project-game-user-cohort/_start"
+```
+
+<br/>
+
+### Option B — Script automation
+
+```bash
+cd observability/logging/elasticsearch/scripts
+
+# Help
 ./reset-example-project-cohort.sh -h
 
-# === Scenario A — "only post-delete logs" (the default intent for the QA DB reset) ===
-# Wipes fluent-bit checkpoint + storage chunks AND the fluentd buffer.
-# A few seconds of in-flight data for dev/stg is dropped as a side effect.
-./reset-example-project-cohort.sh --env qa --scenario-a
-
-# === Scenario B — plain ES-side reset (default) ===
-# Keeps the fluent-bit checkpoint and just rolls fluent-bit. Some pre-delete
-# in-flight data may leak into the new raw index.
+# Default — typed-word prompt 'reset qa' required to proceed
 ./reset-example-project-cohort.sh --env qa
-#   → Type 'reset qa' to continue:   ← must match exactly
 
-# === Partial automation ===
-# Only wipe the fluentd buffer
-./reset-example-project-cohort.sh --env qa --reset-fluentd-buffer
-
-# Only wipe the fluent-bit state (incl. storage chunks)
-./reset-example-project-cohort.sh --env qa --reset-fluent-bit-checkpoint
-
-# === Other ===
-# DEV — non-interactive (CI etc.)
-./reset-example-project-cohort.sh --env dev --confirm
-
-# Validate the step sequence without touching ES / kubectl
-./reset-example-project-cohort.sh --env qa --dry-run --confirm --scenario-a
-
-# fluent-bit has already been rotated manually
-./reset-example-project-cohort.sh --env qa --skip-fluent-bit-restart
-
-# Increase the raw-index repopulation timeout (default 120s)
-./reset-example-project-cohort.sh --env qa --wait-data-seconds 300
-
-# Override the fluentd buffer-queue safety check (dangerous — see section below)
-./reset-example-project-cohort.sh --env qa --force-with-fluentd-buffer
+# Options
+./reset-example-project-cohort.sh --env dev --yes                # skip prompt (CI / automation)
+./reset-example-project-cohort.sh --env qa --dry-run --yes       # print steps without touching cluster
+./reset-example-project-cohort.sh --env qa --skip-fluent-bit-restart # fluent-bit already rotated manually
+./reset-example-project-cohort.sh --env qa --wait-data-seconds 60    # raw repopulation polling timeout (default 10)
 ```
+
+<br/>
+
+### Verification (Manual
+
+```bash
+# 1. New UUIDs + raw docs.count > 0
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" "https://localhost:9200/_cat/indices/qa-example-project-game*?v"
+
+# 2. Raw min/max timestamp + userId — min_ts post-reset is the desired signal
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -H 'Content-Type: application/json' \
+  "https://localhost:9200/qa-example-project-game/_search?pretty" -d '{
+    "size":0,
+    "aggs":{"min_ts":{"min":{"field":"@timestamp"}},"max_ts":{"max":{"field":"@timestamp"}},
+            "min_uid":{"min":{"field":"data.userId"}},"max_uid":{"max":{"field":"data.userId"}}}
+  }'
+
+# 3. Cohort first_seen — all post-reset. hits=0 is fine until /users/create traffic happens.
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -H 'Content-Type: application/json' \
+  "https://localhost:9200/qa-example-project-game-user-cohort/_search?pretty" -d '{
+    "size":5,"sort":[{"first_seen":"asc"}],"_source":["user_id","first_seen"]
+  }'
+
+# 4. Visual check in Kibana (DAU/NU/WAU/MAU appear immediately; Retention Curve needs signup traffic)
+# http://kibana.example.com/app/dashboards#/view/qa-pm-retention-dashboard
+```
+
+If old data leaks into the new raw index (`min_ts` in step 2 is pre-reset), the fluentd buffer was non-empty at the reset moment — see [Manual cleanup](#manual-cleanup--fluent-bit--fluentd-state) below.
 
 <br/>
 
@@ -72,15 +130,11 @@ The steps below run in order. Steps 3a and 3b are opt-in.
 
 | Flag | Description |
 |---|---|
-| `--env NAME` | (required) environment / index prefix. DNS-label form (`^[a-z][a-z0-9-]*$`). Examples: `qa`, `dev`, `stg`, `prd` |
+| `--env NAME` | (required) environment / index prefix. DNS-label form (`^[a-z][a-z0-9-]*$`). Examples: `qa`, `dev`, `stg`, `prod` |
 | `--dry-run` | print the planned curl / kubectl calls without executing them |
 | `--skip-fluent-bit-restart` | skip step 4's `rollout restart` |
-| `--wait-data-seconds N` | step 5 polling timeout (default 120) |
-| `--confirm` | skip the interactive prompt (CI use) |
-| `--force-with-fluentd-buffer` | proceed even when the step 0 buffer-queue check fails |
-| `--reset-fluent-bit-checkpoint` | enable step 3b — wipe env tail SQLite + shared `storage/*` chunks. Implies `--skip-fluent-bit-restart`. |
-| `--reset-fluentd-buffer` | enable step 3a — wipe the `elasticsearch-buffers/*` dir on the fluentd PVC. Implies the step 0 buffer-queue check is skipped. |
-| `--scenario-a` | macro — enables both flags above plus `--skip-fluent-bit-restart`. Recommended when the intent is "only post-delete logs". |
+| `--wait-data-seconds N` | step 5 polling timeout (default 10). Reaching the timeout is not fatal — warns and proceeds to step 6 (transform auto-picks up the raw index when docs arrive). |
+| `--yes` | skip the interactive prompt (CI use) |
 | `-h`, `--help` | usage |
 
 <br/>
@@ -92,135 +146,133 @@ NAMESPACE_ES=logging       NAMESPACE_FB=logging
 ES_POD=elasticsearch-es-default-0    ES_CONTAINER=elasticsearch
 ES_SVC=localhost   ES_PORT=9200   ES_SCHEME=https
 ES_SECRET=elasticsearch-es-elastic-user   ES_USER=elastic
-FB_DEPLOYMENT=fluent-bit        FB_STATE_PVC=fluent-bit-state-pvc
-FD_STATEFULSET=fluentd          FD_POD=fluentd-0
-CLEANUP_IMAGE=busybox:1.36
+FB_DAEMONSET=fluent-bit
 ```
+
+`FB_DAEMONSET` is just the DaemonSet name. Layouts other than DaemonSet (e.g. legacy Deployment) are no longer supported — single DaemonSet + hostPath as of the 2026-05-19 migration.
 
 <br/>
 
-## Interaction with fluent-bit and fluentd
+## Manual cleanup — fluent-bit / fluentd state
 
-`reset-example-project-cohort.sh` only touches the ES side, but the real pipeline is **NFS log files → fluent-bit → fluentd → ES**. If the operational intent is "**only logs that arrive after the delete moment should land in the new raw index**", both fluent-bit and fluentd need to be considered too — otherwise pre-delete data bleeds back into the fresh raw index.
+The script's ES-side reset alone is sufficient 99% of the time (the 2026-05-22 QA index reset went through this path). Additional cleanup is only needed in these abnormal cases:
 
-<br/>
+- fluentd has chunks queued in its buffer because ES forwarding stalled — after the raw index is deleted, those chunks re-flush into the new index and bring old docs back.
+- fluent-bit DaemonSet's hostPath SQLite checkpoint still points at the inode of a *valid* log file that holds significant old data (rare — pod restart / log rotation usually invalidates the checkpoint naturally).
 
-### fluent-bit tail SQLite checkpoint — reset it for the "post-delete only" scenario
-
-Each fluent-bit `tail` input records the last read position as `(inode, offset)` in a SQLite DB. Per `observability/logging/fluent-bit/values/dev.yaml`:
-
-```
-DB /fluent-bit/state/tail-dev-game.db
-DB /fluent-bit/state/tail-dev-battle.db
-DB /fluent-bit/state/tail-stg-game.db
-DB /fluent-bit/state/tail-qa-game.db
-```
-
-These DBs live on `fluent-bit-state-pvc` (ReadWriteOnce, 5Gi, nfs-client-server1) and survive pod restarts / `rollout restart`.
-
-#### Scenarios
-
-| Scenario | Checkpoint handling | Outcome |
-|---|---|---|
-| **A. "Only post-delete logs"** (the default intent for the QA DB reset) | **Reset** the checkpoint. With `Read_from_Head false` + an empty SQLite, the new pod starts polling from the current EOF. | Old data that fluent-bit had already read does not land in the new raw index. |
-| B. "Best-effort retention of pre-delete logs" (ES-side reset only) | Keep it. The new pod resumes from the last offset. | Whatever fluent-bit had read but ES hadn't yet ingested gets re-forwarded into the new raw index. |
-
-The default operation (QA DB reset on 2026-05-20) is **A**, so the **checkpoint must be wiped**. This script automates that as step 3b via `--reset-fluent-bit-checkpoint` or `--scenario-a`; the "manual procedure" below is the same thing done by hand, for debugging or off-script use.
+Automation is intentionally omitted — fluent-bit DaemonSet (hostPath) and fluentd StatefulSet (RWO PVC) layouts shift with `helmfile.yaml` changes, so any automated cleanup would go stale again. Use the manual recipes below.
 
 <br/>
 
-#### Manual reset procedure (Scenario A — equivalent to `--reset-fluent-bit-checkpoint`)
+### fluentd buffer wipe (StatefulSet + PVC, affects all envs)
 
-The WAL-mode sidecar files (`*-shm`, `*-wal`) must be removed too for a clean wipe. The PVC is RWO and SQLite holds a lock while open, so bring fluent-bit down first, mount the PVC from a cleanup Job to delete the files, then bring fluent-bit back up.
-
-```bash
-ENV=qa   # or dev
-
-# 1. Take fluent-bit down (RWO PVC unmounts only after the pod is gone)
-kubectl -n logging scale deployment/fluent-bit --replicas=0
-kubectl -n logging wait pod -l app.kubernetes.io/name=fluent-bit \
-  --for=delete --timeout=60s
-
-# 2. Cleanup Job — remove the tail DB (and optionally the storage chunks)
-kubectl -n logging apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: fluent-bit-state-cleanup-${ENV}
-spec:
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: cleanup
-          image: busybox:1.36
-          command: ["sh", "-c", "rm -fv /state/tail-${ENV}-game.db* && rm -rf /state/storage/*"]
-          volumeMounts:
-            - name: state
-              mountPath: /state
-      volumes:
-        - name: state
-          persistentVolumeClaim:
-            claimName: fluent-bit-state-pvc
-EOF
-kubectl -n logging wait job/fluent-bit-state-cleanup-${ENV} \
-  --for=condition=complete --timeout=60s
-kubectl -n logging delete job/fluent-bit-state-cleanup-${ENV}
-
-# 3. Bring fluent-bit back up
-kubectl -n logging scale deployment/fluent-bit --replicas=1
-kubectl -n logging rollout status deployment/fluent-bit --timeout=120s
-```
-
-> **Warning**: deleting `storage/*` discards fluent-bit's filesystem chunks — input-side buffer that has not yet been forwarded to fluentd. This matches scenario A's intent but permanently drops that data; do it deliberately.
-
-<br/>
-
-### fluentd buffer — this is the real footgun
-
-The ES output in `observability/logging/fluentd/values/dev.yaml` is wired as:
+`observability/logging/fluentd/values/dev.yaml` configures the ES output as:
 
 ```
 <buffer tag,log_source>
   @type file
   path /var/log/fluent/elasticsearch-buffers
   total_limit_size 4GB
-  queue_limit_length 128
-  retry_type exponential_backoff
   retry_forever true
-  overflow_action block
   flush_at_shutdown true
 </buffer>
 ```
 
 `persistence.enabled: true`
 
-- If ES has been slow and chunks are sitting in the buffer when the raw index is deleted, those chunks will be re-flushed into the new raw index — **old docs re-ingested**.
-- `retry_forever true` keeps the retry queue alive indefinitely. A plain `rollout restart` is no remedy: `flush_at_shutdown true` forces a flush on shutdown.
+> **Warning**: this wipe discards every env's buffered chunks at once — typically 0 to a few seconds of in-flight data per env when fluentd is healthy. For an env-scoped wipe, dig into the `elasticsearch-buffers/` filenames (chunks are tagged) or wait for the buffer to drain naturally.
 
-Step 0 of the script reads `fluentd_output_status_buffer_queue_length{type="elasticsearch"}` directly from the fluentd pod's `:24231/metrics` endpoint and aborts unless it's 0. Two overrides: (a) `--force-with-fluentd-buffer` — accept the risk that the buffer leaks into the new index, (b) `--reset-fluentd-buffer` — wipe the buffer outright (scenario A option).
+```bash
+# 1. Bring fluentd down (flush_at_shutdown=true forces one final flush — drop the raw index BEFORE this so the flush hits the new index)
+kubectl -n logging scale statefulset/fluentd --replicas=0
+kubectl -n logging wait pod fluentd-0 --for=delete --timeout=120s
+
+# 2. Cleanup Job — mount the PVC + wipe the buffer directory
+kubectl -n logging apply -f - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fluentd-buffer-cleanup
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: cleanup
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - 'rm -rfv /buffers/elasticsearch-buffers/* 2>/dev/null; rm -rfv /buffers/elasticsearch-buffers/.??* 2>/dev/null; ls -la /buffers/elasticsearch-buffers/ 2>/dev/null || true'
+          volumeMounts:
+            - { name: target, mountPath: /buffers }
+      volumes:
+        - name: target
+          persistentVolumeClaim:
+            claimName: fluentd-buffer-fluentd-0
+EOF
+kubectl -n logging wait job/fluentd-buffer-cleanup --for=condition=complete --timeout=120s
+kubectl -n logging logs job/fluentd-buffer-cleanup --tail=20
+kubectl -n logging delete job/fluentd-buffer-cleanup
+
+# 3. Bring fluentd back
+kubectl -n logging scale statefulset/fluentd --replicas=1
+kubectl -n logging rollout status statefulset/fluentd --timeout=180s
+```
 
 <br/>
 
-#### When the buffer is non-empty
+### fluent-bit hostPath wipe (DaemonSet + per-node, affects all envs)
 
-Pick one (or just use `--reset-fluentd-buffer` to wipe it):
+The fluent-bit DaemonSet's SQLite checkpoint and storage chunks live on each node's hostPath `/var/lib/fluent-bit/`. Since it's per-node hostPath (not a PVC) a single cleanup Job can only touch one node — you need a privileged DaemonSet pattern.
 
-1. **Wait for natural drain after ES recovery** — wait for `fluentd_output_status_buffer_queue_length` (or `_total_bytes`) to hit 0.
-2. **Explicit drain + restart** —
-   ```bash
-   kubectl -n logging scale deployment/fluentd --replicas=0   # flush_at_shutdown=true → one final flush attempt
-   # Wait for the flush to finish on the ES side → delete the raw index → restart fluentd
-   kubectl -n logging scale deployment/fluentd --replicas=1
-   ```
-   Note: this still races old chunks into the new raw index.
-3. **Discard the buffer then restart** (only when losing old data is acceptable) —
-   ```bash
-   kubectl -n logging scale deployment/fluentd --replicas=0
-   # cleanup pod → mount PVC → rm -rf /var/log/fluent/elasticsearch-buffers/* → exit
-   kubectl -n logging scale deployment/fluentd --replicas=1
-   ```
-   For a "drop old data on purpose" operation like the QA reset, (3) is the cleanest — this is exactly what `--reset-fluentd-buffer` automates.
+> **Warning**: this wipe discards every env's tail checkpoint + storage chunks at once (all envs share `/var/lib/fluent-bit/`). For an env-scoped wipe, target only the per-env files (`rm -f /var/lib/fluent-bit/tail-<env>-game.db*`) — the `storage/` chunks are shared and cannot be split cleanly.
+
+```bash
+# 1. Cleanup DaemonSet — privileged hostPath mount + wipe + sleep (DaemonSet ensures every node runs it)
+kubectl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit-hostpath-cleanup
+  namespace: logging
+spec:
+  selector:
+    matchLabels: { app: fluent-bit-hostpath-cleanup }
+  template:
+    metadata:
+      labels: { app: fluent-bit-hostpath-cleanup }
+    spec:
+      hostNetwork: false
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: cleanup
+          image: busybox:1.36
+          securityContext: { privileged: true, runAsUser: 0 }
+          command:
+            - sh
+            - -c
+            - 'rm -rfv /host-state/storage/* /host-state/tail-*.db* 2>/dev/null; ls -la /host-state/ 2>/dev/null || true; sleep 3600'
+          volumeMounts:
+            - { name: state, mountPath: /host-state }
+      volumes:
+        - name: state
+          hostPath: { path: /var/lib/fluent-bit, type: DirectoryOrCreate }
+EOF
+
+# 2. Confirm a pod landed on every node + inspect output
+kubectl -n logging get pod -l app=fluent-bit-hostpath-cleanup -o wide
+kubectl -n logging logs -l app=fluent-bit-hostpath-cleanup --tail=20 --prefix
+
+# 3. Once cleanup is done, delete the DaemonSet (it sleeps 3600s so explicit delete is required)
+kubectl -n logging delete daemonset/fluent-bit-hostpath-cleanup
+
+# 4. Roll fluent-bit so the now-empty state starts fresh from EOF
+kubectl -n logging rollout restart daemonset/fluent-bit
+kubectl -n logging rollout status daemonset/fluent-bit --timeout=180s
+```
 
 <br/>
 
@@ -229,3 +281,4 @@ Pick one (or just use `--reset-fluentd-buffer` to wipe it):
 - [scripts/README-en.md](../scripts/README-en.md) — directory index.
 - [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
 - [../transforms/README-en.md](../transforms/README-en.md) — cohort transform definitions and the `apply.sh` / `export.sh` guide.
+- [`../../fluent-bit/docs/deployment-to-daemonset-en.md`](../../fluent-bit/docs/deployment-to-daemonset-en.md) — 2026-05-19 fluent-bit Deployment → DaemonSet migration trail.

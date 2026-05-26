@@ -159,7 +159,7 @@ containerd_registries_mirrors:
 Roll out to nodes when convenient:
 
 ```bash
-cd ~/gitlab-project/kuberntes-infra/kubespray
+cd kubespray
 ansible-playbook -i inventory-example-cluster/hosts.yaml \
   cluster.yml --tags container-engine -b
 ```

@@ -10,9 +10,11 @@ Detailed per-script operations guides live as KO/EN pairs under [`../docs/`](../
 
 | Script | One-line summary | Guide (KO) | Guide (EN) |
 |---|---|---|---|
-| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | Reset the ExampleProject raw + cohort indices (transform stop → cohort/raw DELETE → optional cleanup → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort-en.md](../docs/reset-example-project-cohort-en.md) |
+| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | ES-side reset of the ExampleProject raw + cohort indices (transform stop → cohort/raw DELETE → fluent-bit DaemonSet rollout restart → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). DaemonSet-only after the 2026-05-22 cleanup. | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort-en.md](../docs/reset-example-project-cohort-en.md) |
 | [`create-elastic-role.sh`](create-elastic-role.sh) | Idempotent `PUT /_security/role/<name>` via the Security API. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants. | [create-elastic-role.md](../docs/create-elastic-role.md) | [create-elastic-role-en.md](../docs/create-elastic-role-en.md) |
 | [`create-kibana-readonly-user.sh`](create-kibana-readonly-user.sh) | Create / update a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing. | [create-kibana-readonly-user.md](../docs/create-kibana-readonly-user.md) | [create-kibana-readonly-user-en.md](../docs/create-kibana-readonly-user-en.md) |
+| [`delete_old_indices.sh`](delete_old_indices.sh) (+ [`-en`](delete_old_indices-en.sh)) | Delete docs older than the retention window in the named indices, or delete the indices outright; also `total_fields.limit` tuning and a `--status` cluster-wide listing. See `--help`. | — | — |
+| [`kibana_saved_objects_migrate.sh`](kibana_saved_objects_migrate.sh) (+ [`-en`](kibana_saved_objects_migrate-en.sh)) | Export Kibana saved-objects (dashboard
 
 [`lib/es-common.sh`](lib/es-common.sh) — shared environment defaults + helper functions (`log/ok/warn/err/step`, `load_admin_pass`, `es_call`, `es_status`, `csv_to_json_array`, `json_escape`, `mask_payload`) sourced by the newer scripts. Not directly executable.
 
@@ -21,12 +23,14 @@ Detailed per-script operations guides live as KO/EN pairs under [`../docs/`](../
 ## Quick usage
 
 ```bash
-# Index reset — Scenario A (only post-delete logs)
-./reset-example-project-cohort.sh --env qa --scenario-a
+# Index reset — ES-side reset (transform stop → DELETE → fluent-bit rollout → transform start)
+./reset-example-project-cohort.sh --env qa
 #   Details: ../docs/reset-example-project-cohort-en.md
+#   If you need to wipe in-flight fluent-bit / fluentd state too, see the
+#   "Manual cleanup" section in that doc.
 
 # Create a read-only role (default)
-./create-elastic-role.sh --confirm
+./create-elastic-role.sh --yes
 #   Details: ../docs/create-elastic-role-en.md
 
 # Create a Kibana user account (interactive prompt, default role=read_only_role)
@@ -48,7 +52,7 @@ export ES_POD=elasticsearch-es-default-0
 export ES_CONTAINER=elasticsearch
 export ES_SECRET=elasticsearch-es-elastic-user
 
-./create-elastic-role.sh --role-name pm_viewer --indices 'example-project-*' --confirm
+./create-elastic-role.sh --role-name pm_viewer --indices 'example-project-*' --yes
 ./create-kibana-readonly-user.sh -u pm-viewer --role-name pm_viewer
 ```
 
