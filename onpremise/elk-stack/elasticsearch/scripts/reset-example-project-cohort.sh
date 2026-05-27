@@ -19,11 +19,20 @@
 #   0. Pre-flight                — transform exists
 #   1. Stop transform            POST /_transform/<id>/_stop
 #   2. Delete cohort dest index  DELETE /<env>-example-project-game-user-cohort
+#   2a. PUT cohort dest index    PUT /<env>-example-project-game-user-cohort with the
+#                                explicit mapping at transforms/<id>.mapping.json
+#                                (pins active_dates as keyword so data-view
+#                                runtime fields d1_live..d30_live work — see
+#                                transforms/README.md). Skipped when the mapping
+#                                file is missing.
 #   3. Delete raw index          DELETE /<env>-example-project-game
 #   4. fluent-bit rollout restart (DaemonSet)  (skip with --skip-fluent-bit-restart)
 #   5. Wait for raw index re-creation from new fluent-bit forwards
-#   6. Start transform           POST /_transform/<id>/_start
-#   7. Verify                    raw docs.count + cohort first_seen sample
+#   6. Reset transform           POST /_transform/<id>/_reset
+#                                (clear checkpoint + stats so the next start
+#                                reprocesses every source doc from scratch)
+#   7. Start transform           POST /_transform/<id>/_start
+#   8. Verify                    raw docs.count + cohort first_seen sample
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -273,6 +282,38 @@ delete_cohort_index() {
   delete_index "$COHORT_INDEX"
 }
 
+# step 2a: PUT cohort dest index with explicit mapping from sibling
+# transforms/<TRANSFORM_ID>.mapping.json — pinning active_dates as keyword so
+# the Kibana data-view runtime fields d1_live..d30_live can do String == String
+# comparison. Without this the transform recreates the dest via ES dynamic
+# mapping and infers active_dates as date, which breaks every retention metric.
+recreate_cohort_index_with_mapping() {
+  step 2a "Recreate cohort dest index with explicit mapping (active_dates=keyword)"
+  local mapping_file
+  mapping_file="$(cd "$(dirname "$0")/../transforms" && pwd)/${TRANSFORM_ID}.mapping.json"
+  if [ ! -f "$mapping_file" ]; then
+    warn "mapping file not found at ${mapping_file}"
+    warn "  → falling back to ES dynamic mapping. data-view retention runtime fields will silently emit 0 if active_dates is inferred as date."
+    warn "  → add transforms/${TRANSFORM_ID}.mapping.json (see transforms/README.md) to make this idempotent."
+    return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    log "    (dry-run) PUT /${COHORT_INDEX}  (--data-binary @${mapping_file})"
+    return 0
+  fi
+  local resp
+  resp=$(kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    curl -sk -u "${ES_USER}:${PASS}" \
+      -H 'Content-Type: application/json' \
+      -X PUT "${ES_URL}/${COHORT_INDEX}" --data-binary @- < "$mapping_file")
+  if printf '%s' "$resp" | grep -q '"acknowledged":true'; then
+    ok "cohort dest index recreated with explicit mapping ($(basename "$mapping_file"))"
+  else
+    err "PUT /${COHORT_INDEX} with explicit mapping failed: $resp"
+    exit 1
+  fi
+}
+
 delete_raw_index() {
   step 3 "Delete raw index '${RAW_INDEX}'"
   delete_index "$RAW_INDEX"
@@ -341,10 +382,30 @@ except Exception:
   done
 }
 
-# --- step 6: start transform --------------------------------------------------
+# --- step 6: reset transform --------------------------------------------------
+
+# Clear the transform's in-memory checkpoint + stats so the next start replays
+# every source doc. A bare _start after dest-index DELETE does NOT do this —
+# the checkpoint survives and ES keeps incrementing from the old
+# time_upper_bound, leaving the new dest index empty until fresh source docs
+# arrive.
+reset_transform() {
+  step 6 "Reset transform '${TRANSFORM_ID}' (clear checkpoint + stats)"
+  local resp
+  resp=$(es_curl POST "/_transform/${TRANSFORM_ID}/_reset" || true)
+  if [ "$DRY_RUN" = "1" ]; then return 0; fi
+  if printf '%s' "$resp" | grep -q '"acknowledged":true'; then
+    ok "transform reset"
+  else
+    err "unexpected reset response: $resp"
+    exit 1
+  fi
+}
+
+# --- step 7: start transform --------------------------------------------------
 
 start_transform() {
-  step 6 "Start transform '${TRANSFORM_ID}'"
+  step 7 "Start transform '${TRANSFORM_ID}'"
   local resp
   resp=$(es_curl POST "/_transform/${TRANSFORM_ID}/_start" || true)
   if [ "$DRY_RUN" = "1" ]; then return 0; fi
@@ -356,10 +417,10 @@ start_transform() {
   fi
 }
 
-# --- step 7: verify -----------------------------------------------------------
+# --- step 8: verify -----------------------------------------------------------
 
 verify() {
-  step 7 "Verify cohort first_seen / raw count"
+  step 8 "Verify cohort first_seen / raw count"
   if [ "$DRY_RUN" = "1" ]; then
     log "    (dry-run) GET /_cat/indices/${ENV_NAME}-example-project-game*?v"
     log "    (dry-run) GET /${RAW_INDEX}/_count"
@@ -409,9 +470,11 @@ main() {
 
   stop_transform
   delete_cohort_index
+  recreate_cohort_index_with_mapping
   delete_raw_index
   restart_fluent_bit
   wait_for_raw_index
+  reset_transform
   start_transform
   verify
 

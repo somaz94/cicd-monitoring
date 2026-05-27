@@ -15,15 +15,21 @@ Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/res
 | 0 | Pre-flight — confirm transform exists |
 | 1 | `POST /_transform/<env>-example-project-game-user-cohort/_stop?wait_for_completion=true&force=true` |
 | 2 | `DELETE /<env>-example-project-game-user-cohort` (cohort destination index) |
+| 2a | `PUT /<env>-example-project-game-user-cohort` with the explicit mapping from `../transforms/<env>-example-project-game-user-cohort.mapping.json` — pinning `active_dates` as `keyword` so the dashboard retention runtime fields (`d1_live..d30_live`) keep working. Skipped (with a warning) when the mapping file is absent — falling back to ES dynamic mapping would infer `active_dates` as `date` and silently zero every retention metric. |
 | 3 | `DELETE /<env>-example-project-game` (raw index) |
 | 4 | `kubectl -n logging rollout restart daemonset/fluent-bit` + `rollout status` (skip with `--skip-fluent-bit-restart`) |
-| 5 | Poll `_count > 0` until the raw index has been auto-recreated (default 10s). On timeout, PUT an empty raw index as a placeholder — step 6's `_transform/_start` requires the source to exist. fluent-bit populates it via dynamic mapping when the first doc arrives. |
-| 6 | `POST /_transform/<env>-example-project-game-user-cohort/_start` |
-| 7 | `GET /<raw>/_count` + `GET /<cohort>/_search?size=3` plus a manual-verify reminder |
+| 5 | Poll `_count > 0` until the raw index has been auto-recreated (default 10s). On timeout, PUT an empty raw index as a placeholder — step 6/7's transform reset/start require the source to exist. fluent-bit populates it via dynamic mapping when the first doc arrives. |
+| 6 | `POST /_transform/<env>-example-project-game-user-cohort/_reset` — clear the in-memory checkpoint + stats. Without this the next start would try to resume from the previous `time_upper_bound` and never backfill the empty dest index. |
+| 7 | `POST /_transform/<env>-example-project-game-user-cohort/_start` |
+| 8 | `GET /<raw>/_count` + `GET /<cohort>/_search?size=3` plus a manual-verify reminder |
 
-The step 4 rollout restart is the key piece — when fluent-bit's new pod reopens the hostPath SQLite checkpoint, if the file it points to has become stale (the QA pod restarted or the log rotated, so the inode changed) it falls back to EOF-polling on the new file. That means the new raw index sees post-reset data only without explicitly wiping the checkpoint — unless the fluentd buffer holds old chunks, in which case verification's `min_ts` catches it.
+The step 2a explicit-mapping PUT is the key piece (added 2026-05-27) — the old flow let ES dynamic mapping create the cohort index at transform-start time, and `active_dates` (ISO date strings like `"2026-05-22"`) was inferred as `date`. The cohort data view runtime fields `d1_live..d30_live` then compared `String == ZonedDateTime` and emitted 0 for every horizon. The dashboard rendered normally but every curve sat on the X axis — it took 5 days to notice (2026-05-22 QA cohort incident). See [transforms/README-en.md → "Dest-index mapping"](../transforms/README-en.md#dest-index-mapping----idmappingjson).
 
-The step 5 polling is a sanity check that fluent-bit's chain is forwarding new traffic after the rollout. In an idle environment (off-hours, lunch break, no traffic) the timeout is the expected outcome — the script then PUTs an empty raw index so step 6's `_transform/_start` clears ES's source-existence check (`validation_exception: no such index`) and the transform starts in idle polling mode until fluent-bit's first doc lands.
+The step 4 rollout restart is the next key piece — when fluent-bit's new pod reopens the hostPath SQLite checkpoint, if the file it points to has become stale (the QA pod restarted or the log rotated, so the inode changed) it falls back to EOF-polling on the new file. That means the new raw index sees post-reset data only without explicitly wiping the checkpoint — unless the fluentd buffer holds old chunks, in which case verification's `min_ts` catches it.
+
+The step 5 polling is a sanity check that fluent-bit's chain is forwarding new traffic after the rollout. In an idle environment (off-hours, lunch break, no traffic) the timeout is the expected outcome — the script then PUTs an empty raw index so step 6/7's transform reset/start clear ES's source-existence check (`validation_exception: no such index`) and the transform starts in idle polling mode until fluent-bit's first doc lands.
+
+The step 6 `_reset` — if you skip it (bare `_start`) the transform's in-memory checkpoint stays alive and only attempts incremental forward from the old `time_upper_bound`, so the new cohort index never receives the backfill and retention appears "stuck at empty". We tripped this once during the 2026-05-27 QA fix.
 
 <br/>
 
@@ -55,6 +61,13 @@ kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
   curl -sk -u "elastic:$PASS" -X DELETE \
   "https://localhost:9200/qa-example-project-game-user-cohort"
 
+# [2a] PUT the cohort destination index with explicit mapping — active_dates must be keyword
+#      so the dashboard retention runtime fields keep working.
+kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -H 'Content-Type: application/json' -X PUT \
+  "https://localhost:9200/qa-example-project-game-user-cohort" \
+  --data-binary @- < ../transforms/qa-example-project-game-user-cohort.mapping.json
+
 # [3] DELETE the raw index
 kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
   curl -sk -u "elastic:$PASS" -X DELETE \
@@ -66,7 +79,13 @@ kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
 kubectl -n logging rollout restart daemonset/fluent-bit
 kubectl -n logging rollout status daemonset/fluent-bit --timeout=180s
 
-# [5] Start the transform — the raw index is auto-recreated when fluent-bit
+# [5] Reset the transform — clear in-memory checkpoint + stats so the next
+#     _start reprocesses the source index from scratch.
+kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  curl -sk -u "elastic:$PASS" -X POST \
+  "https://localhost:9200/_transform/qa-example-project-game-user-cohort/_reset"
+
+# [6] Start the transform — the raw index is auto-recreated when fluent-bit
 #     forwards the next new doc.
 kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
   curl -sk -u "elastic:$PASS" -X POST \

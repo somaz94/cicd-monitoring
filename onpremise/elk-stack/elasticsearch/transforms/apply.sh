@@ -89,6 +89,12 @@ resolve_files() {
   fi
   shopt -s nullglob
   for f in "$TRANSFORMS_DIR"/*.json; do
+    # Sidecar mapping files (e.g. <id>.mapping.json) are not transform
+    # definitions — they are consumed by apply_dest_mapping_if_any() and must
+    # not be PUT to /_transform/.
+    case "$(basename "$f")" in
+      *.mapping.json) continue ;;
+    esac
     printf '%s\n' "$f"
   done
   shopt -u nullglob
@@ -126,6 +132,58 @@ transform_exists() {
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       "${ES_URL}/_transform/${id}")
   [ "$code" = "200" ]
+}
+
+# Read transform's dest.index from the JSON definition (stdlib python).
+dest_index_of() {
+  local file="$1"
+  python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['dest']['index'])" "$file"
+}
+
+# Returns 0 if the index already exists in ES.
+index_exists() {
+  local idx="$1"
+  if [ "$DRY_RUN" = "1" ]; then return 1; fi
+  local code
+  code=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
+      "${ES_URL}/${idx}")
+  [ "$code" = "200" ]
+}
+
+# PUT the dest-index mapping defined in <name>.mapping.json (sibling of <name>.json).
+# Idempotent — skipped when the dest index already exists. The dest index is
+# created up-front so the transform inherits the explicit mapping instead of
+# falling back to ES dynamic mapping (which mis-infers active_dates as date and
+# breaks the data-view retention runtime fields — see transforms/README.md).
+apply_dest_mapping_if_any() {
+  local file="$1"
+  local mapping_file="${file%.json}.mapping.json"
+  if [ ! -f "$mapping_file" ]; then
+    return 0
+  fi
+  local dest
+  dest="$(dest_index_of "$file")"
+  if index_exists "$dest"; then
+    log "  dest index '$dest' exists → skip mapping PUT (use 'restart-transform.sh $(basename "${file%.json}")' + DELETE index if mapping change is intended)"
+    return 0
+  fi
+  log "  PUT  ${ES_URL}/${dest}  (explicit mapping from $(basename "$mapping_file"))"
+  if [ "$DRY_RUN" = "1" ]; then
+    log "    (dry-run)"
+    return 0
+  fi
+  local resp
+  resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    curl -sk -u "${ES_USER}:${PASS}" -H 'Content-Type: application/json' \
+      -X PUT "${ES_URL}/${dest}" --data-binary @- < "$mapping_file")
+  echo "$resp" | python3 -c "
+import json, sys
+d = json.loads(sys.stdin.read())
+if d.get('error'):
+    print('  PUT MAPPING ERROR:', json.dumps(d['error'], indent=2)[:1500]); sys.exit(1)
+print('  PUT mapping ok:', d.get('acknowledged', d))
+" || return 1
 }
 
 apply_one() {
@@ -173,6 +231,9 @@ for row in preview[:3]:
       return 0
     fi
   fi
+
+  # Ensure dest index carries explicit mapping (when sibling <name>.mapping.json exists).
+  apply_dest_mapping_if_any "$file" || return 1
 
   # PUT (register)
   log "  PUT  ${ES_URL}/_transform/${id}"

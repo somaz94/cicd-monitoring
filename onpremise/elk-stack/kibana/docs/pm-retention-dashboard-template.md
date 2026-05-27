@@ -202,9 +202,10 @@ Key consequences:
 | Title | `dev-example-project-game-user-cohort` |
 | Name | `dev-example-project-game-user-cohort-logs` (id `410571c2-5b86-4ba9-a02e-418671d0b8e2`) |
 | Time field | `first_seen` |
-| Runtime field | `cohort_date` (keyword) — `if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('Asia/Seoul')).toLocalDate().toString()); }` |
+| Runtime field — `cohort_date` (keyword) | `if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('Asia/Seoul')).toLocalDate().toString()); }` — powers the keyword grouping of the Daily Cohort Retention table's "Date" column |
+| Runtime field — `d1_live`..`d30_live` (long) | Emit `1` if `first_seen + N day` appears in `active_dates`, otherwise `0`. The core check is `String t = (first_seen + N day).toString(); for (def d : doc['active_dates']) if (d == t) emit(1L)`. **The index mapping's `active_dates` MUST be `keyword`** — if inferred as `date`, the `String == ZonedDateTime` comparison is always false and every retention horizon emits 0 (2026-05-22 QA cohort incident). The cohort index's explicit mapping is pinned via `<id>.mapping.json` per [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README-en.md#dest-index-mapping----idmappingjson). |
 
-`cohort_date` powers the keyword grouping of the Daily Cohort Retention table's "Date" column. It does **not** exist in the underlying index mapping — it's a Kibana data view runtime field only.
+Both `cohort_date` and `d{N}_live` are **Kibana data view runtime fields only** — they don't live in the underlying index mapping and are computed per cohort doc at visualization time.
 
 <br/>
 
@@ -526,10 +527,13 @@ Recommended workflow:
 
 ```bash
 cd observability/logging/elasticsearch/transforms
+# Confirm both files are staged in transforms/
+ls prod-example-project-game-user-cohort*.json
 KUBECONFIG=... NAMESPACE=logging ./apply.sh --file prod-example-project-game-user-cohort.json
 ```
 
-* Run `--preview-only` first → verify the resulting mapping has `d1_returning..d30_returning` before the real apply.
+* `--preview-only` validates first → confirm the atomic facts (`first_seen`, `last_seen`, `active_dates`, `active_days_count`, `total_events`, `max_cleared_chapter`) match expectations before the real apply.
+* `apply.sh` auto-detects the sibling `.mapping.json` and PUTs the explicit dest-index mapping first (pinning `active_dates: keyword`) when the dest index is absent. Without this, ES dynamic mapping infers `active_dates` as `date` and dashboard retention silently renders as 0 — see [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README-en.md#dest-index-mapping----idmappingjson).
 * The dashboard only shows meaningful numbers once the backfill completes. Continuous mode keeps the index fresh at `frequency` cadence.
 
 ### Step 3 — Apply the dashboard
@@ -546,7 +550,8 @@ cd observability/logging/kibana/dashboards
 | Check | Command / behavior |
 |---|---|
 | Transform status | `GET /_transform/<COHORT_INDEX>/_stats` → `state: started`, `docs_processed > 0` |
-| Cohort sample doc | `GET /<COHORT_INDEX>/_search?size=1` → `first_seen`, `dN_returning` fields present |
+| Cohort sample doc | `GET /<COHORT_INDEX>/_search?size=1` → `first_seen`, `active_dates`, `active_days_count` fields present |
+| Cohort index mapping | `GET /<COHORT_INDEX>/_mapping` → `properties.active_dates.type == "keyword"` (if `date`, retention breaks) |
 | Dashboard renders | Open the dashboard in Kibana → 6 KPI numbers populated, Curve plots D+1..D+30, Table has cohort-by-cohort rows |
 | Runtime field | The cohort data view's `cohort_date` resolves to KST local dates (`Stack Management → Data Views`) |
 

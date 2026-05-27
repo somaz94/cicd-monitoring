@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "_meta": {
+      "managed_by": "kuberntes-infra observability/logging/elasticsearch/transforms",
+      "purpose": "Explicit mapping for the dest index of transform 'dev-example-project-game-user-cohort'. Pinning active_dates as keyword (not date) is required so the Kibana data view runtime fields d1_live..d30_live can do String == String comparison. Without this, the transform falls back to dynamic mapping and infers active_dates as date from the ISO-date strings it emits, which breaks every retention runtime field (always emits 0)."
+    },
+    "properties": {
+      "user_id":             { "type": "keyword" },
+      "first_seen":          { "type": "date" },
+      "last_seen":           { "type": "date" },
+      "active_dates":        { "type": "keyword" },
+      "active_days_count":   { "type": "long" },
+      "total_events":        { "type": "long" },
+      "max_cleared_chapter": { "type": "float" }
+    }
+  }
+}
