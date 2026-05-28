@@ -224,15 +224,15 @@ An awk counter tracks markers to find precise boundaries.
 ### Naming convention
 
 ```
-<chart-type>-<feature>.sh
+<chart-type>-<feature>.py
    │              │
    │              └── standard | with-image-tag | with-templates | (future...)
    └── external (helm repo) | local (Chart.yaml in repo)
 ```
 
-New variants must follow the same convention (e.g., `external-multi-release.sh`, `local-bare.sh`).
+New variants must follow the same convention (e.g., `external-multi-release.py`, `local-bare.py`).
 
-### Current canonicals (7)
+### Current canonicals (see table below)
 
 #### 1. [external-standard.py](templates/external-standard.py) — external helm repo chart (most common, Python)
 
@@ -566,7 +566,7 @@ The following tools must be on `PATH` (CI runner installs them automatically via
 | `crane` | OCI image mirror (upstream → private registry) | `external-oci-with-mirror` template Step 7 mirror stage |
 | `tar`, `gzip` | archive handling | `helm pull --untar`, OCI chart downloads |
 
-Same portability as sync.py: works on macOS bash 3.2, Linux bash 4+, and zsh (active `*.sh` files carry the `#!/usr/bin/env bash` shebang plus a zsh re-exec guard).
+Same portability as sync.py: Python 3.10+ (helmfile-tools image's 3.12, Homebrew Mac 3.13+, Linux distro 3.10+). Active wrapper `*.sh` files (run.sh, setup-tools.sh) carry the `#!/usr/bin/env bash` shebang plus a zsh re-exec guard.
 
 To verify the entire toolchain in one shot, run `scripts/setup-tools.sh --check` (use `--install` to attempt automatic installation via Homebrew on macOS, `apt` on Debian/Ubuntu, `apk` on Alpine, or `dnf` on Rocky/RHEL).
 
@@ -961,30 +961,34 @@ When the existing 3 canonicals don't cover a new pattern.
 ```bash
 # 1. Copy the closest existing canonical
 cp scripts/upgrade-sync/templates/external-standard.py \
-   scripts/upgrade-sync/templates/external-multi-release.sh
+   scripts/upgrade-sync/templates/external-multi-release.py
 
 # 2. Modify the new canonical's body (keep CONFIG block placeholders)
-vim scripts/upgrade-sync/templates/external-multi-release.sh
+vim scripts/upgrade-sync/templates/external-multi-release.py
 
-# 3. Add a detection branch to sync.py's detect_template()
-vim scripts/upgrade-sync/sync.py
+# 3. Add a detection branch to detect_template()
+vim scripts/python/upgrade_sync/detect.py
 ```
 
-```bash
-detect_template() {
-  local f="$1"
-  if grep -q '^MULTI_RELEASE=' "$f"; then          # ← new variant
-    echo "external-multi-release"
-  elif grep -q '^VERSION_SOURCE=' "$f"; then
-    echo "local-cr-version"
-  elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
-    echo "local-with-templates"
-  elif grep -q 'Update image tags in values files' "$f"; then
-    echo "external-with-image-tag"
-  else
-    echo "external-standard"
-  fi
-}
+```python
+# scripts/python/upgrade_sync/detect.py — add a regex at the top of the module
+_MULTI_RELEASE_RE = re.compile(r"^MULTI_RELEASE=", re.MULTILINE)  # ← new variant
+
+def detect_template(upgrade_script: Path) -> str:
+    body = upgrade_script.read_text(encoding="utf-8")
+    if _MULTI_RELEASE_RE.search(body):              # ← insert branch at the right cascade slot
+        return "external-multi-release"
+    if _OCI_CHART_RE.search(body):
+        ...  # existing logic preserved
+    if _VERSION_SOURCE_RE.search(body):
+        if _MIRROR_CHART_VERSION_RE.search(body):
+            return "local-cr-version"
+        return "external-oci-cr-version"
+    if _CUSTOM_TEMPLATES_RE.search(body):
+        return "local-with-templates"
+    if _IMAGE_TAG_RE.search(body):
+        return "external-with-image-tag"
+    return "external-standard"
 ```
 
 ```bash
@@ -1177,14 +1181,12 @@ Probably forgot to add a branch to `detect_template()`. See [Adding a new canoni
 
 ## Compatibility
 
-- **macOS bash 3.2** (default): no `declare -A` or other bash 4+ features ✅
-- **Linux bash 4+**: works ✅
-- **zsh** (direct invocation `zsh ./upgrade.py ...`): works ✅. Canonical bodies start with `[ -n "${ZSH_VERSION:-}" ] && setopt nonomatch` to prevent zsh's `no matches found` fatal when the backup glob (`"$BACKUP_DIR"/2*/`) has zero matches.
-- **sed**: works on both BSD sed (macOS) and GNU sed (Linux)
-  - Canonical bodies use `sed ... > tmp && mv tmp file` instead of `sed -i ''`
-- **awk**: uses only basic constructs compatible with both BSD awk (macOS) and gawk (Linux)
-  - Counters, pattern matching, `print` — standard POSIX awk
-- **find**: `-not -path '...'` works on both BSD and GNU find
+- **Python 3.10+**: sync.py
+- **stdlib only**: no third-party dependency on this layer (see `docs/python-script-conventions.md` for the formal dep-introduction procedure if it ever changes). ✅
+- **Wrapper `*.sh` portability** (`scripts/python/run.sh`, `scripts/setup-tools.sh`): ✅
+  - `#!/usr/bin/env bash` shebang selects the first bash in `$PATH` — Homebrew bash 5.x on macOS, `/bin/bash` 5.x on most Linux. Works on bare macOS bash 3.2 too (wrappers avoid bash 4+ features).
+  - zsh direct invocation (`zsh ./run.sh ...`): re-exec guard `if [ -n "${ZSH_VERSION:-}" ]; then exec /usr/bin/env bash "$0" "$@"; fi` redirects to bash before any shell option is set.
+- **External tool invocations** (called via `subprocess` from python): cross-platform discipline (BSD vs GNU) preserved by python-side argument shaping — e.g. write-then-rename for `sed`, basic POSIX `awk` constructs, `find -not -path` form. ✅
 
 <br/>
 

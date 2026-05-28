@@ -12,7 +12,7 @@ releases:
   - name: build-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.88.3
+    version: 0.89.0
     labels:
       role: build
       app: gitlab-runner
@@ -23,7 +23,7 @@ releases:
   - name: deploy-image
     namespace: gitlab-runner
     chart: gitlab/gitlab-runner
-    version: 0.88.3
+    version: 0.89.0
     labels:
       role: deploy
       app: gitlab-runner

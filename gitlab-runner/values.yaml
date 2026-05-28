@@ -625,6 +625,22 @@ runners:
     # secretName: google-application-credentials
     ## Use this line for access using Azure with azure-account-name and azure-account-key
     # secretName: azureaccess
+    ##
+    ## When using cloud-native auth (e.g. Workload Identity) with the docker+machine
+    ## executor, set this to true to prevent the chart's entrypoint from globally
+    ## exporting cache credential env vars (CACHE_S3_*, GOOGLE_APPLICATION_CREDENTIALS,
+    ## CACHE_GCS_*, CACHE_AZURE_*). This allows subprocesses (e.g. docker-machine)
+    ## to use their own identity instead of inheriting the cache credentials.
+    ##
+    ## When this flag is set to true, you MUST configure cache credentials explicitly
+    ## in runners.config under [runners.cache.*], for example:
+    ##   [runners.cache.gcs]
+    ##     CredentialsFile = "/secrets/gcs-application-credentials-file"
+    ##     BucketName = "my-cache-bucket"
+    ## Otherwise the runner will not be able to access the cache.
+    ##
+    ## ref: https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/work_items/28874
+    # disableGlobalCredentialsExport: false
 
 ## Specify the name of the scheduler which is used to schedule runner pods.
 ## Kubernetes supports multiple scheduler configurations.
@@ -846,6 +862,15 @@ secrets: []
 ## See https://gitlab.com/gitlab-org/charts/gitlab-runner/-/blob/main/templates/configmap.yaml
 ## for a current list.
 configMaps: {}
+
+## Labels to be added to configMaps
+##
+## Supports templating
+configMapLabels: {}
+  # Example:
+  # owner.team: <my_cool_team>
+  # owner.team: "{{ .Values.team }}"
+  # tags.{{ .Values.tag }}/env: "{{ .Values.environment }}"
 
 ## Additional volumeMounts to add to the runner container
 ##

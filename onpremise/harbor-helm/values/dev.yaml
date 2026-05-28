@@ -208,7 +208,7 @@ cache:
 nginx:
   image:
     repository: goharbor/nginx-photon
-    tag: v2.15.0
+    tag: v2.15.1
   automountServiceAccountToken: false
   replicas: 1
   revisionHistoryLimit: 10
@@ -223,7 +223,7 @@ nginx:
 portal:
   image:
     repository: goharbor/harbor-portal
-    tag: v2.15.0
+    tag: v2.15.1
   replicas: 1
   revisionHistoryLimit: 10
   resources:
@@ -237,7 +237,7 @@ portal:
 core:
   image:
     repository: goharbor/harbor-core
-    tag: v2.15.0
+    tag: v2.15.1
   replicas: 1
   resources:
     requests:
@@ -250,7 +250,7 @@ core:
 jobservice:
   image:
     repository: goharbor/harbor-jobservice
-    tag: v2.15.0
+    tag: v2.15.1
   replicas: 1
   revisionHistoryLimit: 10
   resources:
@@ -265,7 +265,7 @@ registry:
   registry:
     image:
       repository: goharbor/registry-photon
-      tag: v2.15.0
+      tag: v2.15.1
     resources:
       requests:
         memory: 256Mi
@@ -276,7 +276,7 @@ registry:
   controller:
     image:
       repository: goharbor/harbor-registryctl
-      tag: v2.15.0
+      tag: v2.15.1
     resources:
       requests:
         memory: 256Mi
@@ -298,7 +298,7 @@ trivy:
     # repository the repository for Trivy adapter image
     repository: goharbor/trivy-adapter-photon
     # tag the tag for Trivy adapter image
-    tag: v2.15.0
+    tag: v2.15.1
   replicas: 1
   resources:
     requests:
@@ -313,7 +313,7 @@ database:
   internal:
     image:
       repository: goharbor/harbor-db
-      tag: v2.15.0
+      tag: v2.15.1
     password: "exampleAdminPassword"
     # shmSizeLimit: 512Mi
     shmSizeLimit: 2048Mi
@@ -340,12 +340,12 @@ redis:
   internal:
     image:
       repository: goharbor/redis-photon
-      tag: v2.15.0
+      tag: v2.15.1
 
 exporter:
   image:
     repository: goharbor/harbor-exporter
-    tag: v2.15.0
+    tag: v2.15.1
   replicas: 1
   revisionHistoryLimit: 10
   resources:

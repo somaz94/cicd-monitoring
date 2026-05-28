@@ -17,7 +17,7 @@
 # upgrade.sh on a successful bump. Used to render the operator image tag and
 # the RELATED_IMAGE_KEYCLOAK env value below when their corresponding tag
 # fields are left empty.
-version: "26.6.1"
+version: "26.6.2"
 
 # ---------------------------------------------------------------------------
 # Resource metadata
