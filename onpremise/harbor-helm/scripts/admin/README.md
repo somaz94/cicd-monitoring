@@ -83,7 +83,7 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
     --verify-cert false
 ```
 
-> Detailed procedure + user impact: [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak.md), [Phase 4 migration](../../../security/keycloak/docs/harbor-migration.md)
+> Detailed procedure + user impact: [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../docs/oidc-setup-keycloak.md), [Phase 4 migration](../../../keycloak/docs/harbor-migration.md)
 
 ### Diagnostics
 
@@ -135,13 +135,13 @@ HARBOR_ADMIN_PASSWORD="xxx" HARBOR_URL="https://harbor.example.com" HARBOR_NO_RE
 ## Caveats
 
 - When using `demote` to strip admin, avoid demoting yourself (keep at least one other sysadmin)
-- `auth_mode` changes are intentionally NOT exposed in this script — it is irreversible. Follow the manual procedure in [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak.md)
+- `auth_mode` changes are intentionally NOT exposed in this script — it is irreversible. Follow the manual procedure in [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../docs/oidc-setup-keycloak.md)
 - Harbor versions before 2.7 do not support `oidc_group_filter` — rely purely on per-project group role grants via `groups` in that case
 
 <br/>
 
 ## Related Docs
 
-- Harbor OIDC setup: [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak.md)
-- Harbor HTTPS setup: [`cicd/harbor-helm/docs/tls-setup-en.md`](../../../cicd/harbor-helm/docs/tls-setup.md)
+- Harbor OIDC setup: [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../docs/oidc-setup-keycloak.md)
+- Harbor HTTPS setup: [`cicd/harbor-helm/docs/tls-setup-en.md`](../../docs/tls-setup.md)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`

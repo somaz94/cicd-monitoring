@@ -40,7 +40,7 @@ Details: [`image-cleanup/README-en.md`](./image-cleanup/README.md)
 
 ### [admin/](./admin/)
 
-Manages users, project members, and OIDC group mappings via the Harbor v2.0 REST API. Pulls `harborAdminPassword` from [`cicd/harbor-helm/values/dev.yaml`](../../cicd/harbor-helm/values/dev.yaml).
+Manages users, project members, and OIDC group mappings via the Harbor v2.0 REST API. Pulls `harborAdminPassword` from [`cicd/harbor-helm/values/dev.yaml`](../values/dev.yaml).
 
 ```bash
 ./admin/harbor-admin.sh users
@@ -64,7 +64,7 @@ Both variants share identical logic; only user-facing messages/help text differ.
 
 ## Related
 
-- Harbor Helm chart: [`cicd/harbor-helm/`](../../cicd/harbor-helm/)
-- TLS (self-signed) setup: [`cicd/harbor-helm/docs/tls-setup-en.md`](../../cicd/harbor-helm/docs/tls-setup.md)
-- Keycloak OIDC SSO setup (current standard): [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../cicd/harbor-helm/docs/oidc-setup-keycloak.md)
-- GitLab OIDC direct (pre-Phase 4, rollback reference): [`cicd/harbor-helm/docs/legacy/oidc-setup-gitlab-en.md`](../../cicd/harbor-helm/docs/legacy/oidc-setup-gitlab.md)
+- Harbor Helm chart: [`cicd/harbor-helm/`](../)
+- TLS (self-signed) setup: [`cicd/harbor-helm/docs/tls-setup-en.md`](../docs/tls-setup.md)
+- Keycloak OIDC SSO setup (current standard): [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../docs/oidc-setup-keycloak.md)
+- GitLab OIDC direct (pre-Phase 4, rollback reference): [`cicd/harbor-helm/docs/legacy/oidc-setup-gitlab-en.md`](../docs/legacy/oidc-setup-gitlab.md)

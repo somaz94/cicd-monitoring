@@ -144,7 +144,7 @@ kubectl rollout restart -n harbor deploy/harbor-core deploy/harbor-portal
 
 ### Kubespray (recommended)
 
-Already reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../../kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
+Already reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../../bootstrap/kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
 
 ```yaml
 containerd_registries_mirrors:

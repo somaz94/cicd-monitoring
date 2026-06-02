@@ -11,15 +11,15 @@
 Harbor ships with a native OIDC client, so **no Dex is needed** (difference from ArgoCD).
 OIDC settings are not exposed through Helm values; they live in the **Harbor core database** and must be injected via the **Harbor REST API or the Web UI**.
 
-This document documents the **API-based declarative injection procedure** as the standard (re-runnable, easier to audit than UI clicks). The [`scripts/harbor-admin.sh`](../scripts/harbor-admin.sh) helper wraps most of these operations.
+This document documents the **API-based declarative injection procedure** as the standard (re-runnable, easier to audit than UI clicks). The [`scripts/harbor-admin.sh`](../../scripts/admin/harbor-admin.sh) helper wraps most of these operations.
 
 <br/>
 
 ## Prerequisites
 
-- Harbor is exposed over HTTPS — see [`tls-setup-en.md`](./tls-setup.md)
+- Harbor is exposed over HTTPS — see [`tls-setup-en.md`](../tls-setup.md)
 - GitLab admin access to create an OAuth Application
-- Harbor admin DB credentials (see `harborAdminPassword` in [`../values/dev.yaml`](../values/dev.yaml))
+- Harbor admin DB credentials (see `harborAdminPassword` in [`../values/dev.yaml`](../../values/dev.yaml))
 - Policy: **only GitLab `server` group members may log in**, and **only `admin@example.com`** is manually promoted to sysadmin (same as ArgoCD)
 
 <br/>
@@ -188,5 +188,5 @@ The result is identical to the API, but it is not re-runnable/scriptable, so the
 ## References
 
 - Harbor OIDC docs: https://goharbor.io/docs/latest/administration/configure-authentication/oidc-auth/
-- ArgoCD GitLab SSO (same GitLab, same `server` group): [`../../argo-cd/values/dev.yaml`](../../argo-cd/values/dev.yaml)
+- ArgoCD GitLab SSO (same GitLab, same `server` group): [`../../argo-cd/values/dev.yaml`](../../../argocd/values/dev.yaml)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`

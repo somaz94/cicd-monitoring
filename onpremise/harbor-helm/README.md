@@ -232,7 +232,7 @@ The admin password is auto-extracted from this chart's `harborAdminPassword` by 
 
 > **Current setup already works** — containerd follows the 308 redirect and `skip_verify: true` covers the self-signed cert. The config below is a **semantic cleanup recommendation** and is not urgent.
 
-Reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
+Reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../bootstrap/kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
 
 ```yaml
 containerd_registries_mirrors:
