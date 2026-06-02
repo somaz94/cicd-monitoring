@@ -1,6 +1,6 @@
 # User metrics catalog — dev-pm-retention-dashboard
 
-Definitions of all 10 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects-en.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template-en.md).
+Definitions of all 10 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -146,7 +146,7 @@ Operational meaning: the raw decomposition behind the Retention Curve. Surfaces 
 ## Operational caveats
 
 - **Data-sparsity signal**: cohorts with NU between 1 and 5 show retention as 0% or 100% — do not generalize.
-- **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README-en.md#data-view-management-policy).
+- **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README.md#data-view-management-policy).
 - **DAU vs DAU Trend mismatch**: caused by the KQL filter. If health-check traffic frequency varies over time, the ratio between the two will drift.
 - **Timezone**: Curve / Table cohort-day boundaries follow `params.tz = Asia/Seoul` (in the transform). Independent of viewer browser timezone.
 - **`/users/create` as anchor**: for other services
@@ -162,4 +162,4 @@ Operational meaning: the raw decomposition behind the Retention Curve. Surfaces 
 | New panel (e.g. PU, ARPU) | `dev-pm-retention-dashboard.ndjson` lens/visualization + dashboard refs/grid, this catalog table |
 | Timezone change | every `params.tz` in the transform, cohort data view's `cohort_date` runtime field script |
 
-This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README-en.md](../dashboards/README-en.md) + [transforms/README-en.md](../../elasticsearch/transforms/README-en.md).
+This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README-en.md](../dashboards/README.md) + [transforms/README-en.md](../../elasticsearch/transforms/README.md).

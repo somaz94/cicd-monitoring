@@ -140,7 +140,7 @@ ES Transform `params.tz` is fixed at `Asia/Seoul` regardless of Space, so:
 - The cst Space's Daily Cohort Retention row labels stay on KST midnight.
 - The cst Space's D+N activity-day judgement is also computed in KST.
 
-Only the display time shifts to CST. **To shift the day boundary itself to CST**, the ES Transform `params.tz` (31 spots) and the cohort data view's `cohort_date` runtime field `ZoneId.of(...)` must also change. Full procedure: [pm-retention-dashboard-template-en.md "Timezone change procedure"](pm-retention-dashboard-template-en.md#timezone-change-procedure) (incurs a 1–5 minute cohort index re-aggregation).
+Only the display time shifts to CST. **To shift the day boundary itself to CST**, the ES Transform `params.tz` (31 spots) and the cohort data view's `cohort_date` runtime field `ZoneId.of(...)` must also change. Full procedure: [pm-retention-dashboard-template-en.md "Timezone change procedure"](pm-retention-dashboard-template.md#timezone-change-procedure) (incurs a 1–5 minute cohort index re-aggregation).
 
 <br/>
 

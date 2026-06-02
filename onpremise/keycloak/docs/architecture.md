@@ -76,7 +76,7 @@ Key differences:
 ## Costs
 
 - **One extra click** when the Keycloak SSO session has expired — but `kc_idp_hint=gitlab` as a query param can auto-redirect to GitLab, removing the click during cutover.
-- **The OIDC `sub` value changes.** A token issued via direct GitLab and a token via Keycloak brokering have different `sub` strings. Harbor is the one most affected — existing OIDC users need their project memberships re-mapped (admin procedure in [harbor-migration-en.md](harbor-migration-en.md)).
+- **The OIDC `sub` value changes.** A token issued via direct GitLab and a token via Keycloak brokering have different `sub` strings. Harbor is the one most affected — existing OIDC users need their project memberships re-mapped (admin procedure in [harbor-migration-en.md](harbor-migration.md)).
 - **One more component to operate** — Keycloak + its dedicated PostgreSQL pod.
 
 <br/>
@@ -121,7 +121,7 @@ Covered by the follow-up effort (OpenLDAP + Keycloak User Federation track):
 |---|---|---|
 | **ArgoCD** | Sign in once via the new flow | RBAC keys off `email`
 | **vaultwarden** | Sign in once via the new flow | `signupsMatchEmail: true` keeps email-based matching |
-| **Harbor** | Sign in once + a one-time admin task | OIDC `sub` changes → existing project memberships need to be re-attached. Admin runs the procedure in [harbor-migration-en.md](harbor-migration-en.md); end-users just sign in afresh |
+| **Harbor** | Sign in once + a one-time admin task | OIDC `sub` changes → existing project memberships need to be re-attached. Admin runs the procedure in [harbor-migration-en.md](harbor-migration.md); end-users just sign in afresh |
 
 Bottom line: **no re-registration, no re-permissioning, no new passwords.** Same GitLab account, one fresh sign-in.
 
@@ -163,9 +163,9 @@ If LDAP is the long-term endpoint, do we even need the GitLab brokering step? Th
 
 ## See also
 
-- [realm-setup-en.md](realm-setup-en.md) — Phase 3 automation: realm, groups, clients, IdP
-- [gitlab-brokering-en.md](gitlab-brokering-en.md) — GitLab Identity Provider details
-- [harbor-migration-en.md](harbor-migration-en.md) — Harbor cutover (incl. user re-mapping)
-- [vaultwarden-migration-en.md](vaultwarden-migration-en.md) — vaultwarden cutover
-- [argocd-migration-en.md](argocd-migration-en.md) — ArgoCD dex connector swap
-- [operator-cr-relationship-en.md](operator-cr-relationship-en.md) — why Operator and CR live in separate components
+- [realm-setup-en.md](realm-setup.md) — Phase 3 automation: realm, groups, clients, IdP
+- [gitlab-brokering-en.md](gitlab-brokering.md) — GitLab Identity Provider details
+- [harbor-migration-en.md](harbor-migration.md) — Harbor cutover (incl. user re-mapping)
+- [vaultwarden-migration-en.md](vaultwarden-migration.md) — vaultwarden cutover
+- [argocd-migration-en.md](argocd-migration.md) — ArgoCD dex connector swap
+- [operator-cr-relationship-en.md](operator-cr-relationship.md) — why Operator and CR live in separate components

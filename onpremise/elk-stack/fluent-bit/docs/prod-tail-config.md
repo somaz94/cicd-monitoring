@@ -6,7 +6,7 @@ The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev
 > - fluent-bit: `DB` checkpoints, `storage.type filesystem`, state PVC (`fluent-bit-state-pvc`, declared 5Gi / actual 2Gi, `nfs-client-server1`), `updateStrategy: Recreate`, OUTPUT `storage.total_limit_size 2G`.
 > - fluentd: buffer `queue_limit_length 128` + `total_limit_size 4GB` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule with 7 alerts.
 > - Only `Read_from_Head` remains `false` (awaiting Phase 1b promotion).
-> - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure-en.md).
+> - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure.md).
 
 <br/>
 
@@ -150,7 +150,7 @@ Correct sequence (Phase 1a → 1b model):
 ## References
 
 - Current dev INPUT definition (Phase 1a applied): [../values/dev.yaml](../values/dev.yaml)
-- Re-ingest procedure after index loss: [reingest-procedure-en.md](./reingest-procedure-en.md)
+- Re-ingest procedure after index loss: [reingest-procedure-en.md](./reingest-procedure.md)
 - Official docs: https://docs.fluentbit.io/manual/pipeline/inputs/tail
 - DB / checkpoint: https://docs.fluentbit.io/manual/pipeline/inputs/tail#db
 - filesystem storage: https://docs.fluentbit.io/manual/administration/buffering-and-storage

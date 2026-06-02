@@ -1,6 +1,6 @@
 # Kibana / Elasticsearch user creation guide
 
-Operations doc for [`../scripts/create-kibana-readonly-user.sh`](../scripts/create-kibana-readonly-user.sh). PUTs a **user account mapped to an existing role** via the Security API, idempotently. Role creation itself lives in a sibling script — see [create-elastic-role-en.md](create-elastic-role-en.md). Keeping them split lets a single role back many users (e.g. `viewer`, `qa-viewer`, `pm-viewer` all mapped to `read_only_role`).
+Operations doc for [`../scripts/create-kibana-readonly-user.sh`](../scripts/create-kibana-readonly-user.sh). PUTs a **user account mapped to an existing role** via the Security API, idempotently. Role creation itself lives in a sibling script — see [create-elastic-role-en.md](create-elastic-role.md). Keeping them split lets a single role back many users (e.g. `viewer`, `qa-viewer`, `pm-viewer` all mapped to `read_only_role`).
 
 > Script name says "readonly-user", but the user can be attached to any existing role via `--role-name`. `read_only_role` is just the default.
 
@@ -27,7 +27,7 @@ This script does not create roles. Step 0 aborts cleanly when the role is missin
     ./create-elastic-role.sh --role-name 'read_only_role' [permission flags] --yes
 ```
 
-Create the role first via [create-elastic-role-en.md](create-elastic-role-en.md) and then attach a user with this script.
+Create the role first via [create-elastic-role-en.md](create-elastic-role.md) and then attach a user with this script.
 
 <br/>
 
@@ -93,7 +93,7 @@ These defaults live in [`../scripts/lib/es-common.sh`](../scripts/lib/es-common.
 
 ## Security checklist
 
-This script only creates users — the actual privileges come from the attached role. Role-side guards are documented in [create-elastic-role-en.md](create-elastic-role-en.md) "Security checklist".
+This script only creates users — the actual privileges come from the attached role. Role-side guards are documented in [create-elastic-role-en.md](create-elastic-role.md) "Security checklist".
 
 Enforced automatically by this script:
 - ✅ Password < 8 chars aborts; 8..11 chars warns
@@ -154,7 +154,7 @@ kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
 
 ## Related documentation
 
-- [create-elastic-role-en.md](create-elastic-role-en.md) — prerequisite. Role creation, permission flags, security guards.
-- [scripts/README-en.md](../scripts/README-en.md) — directory index.
+- [create-elastic-role-en.md](create-elastic-role.md) — prerequisite. Role creation, permission flags, security guards.
+- [scripts/README-en.md](../scripts/README.md) — directory index.
 - [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
 - [Elasticsearch Security API — Create or update user](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-put-user.html)

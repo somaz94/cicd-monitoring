@@ -10,10 +10,10 @@ Detailed per-script operations guides live as KO/EN pairs under [`../docs/`](../
 
 | Script | One-line summary | Guide (KO) | Guide (EN) |
 |---|---|---|---|
-| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | ES-side reset of the ExampleProject raw + cohort indices (transform stop → cohort DELETE → cohort explicit-mapping PUT → raw DELETE → fluent-bit DaemonSet rollout restart → transform `_reset` → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). DaemonSet-only after the 2026-05-22 cleanup, cohort mapping PUT added 2026-05-27. | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort-en.md](../docs/reset-example-project-cohort-en.md) |
+| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | ES-side reset of the ExampleProject raw + cohort indices (transform stop → cohort DELETE → cohort explicit-mapping PUT → raw DELETE → fluent-bit DaemonSet rollout restart → transform `_reset` → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). DaemonSet-only after the 2026-05-22 cleanup, cohort mapping PUT added 2026-05-27. | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort-en.md](../docs/reset-example-project-cohort.md) |
 | [`restart-transform.sh`](restart-transform.sh) | Stop + `_reset` + start a single ES transform (`--stop-only`
-| [`create-elastic-role.sh`](create-elastic-role.sh) | Idempotent `PUT /_security/role/<name>` via the Security API. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants. | [create-elastic-role.md](../docs/create-elastic-role.md) | [create-elastic-role-en.md](../docs/create-elastic-role-en.md) |
-| [`create-kibana-readonly-user.sh`](create-kibana-readonly-user.sh) | Create / update a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing. | [create-kibana-readonly-user.md](../docs/create-kibana-readonly-user.md) | [create-kibana-readonly-user-en.md](../docs/create-kibana-readonly-user-en.md) |
+| [`create-elastic-role.sh`](create-elastic-role.sh) | Idempotent `PUT /_security/role/<name>` via the Security API. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants. | [create-elastic-role.md](../docs/create-elastic-role.md) | [create-elastic-role-en.md](../docs/create-elastic-role.md) |
+| [`create-kibana-readonly-user.sh`](create-kibana-readonly-user.sh) | Create / update a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing. | [create-kibana-readonly-user.md](../docs/create-kibana-readonly-user.md) | [create-kibana-readonly-user-en.md](../docs/create-kibana-readonly-user.md) |
 | [`delete_old_indices.sh`](delete_old_indices.sh) (+ [`-en`](delete_old_indices-en.sh)) | Delete docs older than the retention window in the named indices, or delete the indices outright; also `total_fields.limit` tuning and a `--status` cluster-wide listing. See `--help`. | — | — |
 | [`kibana_saved_objects_migrate.sh`](kibana_saved_objects_migrate.sh) (+ [`-en`](kibana_saved_objects_migrate-en.sh)) | Export Kibana saved-objects (dashboard
 
@@ -86,5 +86,5 @@ make -C ../../../.. shell-lint STRICT=1
 ## Related documentation
 
 - [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
-- [../transforms/README-en.md](../transforms/README-en.md) — cohort transform definitions and the `apply.sh` / `export.sh` guide.
+- [../transforms/README-en.md](../transforms/README.md) — cohort transform definitions and the `apply.sh` / `export.sh` guide.
 - [../docs/](../docs/) — full Elasticsearch component docs (upgrade / rollback / HA verification + the per-script guides for this directory).

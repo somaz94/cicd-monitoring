@@ -116,5 +116,5 @@ To preserve ArgoCD's `g, server, role:server-admin` policy, federated users must
 
 ## Next
 
-- [argocd-migration-en.md](argocd-migration-en.md) — switch ArgoCD dex from GitLab to Keycloak OIDC
-- [harbor-migration-en.md](harbor-migration-en.md) — switch the Harbor OIDC endpoint
+- [argocd-migration-en.md](argocd-migration.md) — switch ArgoCD dex from GitLab to Keycloak OIDC
+- [harbor-migration-en.md](harbor-migration.md) — switch the Harbor OIDC endpoint

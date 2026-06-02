@@ -37,11 +37,11 @@ The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObject
 
 ## Change summary (3 files)
 
-1. [`cicd/argo-cd/values/dev.yaml`](../../../cicd/argo-cd/values/dev.yaml)
+1. [`cicd/argo-cd/values/dev.yaml`](../../argocd/values/dev.yaml)
    - `configs.cm.dex.config`: GitLab connector → OIDC connector (Keycloak, `insecureSkipVerify: true`)
    - `configs.secrets`: comment out `dex.gitlab.*`, add `dex.keycloak.clientSecret`
    - `extraObjects`: one new `argocd-https-redirect` HTTPRoute
-2. [`cicd/argo-cd/helmfile.yaml`](../../../cicd/argo-cd/helmfile.yaml) — refresh values comment (mention extraObjects)
+2. [`cicd/argo-cd/helmfile.yaml`](../../argocd/helmfile.yaml) — refresh values comment (mention extraObjects)
 3. [`security/keycloak/docs/argocd-migration.md`](./argocd-migration.md) — this stub → procedure
 
 > Legacy GitLab `dex.config` and `secrets` are **kept commented** in the same values file (swap to roll back).
@@ -137,7 +137,7 @@ helmfile -f cicd/argo-cd/helmfile.yaml -e dev apply
 
 Or a quick hot rollback (without touching git):
 
-1. In [`cicd/argo-cd/values/dev.yaml`](../../../cicd/argo-cd/values/dev.yaml), comment out the oidc `dex.config` block and uncomment the **legacy GitLab block** kept below it
+1. In [`cicd/argo-cd/values/dev.yaml`](../../argocd/values/dev.yaml), comment out the oidc `dex.config` block and uncomment the **legacy GitLab block** kept below it
 2. Comment out `secrets.dex.keycloak.clientSecret`, uncomment `secrets.dex.gitlab.*`
 3. `helmfile apply`
 

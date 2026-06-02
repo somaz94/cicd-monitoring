@@ -38,7 +38,7 @@ Pivots the `dev-example-project-game` index on `data.userId` and emits the cohor
 | `active_dates` | List of active dates (`YYYY-MM-DD` strings) | scripted_metric — distinct set of `toLocalDate(@timestamp)`. **Dest mapping MUST pin as `keyword`** (if inferred as date the dashboard's retention runtime fields fall back to `String == ZonedDateTime` and emit 0 for every horizon) |
 | `max_cleared_chapter` | Highest chapter cleared | `max(lastClearedChapter)` — runtime field that parses `lastClearedChapter` integer from the `/adventures/clear` responseBody |
 
-> Retention itself (D-1 … D-30 returning flags) is **NOT computed by the transform**. The transform only freezes the two atomic facts above (`active_dates` + `first_seen`); the **Kibana data view runtime fields `d1_live..d30_live`** compute retention at visualization time by checking whether `first_seen + N day` appears in `active_dates`. See [kibana/docs/pm-retention-dashboard-template-en.md](../../kibana/docs/pm-retention-dashboard-template-en.md) for the full split.
+> Retention itself (D-1 … D-30 returning flags) is **NOT computed by the transform**. The transform only freezes the two atomic facts above (`active_dates` + `first_seen`); the **Kibana data view runtime fields `d1_live..d30_live`** compute retention at visualization time by checking whether `first_seen + N day` appears in `active_dates`. See [kibana/docs/pm-retention-dashboard-template-en.md](../../kibana/docs/pm-retention-dashboard-template.md) for the full split.
 
 Runtime configuration:
 - `frequency: 5m` — sync check every 5 minutes
@@ -48,7 +48,7 @@ Runtime configuration:
 Key rules of the signup anchor:
 - **Anchor**: `first_seen` is not `min(@timestamp)` but the **first occurrence per user of `params.path` (`/users/create`)**.
 - **Null handling**: a user with no signup event ever yields `first_seen = null` → the data view runtime fields `d{N}_live` early-return → ES `avg()` automatically skips them → Retention Curve / Daily Table divisor naturally reduces to "signed-up users only".
-- **Timezone**: `params.tz = "Asia/Seoul"` sets the day-boundary. To change, update the transform's `active_dates.scripted_metric.params.tz` together with every `d{N}_live` runtime field's `ZoneId.of(...)` on the cohort data view. Full procedure in [kibana/docs/timezone-toggle-en.md](../../kibana/docs/timezone-toggle-en.md).
+- **Timezone**: `params.tz = "Asia/Seoul"` sets the day-boundary. To change, update the transform's `active_dates.scripted_metric.params.tz` together with every `d{N}_live` runtime field's `ZoneId.of(...)` on the cohort data view. Full procedure in [kibana/docs/timezone-toggle-en.md](../../kibana/docs/timezone-toggle.md).
 - **Adding a horizon** (e.g. D-60): add a single `d60_live` runtime field on the cohort data view (the transform stays untouched). Also extend the Retention Curve Vega's N range to match.
 
 Load: per-user partial updates are very light. ~200 active users × 1 pivot every 5 minutes = tens of KB of traffic per hour.
@@ -255,4 +255,4 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 
 - ES Transform docs: https://www.elastic.co/guide/en/elasticsearch/reference/current/transforms.html
 - scripted_metric aggregation: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-metrics-scripted-metric-aggregation.html
-- Visualization side of this repo: [dashboards-saved-objects-en.md](../../kibana/docs/dashboards-saved-objects-en.md)
+- Visualization side of this repo: [dashboards-saved-objects-en.md](../../kibana/docs/dashboards-saved-objects.md)

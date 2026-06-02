@@ -14,8 +14,8 @@ The OIDC `sub` of existing users changes — they re-onboard as new accounts, re
 - ✅ Phase 2: Keycloak + PostgreSQL running, `auth.example.com` returns HTTP/2 200
 - ✅ Phase 3: realm `example` + client `harbor` (Standard Flow + PKCE) + groups mapper + GitLab IdP brokering
 - ✅ Harbor already at `auth_mode = oidc_auth` (flipped during the GitLab-direct era) — no extra flip needed
-- ✅ Harbor `harbor` client secret captured: Phase 3 output (`<HARBOR_OIDC_CLIENT_SECRET>` — or re-fetch via the kcadm procedure in [`docs/oidc-setup-keycloak-en.md` §2](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md#2-retrieve-client-secret))
-- ✅ Harbor admin access (DB password = `harborAdminPassword` in [`cicd/harbor-helm/values/dev.yaml`](../../../cicd/harbor-helm/values/dev.yaml))
+- ✅ Harbor `harbor` client secret captured: Phase 3 output (`<HARBOR_OIDC_CLIENT_SECRET>` — or re-fetch via the kcadm procedure in [`docs/oidc-setup-keycloak-en.md` §2](../../harbor-helm/docs/oidc-setup-keycloak.md#2-retrieve-client-secret))
+- ✅ Harbor admin access (DB password = `harborAdminPassword` in [`cicd/harbor-helm/values/dev.yaml`](../../harbor-helm/values/dev.yaml))
 
 <br/>
 
@@ -191,16 +191,16 @@ Rollback flips the OIDC `sub` back to GitLab basis → re-run Step 7 to clean us
 
 ## Follow-ups (after Phase 4)
 
-- ✅ [`cicd/harbor-helm/values/dev.yaml`](../../../cicd/harbor-helm/values/dev.yaml) SSO comment block rewritten for Keycloak (GitLab procedure preserved as a commented rollback section)
-- ✅ [`cicd/harbor-helm/docs/oidc-setup-keycloak.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak.md) + [`oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md) rewritten for Keycloak (full legacy GitLab procedure preserved at [`docs/legacy/oidc-setup-gitlab-en.md`](../../../cicd/harbor-helm/docs/legacy/oidc-setup-gitlab-en.md))
-- ✅ [`cicd/harbor-helm/scripts/admin/harbor-admin.sh`](../../../cicd/harbor-helm/scripts/admin/harbor-admin.sh) gained the `set-oidc` command
+- ✅ [`cicd/harbor-helm/values/dev.yaml`](../../harbor-helm/values/dev.yaml) SSO comment block rewritten for Keycloak (GitLab procedure preserved as a commented rollback section)
+- ✅ [`cicd/harbor-helm/docs/oidc-setup-keycloak.md`](../../harbor-helm/docs/oidc-setup-keycloak.md) + [`oidc-setup-keycloak-en.md`](../../harbor-helm/docs/oidc-setup-keycloak.md) rewritten for Keycloak (full legacy GitLab procedure preserved at [`docs/legacy/oidc-setup-gitlab-en.md`](../../harbor-helm/docs/legacy/oidc-setup-gitlab.md))
+- ✅ [`cicd/harbor-helm/scripts/admin/harbor-admin.sh`](../../harbor-helm/scripts/admin/harbor-admin.sh) gained the `set-oidc` command
 - ⏳ Phase 8: decide whether to remove the legacy GitLab `Harbor` Application — keep through Phase 5/6 in case rollback is needed, then prune
 
 <br/>
 
 ## References
 
-- [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md) — Keycloak OIDC standard procedure (§7 rollback + legacy full link)
-- [`cicd/harbor-helm/scripts/admin/README-en.md`](../../../cicd/harbor-helm/scripts/admin/README-en.md) — `harbor-admin-en.sh` command reference (incl. `set-oidc`)
-- [Phase 5 vaultwarden migration](./vaultwarden-migration-en.md), [Phase 6 ArgoCD migration](./argocd-migration-en.md) — follow-up phases
-- [architecture-en.md](./architecture-en.md) — auth flow & user impact summary
+- [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../harbor-helm/docs/oidc-setup-keycloak.md) — Keycloak OIDC standard procedure (§7 rollback + legacy full link)
+- [`cicd/harbor-helm/scripts/admin/README-en.md`](../../harbor-helm/scripts/admin/README.md) — `harbor-admin-en.sh` command reference (incl. `set-oidc`)
+- [Phase 5 vaultwarden migration](./vaultwarden-migration.md), [Phase 6 ArgoCD migration](./argocd-migration.md) — follow-up phases
+- [architecture-en.md](./architecture.md) — auth flow & user impact summary

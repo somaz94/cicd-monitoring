@@ -203,7 +203,7 @@ Key consequences:
 | Name | `dev-example-project-game-user-cohort-logs` (id `410571c2-5b86-4ba9-a02e-418671d0b8e2`) |
 | Time field | `first_seen` |
 | Runtime field — `cohort_date` (keyword) | `if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('Asia/Seoul')).toLocalDate().toString()); }` — powers the keyword grouping of the Daily Cohort Retention table's "Date" column |
-| Runtime field — `d1_live`..`d30_live` (long) | Emit `1` if `first_seen + N day` appears in `active_dates`, otherwise `0`. The core check is `String t = (first_seen + N day).toString(); for (def d : doc['active_dates']) if (d == t) emit(1L)`. **The index mapping's `active_dates` MUST be `keyword`** — if inferred as `date`, the `String == ZonedDateTime` comparison is always false and every retention horizon emits 0 (2026-05-22 QA cohort incident). The cohort index's explicit mapping is pinned via `<id>.mapping.json` per [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README-en.md#dest-index-mapping----idmappingjson). |
+| Runtime field — `d1_live`..`d30_live` (long) | Emit `1` if `first_seen + N day` appears in `active_dates`, otherwise `0`. The core check is `String t = (first_seen + N day).toString(); for (def d : doc['active_dates']) if (d == t) emit(1L)`. **The index mapping's `active_dates` MUST be `keyword`** — if inferred as `date`, the `String == ZonedDateTime` comparison is always false and every retention horizon emits 0 (2026-05-22 QA cohort incident). The cohort index's explicit mapping is pinned via `<id>.mapping.json` per [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson). |
 
 Both `cohort_date` and `d{N}_live` are **Kibana data view runtime fields only** — they don't live in the underlying index mapping and are computed per cohort doc at visualization time.
 
@@ -533,7 +533,7 @@ KUBECONFIG=... NAMESPACE=logging ./apply.sh --file prod-example-project-game-use
 ```
 
 * `--preview-only` validates first → confirm the atomic facts (`first_seen`, `last_seen`, `active_dates`, `active_days_count`, `total_events`, `max_cleared_chapter`) match expectations before the real apply.
-* `apply.sh` auto-detects the sibling `.mapping.json` and PUTs the explicit dest-index mapping first (pinning `active_dates: keyword`) when the dest index is absent. Without this, ES dynamic mapping infers `active_dates` as `date` and dashboard retention silently renders as 0 — see [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README-en.md#dest-index-mapping----idmappingjson).
+* `apply.sh` auto-detects the sibling `.mapping.json` and PUTs the explicit dest-index mapping first (pinning `active_dates: keyword`) when the dest index is absent. Without this, ES dynamic mapping infers `active_dates` as `date` and dashboard retention silently renders as 0 — see [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson).
 * The dashboard only shows meaningful numbers once the backfill completes. Continuous mode keeps the index fresh at `frequency` cadence.
 
 ### Step 3 — Apply the dashboard
@@ -729,10 +729,10 @@ Differences found while analysing the live cluster. **Do not apply the repo defi
 
 ## Related docs
 
-- [dashboards/README-en.md](../dashboards/README-en.md) — apply.sh / export.sh / build script usage
-- [docs/dashboards-saved-objects-en.md](dashboards-saved-objects-en.md) — NDJSON schema, two flavours of apply.sh, data view policy
-- [docs/user-metrics-catalog-en.md](user-metrics-catalog-en.md) — this dashboard's 10-panel catalog (definitions + operational caveats)
-- [elasticsearch/transforms/README-en.md](../../elasticsearch/transforms/README-en.md) — transform management commands
+- [dashboards/README-en.md](../dashboards/README.md) — apply.sh / export.sh / build script usage
+- [docs/dashboards-saved-objects-en.md](dashboards-saved-objects.md) — NDJSON schema, two flavours of apply.sh, data view policy
+- [docs/user-metrics-catalog-en.md](user-metrics-catalog.md) — this dashboard's 10-panel catalog (definitions + operational caveats)
+- [elasticsearch/transforms/README-en.md](../../elasticsearch/transforms/README.md) — transform management commands
 - [docs/example-project-user-metrics-overview.md](../../../../docs/example-project-user-metrics-overview.md) — pipeline-wide entry point (Korean, internal)
 
 <br/>

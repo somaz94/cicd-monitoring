@@ -166,5 +166,5 @@ This procedure is a fallback after ES index loss. A comprehensive backup strateg
 ## References
 
 - Applied values: [../values/dev.yaml](../values/dev.yaml)
-- Phase 1a background: [prod-tail-config-en.md](./prod-tail-config-en.md)
+- Phase 1a background: [prod-tail-config-en.md](./prod-tail-config.md)
 - Fluent Bit tail DB official docs: https://docs.fluentbit.io/manual/pipeline/inputs/tail#db

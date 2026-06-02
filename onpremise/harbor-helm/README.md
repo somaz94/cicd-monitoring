@@ -25,9 +25,9 @@ harbor-helm/
 
 | Document | Description |
 |----------|-------------|
-| [TLS Setup](docs/tls-setup-en.md) | Self-signed cert issuance, renewal, client trust configuration |
-| [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak-en.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin.sh set-oidc` |
-| [OIDC SSO — GitLab (legacy, pre-Phase 4)](docs/legacy/oidc-setup-gitlab-en.md) | Full GitLab-direct procedure preserved (rollback / fresh-environment reproduction) |
+| [TLS Setup](docs/tls-setup.md) | Self-signed cert issuance, renewal, client trust configuration |
+| [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin.sh set-oidc` |
+| [OIDC SSO — GitLab (legacy, pre-Phase 4)](docs/legacy/oidc-setup-gitlab.md) | Full GitLab-direct procedure preserved (rollback / fresh-environment reproduction) |
 
 <br/>
 
@@ -185,7 +185,7 @@ spec:
 ## HTTPS (Self-Signed)
 
 Harbor is exposed over HTTPS to satisfy OIDC SSO requirements and secure registry traffic.
-This cluster does not run cert-manager → uses the same manual self-signed pattern as [Vaultwarden](../../security/vaultwarden/).
+This cluster does not run cert-manager → uses the same manual self-signed pattern as [Vaultwarden](../vaultwarden/).
 
 ```bash
 # Summary: register harbor-tls Secret (see docs for full procedure)
@@ -198,7 +198,7 @@ kubectl create secret tls harbor-tls \
   --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
 ```
 
-Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-setup-en.md`](./docs/tls-setup-en.md)** ([Korean](./docs/tls-setup.md)).
+Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-setup-en.md`](./docs/tls-setup.md)**.
 
 <br/>
 
@@ -207,9 +207,9 @@ Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-
 Harbor uses **Keycloak OIDC** instead of `db_auth` (Phase 4 replaced the previous GitLab-direct setup). Keycloak's Identity Provider brokers to GitLab, so existing user accounts/groups are preserved (`server` group filter, admin manually promoted for `admin@example.com` only).
 
 OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The standard procedure:
-- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak-en.md) ([Korean](./docs/oidc-setup-keycloak.md))
-- **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration-en.md`](../../security/keycloak/docs/harbor-migration-en.md)
-- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab-en.md) ([Korean](./docs/legacy/oidc-setup-gitlab.md))
+- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak.md)
+- **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration-en.md`](../keycloak/docs/harbor-migration.md)
+- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab.md)
 
 ⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. This cluster already flipped during the GitLab-direct era — no extra flip needed for the Keycloak switch.
 
@@ -224,7 +224,7 @@ scripts/admin/harbor-admin.sh add-member library group:server developer
 scripts/admin/harbor-admin.sh config
 ```
 
-The admin password is auto-extracted from this chart's `harborAdminPassword` by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/admin/README-en.md`](scripts/admin/README-en.md).
+The admin password is auto-extracted from this chart's `harborAdminPassword` by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/admin/README-en.md`](scripts/admin/README.md).
 
 <br/>
 

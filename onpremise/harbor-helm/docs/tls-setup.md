@@ -1,7 +1,7 @@
 # Harbor TLS Setup (Self-Signed)
 
 Harbor must be exposed over HTTPS for OIDC SSO and secure registry traffic.
-This cluster does not run cert-manager, so it uses the same manual self-signed pattern as [Vaultwarden](../../../security/vaultwarden/docs/tls-setup-en.md).
+This cluster does not run cert-manager, so it uses the same manual self-signed pattern as [Vaultwarden](../../vaultwarden/docs/tls-setup.md).
 
 <br/>
 
@@ -191,7 +191,7 @@ Replacing `--insecure-pull` with `--skip-tls-verify-pull` is semantically cleane
 
 If you have a public DNS provider with API-based validation (Cloudflare, Route53, etc.), you can automate with cert-manager + Let's Encrypt. Wix DNS does not support API validation, so this self-signed approach is the practical choice here.
 
-See the "cert-manager + Let's Encrypt" section of [`security/vaultwarden/docs/tls-setup-en.md`](../../../security/vaultwarden/docs/tls-setup-en.md).
+See the "cert-manager + Let's Encrypt" section of [`security/vaultwarden/docs/tls-setup-en.md`](../../vaultwarden/docs/tls-setup.md).
 
 <br/>
 

@@ -1,6 +1,6 @@
 # Kibana Dashboards NDJSON Workflow
 
-Documents the internal logic and operational procedures for the **declarative Saved Objects** (Lens + Dashboard) managed under `observability/logging/kibana/dashboards/`. For usage itself see [dashboards/README-en.md](../dashboards/README-en.md); this document covers the *internals*.
+Documents the internal logic and operational procedures for the **declarative Saved Objects** (Lens + Dashboard) managed under `observability/logging/kibana/dashboards/`. For usage itself see [dashboards/README-en.md](../dashboards/README.md); this document covers the *internals*.
 
 <br/>
 
@@ -357,7 +357,7 @@ cd observability/logging/kibana/dashboards
 ./apply.sh --include-data-view     # import data view + lens + dashboard
 ```
 
-The `*-data-view.ndjson` pattern is excluded from the default `apply.sh` run (opt-in). Reasoning is in [dashboards/README-en.md → Data view management policy](../dashboards/README-en.md#data-view-management-policy).
+The `*-data-view.ndjson` pattern is excluded from the default `apply.sh` run (opt-in). Reasoning is in [dashboards/README-en.md → Data view management policy](../dashboards/README.md#data-view-management-policy).
 
 <br/>
 

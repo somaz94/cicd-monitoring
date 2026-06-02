@@ -79,5 +79,5 @@ Not required for chart patch bumps or Stack version bumps alone.
 ## Related docs
 
 - [Full procedure + logs](https://github.com/somaz94/helm-charts/blob/main/docs/ha-rolling-verification.md) — chart maintainer repo
-- [Elasticsearch README](../README-en.md) / [Kibana README](../../kibana/README-en.md)
+- [Elasticsearch README](../README.md) / [Kibana README](../../kibana/README.md)
 - [Upgrade

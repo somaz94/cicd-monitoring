@@ -198,4 +198,4 @@ The existing `dev-example-project-battle` index already carries the bad dynamic 
 
 - [`values/dev.yaml`](../values/dev.yaml) — fluentd normalization filters (Step 2 / Step 3 / Step 5.5)
 - [fluent-bit `values/dev.yaml`](../../fluent-bit/values/dev.yaml) — Tag routing + JSON parsing (matches the `example-project.stdout.dev.battle.**` scope used by Step 5.5)
-- [`reset-example-project-cohort` ops guide](../../elasticsearch/docs/reset-example-project-cohort-en.md) — reference pattern for index reset
+- [`reset-example-project-cohort` ops guide](../../elasticsearch/docs/reset-example-project-cohort.md) — reference pattern for index reset

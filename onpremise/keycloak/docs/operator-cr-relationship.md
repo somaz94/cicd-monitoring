@@ -1,6 +1,6 @@
 # Operator vs CR component split (security/keycloak-operator + security/keycloak)
 
-This component (`security/keycloak/`) and the sibling [`security/keycloak-operator/`](../../keycloak-operator) split a single Keycloak system into **two helmfile components**. Same pattern as ECK's [`observability/logging/eck-operator/`](../../../observability/logging/eck-operator) + [`observability/logging/elasticsearch/`](../../../observability/logging/elasticsearch).
+This component (`security/keycloak/`) and the sibling [`security/keycloak-operator/`](../../keycloak-operator) split a single Keycloak system into **two helmfile components**. Same pattern as ECK's [`observability/logging/eck-operator/`](../../elk-stack/eck-operator) + [`observability/logging/elasticsearch/`](../../elk-stack/elasticsearch).
 
 <br/>
 
@@ -72,5 +72,5 @@ Helmfile does not enforce cross-component dependencies — order is documented i
 
 ## See also
 
-- ECK same pattern: [`observability/logging/eck-operator/README-en.md`](../../../observability/logging/eck-operator/README-en.md) + [`observability/logging/elasticsearch/README-en.md`](../../../observability/logging/elasticsearch/README-en.md)
+- ECK same pattern: [`observability/logging/eck-operator/README-en.md`](../../elk-stack/eck-operator/README.md) + [`observability/logging/elasticsearch/README-en.md`](../../elk-stack/elasticsearch/README.md)
 - [Keycloak Operator official installation guide](https://www.keycloak.org/operator/installation)

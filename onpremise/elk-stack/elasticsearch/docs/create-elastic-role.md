@@ -193,8 +193,8 @@ EOF
 
 ## Related documentation
 
-- [create-kibana-readonly-user-en.md](create-kibana-readonly-user-en.md) — guide for attaching a role made by this script to a user account.
-- [scripts/README-en.md](../scripts/README-en.md) — directory index.
+- [create-kibana-readonly-user-en.md](create-kibana-readonly-user.md) — guide for attaching a role made by this script to a user account.
+- [scripts/README-en.md](../scripts/README.md) — directory index.
 - [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
 - [Elasticsearch Security API — Create or update role](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-put-role.html)
 - [Kibana — Built-in role privileges](https://www.elastic.co/guide/en/kibana/current/kibana-privileges.html)

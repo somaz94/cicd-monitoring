@@ -106,6 +106,6 @@ kubectl get cm argocd-notifications-cm -n argocd \
 
 ## Related Documents
 
-- [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23-en.md) — original incident analysis
+- [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23.md) — original incident analysis
 - `values/dev-notifications.yaml` — current trigger definitions
 - `upgrade.py` — script that applies changes

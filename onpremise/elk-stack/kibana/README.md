@@ -55,20 +55,20 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 
 | Document | Description |
 |------|------|
-| [Upgrade / Rollback (Kibana-specific)](docs/upgrade-rollback-en.md) | ES dependency notes + link to shared guide |
-| [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback-en.md) | `upgrade.py` safety features, OCI chart pin bump, webhook-bypass rollback (primary doc) |
-| [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
-| [Dashboards (Saved Objects management)](dashboards/README-en.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
-| [Dashboards Saved Objects workflow](docs/dashboards-saved-objects-en.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
-| [User Metrics Catalog](docs/user-metrics-catalog-en.md) | 10-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard`
-| [pm-retention-dashboard — Prod templating guide](docs/pm-retention-dashboard-template-en.md) | Structure / data sources / template parameters / qa-example-project-game validation / automation strategy / prod migration recipe |
-| [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle-en.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `apply.sh --space-id` mechanics, extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
+| [Upgrade / Rollback (Kibana-specific)](docs/upgrade-rollback.md) | ES dependency notes + link to shared guide |
+| [Full Upgrade / Rollback Guide](../elasticsearch/docs/upgrade-rollback.md) | `upgrade.py` safety features, OCI chart pin bump, webhook-bypass rollback (primary doc) |
+| [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
+| [Dashboards (Saved Objects management)](dashboards/README.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
+| [Dashboards Saved Objects workflow](docs/dashboards-saved-objects.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
+| [User Metrics Catalog](docs/user-metrics-catalog.md) | 10-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard`
+| [pm-retention-dashboard — Prod templating guide](docs/pm-retention-dashboard-template.md) | Structure / data sources / template parameters / qa-example-project-game validation / automation strategy / prod migration recipe |
+| [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `apply.sh --space-id` mechanics, extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
 
 <br/>
 
 ## Two versions to manage
 
-Same structure as Elasticsearch — see the [Two versions to manage section in the ES README](../elasticsearch/README-en.md#two-versions-to-manage-important).
+Same structure as Elasticsearch — see the [Two versions to manage section in the ES README](../elasticsearch/README.md#two-versions-to-manage-important).
 
 | Version | Where it lives | How to bump |
 |---|---|---|
@@ -97,7 +97,7 @@ Apply the change:
 helmfile diff && helmfile apply
 ```
 
-**Safety features / incident response**: See [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback-en.md](../elasticsearch/docs/upgrade-rollback-en.md))
+**Safety features / incident response**: See [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback-en.md](../elasticsearch/docs/upgrade-rollback.md))
 
 <br/>
 

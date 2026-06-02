@@ -33,7 +33,7 @@ Three scripts, distinct roles:
 | **DEV** | `dev-pm-retention-dashboard` | DEV — Game User Matric & Retention | `dev-example-project-game` | `dev-example-project-game-user-cohort` | `dev-pm-retention-dashboard.ndjson` |
 | **QA** | `qa-pm-retention-dashboard` | QA — Game User Matric & Retention | `qa-example-project-game` | `qa-example-project-game-user-cohort` | `qa-pm-retention-dashboard.ndjson` |
 
-Both dashboards share the same structure (10 panels = 7 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template-en.md).
+Both dashboards share the same structure (10 panels = 7 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -50,7 +50,7 @@ Both dashboards share the same structure (10 panels = 7 Vega + 3 Lens). Env-spec
 
 10-panel analyst-grade dashboard. Default time range `now-30d ~ now` (`timeRestore: true`).
 
-Per-panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog-en.md). For prod migration / automation / compatibility checks see [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template-en.md).
+Per-panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog.md). For prod migration / automation / compatibility checks see [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
 
 Saved-object ID pattern (per-env prefix):
 - Dashboard: `<env>-pm-retention-dashboard` (slug)
@@ -68,7 +68,7 @@ Saved-object ID pattern (per-env prefix):
 - **Stored**: fluentd normalizes every `@timestamp` to KST (+09:00) ISO8601 → stored internally as UTC epoch in ES.
 - **Displayed**: driven per-Space by the `dateFormat:tz` Advanced Setting.
 - **Bucket boundaries**: The Lens date_histogram / Vega date math follows the display timezone above.
-- **Retention day boundary**: cohort-index D-N is computed against the ES Transform's `params.tz = "Asia/Seoul"` (independent of the display timezone). To change globally see [pm-retention-dashboard-template-en.md "Timezone change procedure"](../docs/pm-retention-dashboard-template-en.md#timezone-change-procedure).
+- **Retention day boundary**: cohort-index D-N is computed against the ES Transform's `params.tz = "Asia/Seoul"` (independent of the display timezone). To change globally see [pm-retention-dashboard-template-en.md "Timezone change procedure"](../docs/pm-retention-dashboard-template.md#timezone-change-procedure).
 
 <br/>
 
@@ -87,7 +87,7 @@ Users toggle via the Kibana Space switcher (top-left) — same NDJSON, different
 
 > ⚠️ Edit flow: always edit dashboards in the default Space → `./export.sh` to capture → `./apply.sh --space-id default --space-id cst` to redeploy to both. Editing directly in the cst Space will diverge the two and should be avoided.
 
-**View limitation — retention day boundary**: ES Transform `params.tz` is `Asia/Seoul` regardless of Space, so even in the cst Space the Daily Cohort Retention row labels are KST midnight boundaries. To shift the day boundary itself to CST, follow the transform `params.tz` + cohort data view ZoneId procedure in [pm-retention-dashboard-template-en.md "Timezone change procedure"](../docs/pm-retention-dashboard-template-en.md#timezone-change-procedure).
+**View limitation — retention day boundary**: ES Transform `params.tz` is `Asia/Seoul` regardless of Space, so even in the cst Space the Daily Cohort Retention row labels are KST midnight boundaries. To shift the day boundary itself to CST, follow the transform `params.tz` + cohort data view ZoneId procedure in [pm-retention-dashboard-template-en.md "Timezone change procedure"](../docs/pm-retention-dashboard-template.md#timezone-change-procedure).
 
 **Extensibility — adding more zones (JST / PST / UTC, etc.)**: `setup-spaces.sh --space NAME:TZ` and `apply.sh --space-id ID` both accept repeatable arguments, so N additional zones follow the same pattern. Example:
 
@@ -256,12 +256,12 @@ Use `./apply.sh --include-data-view` only when intentionally resetting the data 
 
 To carry the dashboard over to a new environment (e.g. stg / prod):
 
-1. **Pre-check** — confirm the raw index has the same schema (`data.userId`, `data.requestPath` + `.keyword`, `data.statusCode`). The full compatibility checklist lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template-en.md#compatibility-checklist).
+1. **Pre-check** — confirm the raw index has the same schema (`data.userId`, `data.requestPath` + `.keyword`, `data.statusCode`). The full compatibility checklist lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md#compatibility-checklist).
 2. **Apply the transform** — clone `elasticsearch/transforms/dev-example-project-game-user-cohort.json` with the env prefix and run `apply.sh --file`. (QA already done — see `qa-example-project-game-user-cohort.json`.)
 3. **Create the data views** — bootstrap raw + cohort data views via the Kibana API (the cohort view must include the `cohort_date` runtime field).
 4. **Substitute + apply the NDJSON** — search-and-replace the index names / saved-object ids / data view UUIDs in `dev-pm-retention-dashboard.ndjson` to the new env prefix, then run `apply.sh --file`. The QA case (already validated) lives in `qa-pm-retention-dashboard.ndjson`.
 
-The end-to-end guide (with the qa-example-project-game validated procedure) lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template-en.md).
+The end-to-end guide (with the qa-example-project-game validated procedure) lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -269,6 +269,6 @@ The end-to-end guide (with the qa-example-project-game validated procedure) live
 
 - **Retention horizons extension**: D-1 through D-30 are currently stored as boolean fields in the cohort index. For D-60
 - **User LTV / billing metrics**: once payment events are standardized in the raw index, add mappings + a separate cohort or Lens.
-- **State-driven build script**: today, new-environment rollout is NDJSON substitution. The [build-pm-retention.py](../docs/pm-retention-dashboard-template-en.md#automation-strategy) pattern documented in the template guide codifies it.
+- **State-driven build script**: today, new-environment rollout is NDJSON substitution. The [build-pm-retention.py](../docs/pm-retention-dashboard-template.md#automation-strategy) pattern documented in the template guide codifies it.
 
-Full panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog-en.md); workflow details in [dashboards-saved-objects-en.md](../docs/dashboards-saved-objects-en.md).
+Full panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog.md); workflow details in [dashboards-saved-objects-en.md](../docs/dashboards-saved-objects.md).

@@ -249,7 +249,7 @@ Grafana → **Dashboards** → **New** → **Import** → ID: `1860` → Data so
 
 ## Troubleshooting
 
-See [Troubleshooting Guide](docs/troubleshooting-en.md) for common issues:
+See [Troubleshooting Guide](docs/troubleshooting.md) for common issues:
 
 - Python version compatibility (Ubuntu 20.04 Python 3.8)
 - Port 9100 already in use

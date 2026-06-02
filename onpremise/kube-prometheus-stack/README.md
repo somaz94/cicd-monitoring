@@ -43,12 +43,12 @@ kube-prometheus-stack/
 
 | Topic | Document |
 |---|---|
-| Grafana dashboard layout | [docs/dashboards-en.md](docs/dashboards-en.md) |
-| Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format-en.md) |
-| Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting-en.md) |
+| Grafana dashboard layout | [docs/dashboards-en.md](docs/dashboards.md) |
+| Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format.md) |
+| Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting.md) |
 
 Related external docs:
-- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../../../cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md) (KR)
+- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md) (KR)
   - The `argocd-alerts` group in `dev-alerts.yaml` and the ArgoCD inhibit rule in `dev-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
 
 <br/>
@@ -109,7 +109,7 @@ alertmanager:
             channel: "#infra-alerts"
 ```
 
-Alert message format details: [Slack Alert Format Guide](docs/slack-alert-format-en.md)
+Alert message format details: [Slack Alert Format Guide](docs/slack-alert-format.md)
 
 ### Slack Alert Test
 
@@ -204,7 +204,7 @@ See `./scripts/import-dashboards.sh --help` for the full option list.
 > Only JSON files directly under `dashboards/` are processed — sub-directories such as `dashboards/_deprecated/` are skipped automatically.
 > `--from-secret` reads the Grafana password from a Kubernetes secret via `kubectl`. The default target is `monitoring/kube-prometheus-stack-grafana` (key `admin-password`); override with `--secret-namespace / --secret-name / --secret-key` or the `GRAFANA_SECRET_NS / GRAFANA_SECRET_NAME / GRAFANA_SECRET_KEY` environment variables. The current kubectl context must point at the target cluster.
 
-Custom dashboard details: [Dashboard Guide](docs/dashboards-en.md)
+Custom dashboard details: [Dashboard Guide](docs/dashboards.md)
 
 <br/>
 

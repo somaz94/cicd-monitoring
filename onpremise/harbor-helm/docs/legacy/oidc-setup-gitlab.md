@@ -1,8 +1,8 @@
 # Harbor GitLab SSO (OIDC) Setup — Archived (pre-Phase 4)
 
 > ⚠️ **Archived (as of 2026-04-28)**: Harbor's OIDC IdP was switched from GitLab to Keycloak in Phase 4.
-> - Current standard procedure: [`../oidc-setup-keycloak-en.md`](../oidc-setup-keycloak-en.md) ([Korean](../oidc-setup-keycloak.md))
-> - Migration history / rollback: [`security/keycloak/docs/harbor-migration-en.md`](../../../../security/keycloak/docs/harbor-migration-en.md)
+> - Current standard procedure: [`../oidc-setup-keycloak-en.md`](../oidc-setup-keycloak.md)
+> - Migration history / rollback: [`security/keycloak/docs/harbor-migration-en.md`](../../../keycloak/docs/harbor-migration.md)
 >
 > This document preserves the GitLab-direct procedure verbatim as a reference. Use it only when reproducing a GitLab-direct setup elsewhere or temporarily rolling back during a Keycloak outage.
 
@@ -17,7 +17,7 @@ This document documents the **API-based declarative injection procedure** as the
 
 ## Prerequisites
 
-- Harbor is exposed over HTTPS — see [`tls-setup-en.md`](./tls-setup-en.md)
+- Harbor is exposed over HTTPS — see [`tls-setup-en.md`](./tls-setup.md)
 - GitLab admin access to create an OAuth Application
 - Harbor admin DB credentials (see `harborAdminPassword` in [`../values/dev.yaml`](../values/dev.yaml))
 - Policy: **only GitLab `server` group members may log in**, and **only `admin@example.com`** is manually promoted to sysadmin (same as ArgoCD)

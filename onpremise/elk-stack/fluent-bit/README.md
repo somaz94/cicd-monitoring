@@ -30,10 +30,10 @@ fluent-bit/
 
 | Document | Description |
 |---|---|
-| [Recommended prod-tail settings](docs/prod-tail-config-en.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide + current dev Phase 1a state |
-| [Index re-ingest procedure](docs/reingest-procedure-en.md) | Replay logs from NFS into ES after index loss. DB ≠ ES asynchrony background, full/partial re-ingest, Phase 1a vs 1b behavior |
-| [Deployment → DaemonSet migration record](docs/deployment-to-daemonset-en.md) | Record of the swap from the NFS-aggregator Deployment to a per-node stdout DaemonSet (2026-05-19). Step-by-step commands, gap measurement (~10s), helm-auto cleanup scope + one manual state PV cleanup, lessons learned |
-| [pino-pretty removal guide](docs/pino-pretty-removal-en.md) | Lines to drop from `values/dev.yaml` when the game team turns off pino-pretty in application stdout (lua/parser filter chain + custom parser + luaScripts). Partial-switch scenario + verification procedure |
+| [Recommended prod-tail settings](docs/prod-tail-config.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide + current dev Phase 1a state |
+| [Index re-ingest procedure](docs/reingest-procedure.md) | Replay logs from NFS into ES after index loss. DB ≠ ES asynchrony background, full/partial re-ingest, Phase 1a vs 1b behavior |
+| [Deployment → DaemonSet migration record](docs/deployment-to-daemonset.md) | Record of the swap from the NFS-aggregator Deployment to a per-node stdout DaemonSet (2026-05-19). Step-by-step commands, gap measurement (~10s), helm-auto cleanup scope + one manual state PV cleanup, lessons learned |
+| [pino-pretty removal guide](docs/pino-pretty-removal.md) | Lines to drop from `values/dev.yaml` when the game team turns off pino-pretty in application stdout (lua/parser filter chain + custom parser + luaScripts). Partial-switch scenario + verification procedure |
 
 <br/>
 

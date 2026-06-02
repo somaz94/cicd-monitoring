@@ -51,11 +51,11 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 
 | Document | Description |
 |------|------|
-| [Upgrade / Rollback Guide](docs/upgrade-rollback-en.md) | Stack version bump, OCI chart pin bump, webhook-bypass rollback, incident playbooks. Shared with Kibana |
-| [HA Rolling Upgrade Verification](docs/ha-rolling-verification-en.md) | Zero-downtime rolling verification summary on HA topology (chart 0.1.1 / Stack 9.3.3) |
-| [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort-en.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit
-| [Elasticsearch role creation](docs/create-elastic-role-en.md) | Operations guide for `scripts/create-elastic-role.sh`: idempotent PUT to /_security/role/<name>. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants |
-| [Kibana / ES user creation](docs/create-kibana-readonly-user-en.md) | Operations guide for `scripts/create-kibana-readonly-user.sh`: PUT a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing |
+| [Upgrade / Rollback Guide](docs/upgrade-rollback.md) | Stack version bump, OCI chart pin bump, webhook-bypass rollback, incident playbooks. Shared with Kibana |
+| [HA Rolling Upgrade Verification](docs/ha-rolling-verification.md) | Zero-downtime rolling verification summary on HA topology (chart 0.1.1 / Stack 9.3.3) |
+| [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit
+| [Elasticsearch role creation](docs/create-elastic-role.md) | Operations guide for `scripts/create-elastic-role.sh`: idempotent PUT to /_security/role/<name>. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants |
+| [Kibana / ES user creation](docs/create-kibana-readonly-user.md) | Operations guide for `scripts/create-kibana-readonly-user.sh`: PUT a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing |
 
 <br/>
 
@@ -130,7 +130,7 @@ helmfile destroy
 
 ## Stack Version Upgrades
 
-`upgrade.py` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README-en.md)).
+`upgrade.py` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README.md)).
 
 **Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.py` when ready to track 10.x.
 
@@ -155,7 +155,7 @@ After the bump, run `helmfile diff` → `helmfile apply` to propagate. ECK perfo
 
 Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `version` together).
 
-**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback-en.md).
+**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md).
 
 <br/>
 

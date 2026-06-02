@@ -65,6 +65,6 @@ Troubleshooting:
 
 ## Related documentation
 
-- [`deployment-to-daemonset-en.md`](./deployment-to-daemonset-en.md) — 2026-05-19 fluent-bit Deployment → DaemonSet migration guide + follow-up trail.
+- [`deployment-to-daemonset-en.md`](./deployment-to-daemonset.md) — 2026-05-19 fluent-bit Deployment → DaemonSet migration guide + follow-up trail.
 - [`../values/dev.yaml`](../values/dev.yaml) — current fluent-bit chart values (simplified filter chain).
 - [`../../fluentd/values/dev.yaml`](../../fluentd/values/dev.yaml) — Pino/Serilog normalization (`02_filters.conf` Step 2/3).

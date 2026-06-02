@@ -394,7 +394,7 @@ helmfile diff && helmfile apply
 
 ## References
 
-- [upgrade-sync system guide](../../../../scripts/upgrade-sync/README-en.md)
+- [upgrade-sync system guide](../../../../scripts/upgrade-sync/README.md)
 - [external-oci-cr-version canonical template](../../../../scripts/upgrade-sync/templates/external-oci-cr-version.py)
 - [ECK Operator chart](../../eck-operator/)
 - [elasticsearch-eck chart source (maintainer repo)](https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck)
