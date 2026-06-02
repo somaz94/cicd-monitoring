@@ -198,7 +198,7 @@ kubectl create secret tls harbor-tls \
   --cert=harbor-cert.pem --key=harbor-key.pem -n harbor
 ```
 
-Full procedure (issuance
+Full procedure (issuance / renewal / verification / client trust): **[`docs/tls-setup-en.md`](./docs/tls-setup-en.md)** ([Korean](./docs/tls-setup.md)).
 
 <br/>
 
@@ -207,9 +207,9 @@ Full procedure (issuance
 Harbor uses **Keycloak OIDC** instead of `db_auth` (Phase 4 replaced the previous GitLab-direct setup). Keycloak's Identity Provider brokers to GitLab, so existing user accounts/groups are preserved (`server` group filter, admin manually promoted for `admin@example.com` only).
 
 OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The standard procedure:
-- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak-en.md) ([한국어](./docs/oidc-setup-keycloak.md))
+- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak-en.md) ([Korean](./docs/oidc-setup-keycloak.md))
 - **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration-en.md`](../../security/keycloak/docs/harbor-migration-en.md)
-- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab-en.md) ([한국어](./docs/legacy/oidc-setup-gitlab.md))
+- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab-en.md) ([Korean](./docs/legacy/oidc-setup-gitlab.md))
 
 ⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. This cluster already flipped during the GitLab-direct era — no extra flip needed for the Keycloak switch.
 

@@ -28,7 +28,7 @@ configs:
           config:
             issuer: https://auth.example.com/realms/example
             clientID: argocd
-            clientSecret: G821cLHAGckf46ZP8VIynmvpL5EO1vVT
+            clientSecret: <KEYCLOAK_CLIENT_SECRET>
             redirectURI: https://argocd.example.com/api/dex/callback
             # scopes intentionally omitted — uses dex default (openid + profile + email).
             # The `example` realm has no separate `groups` client-scope; the argocd client's
@@ -149,7 +149,7 @@ configs:
   # dex.config above (same convention as the previous GitLab era). This block is unused.
   secrets:
     # Legacy dex.* secrets — old path not recognized by chart 9.x; replaced by plaintext inline.
-    # dex.keycloak.clientSecret: "G821cLHAGckf46ZP8VIynmvpL5EO1vVT"
+    # dex.keycloak.clientSecret: "<KEYCLOAK_CLIENT_SECRET>"
     # dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
     # dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
 

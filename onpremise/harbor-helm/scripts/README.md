@@ -2,7 +2,7 @@
 
 Operational utilities for the Harbor registry, organized per tool in sub-directories.
 
-한국어: [README.md](./README.md)
+Korean: [README.md](./README.md)
 
 <br/>
 

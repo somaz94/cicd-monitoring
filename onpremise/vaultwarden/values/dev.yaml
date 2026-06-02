@@ -132,7 +132,7 @@ sso:
 #   clientId:
 #     value: "vaultwarden"
 #   clientSecret:
-#     value: "HajIjzZPmjcshFx5hZAYI3dWCTHJ9NLc"
+#     value: "<KEYCLOAK_CLIENT_SECRET>"
 
 # =============================================================================
 # Database (SQLite default)

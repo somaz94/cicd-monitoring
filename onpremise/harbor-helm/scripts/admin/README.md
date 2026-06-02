@@ -3,7 +3,7 @@
 CLI script for managing Harbor users, project members, and OIDC group mappings.
 Uses the Harbor v2.0 REST API, tailored for the example.com self-signed HTTPS setup.
 
-한국어 버전: [README.md](./README.md)
+Korean version: [README.md](./README.md)
 
 <br/>
 

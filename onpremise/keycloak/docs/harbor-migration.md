@@ -14,7 +14,7 @@ The OIDC `sub` of existing users changes — they re-onboard as new accounts, re
 - ✅ Phase 2: Keycloak + PostgreSQL running, `auth.example.com` returns HTTP/2 200
 - ✅ Phase 3: realm `example` + client `harbor` (Standard Flow + PKCE) + groups mapper + GitLab IdP brokering
 - ✅ Harbor already at `auth_mode = oidc_auth` (flipped during the GitLab-direct era) — no extra flip needed
-- ✅ Harbor `harbor` client secret captured: Phase 3 output (`dg75ZmB20aP3XJKFBtSgHqG80PEp7mif` — or re-fetch via the kcadm procedure in [`docs/oidc-setup-keycloak-en.md` §2](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md#2-retrieve-client-secret))
+- ✅ Harbor `harbor` client secret captured: Phase 3 output (`<HARBOR_OIDC_CLIENT_SECRET>` — or re-fetch via the kcadm procedure in [`docs/oidc-setup-keycloak-en.md` §2](../../../cicd/harbor-helm/docs/oidc-setup-keycloak-en.md#2-retrieve-client-secret))
 - ✅ Harbor admin access (DB password = `harborAdminPassword` in [`cicd/harbor-helm/values/dev.yaml`](../../../cicd/harbor-helm/values/dev.yaml))
 
 <br/>
@@ -72,7 +72,7 @@ cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # Pass secret via env var (no shell history)
 # ⚠️ This cluster uses a self-signed wildcard cert → must pass --verify-cert false
-HARBOR_OIDC_CLIENT_SECRET='dg75ZmB20aP3XJKFBtSgHqG80PEp7mif' \
+HARBOR_OIDC_CLIENT_SECRET='<HARBOR_OIDC_CLIENT_SECRET>' \
   ./harbor-admin-en.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
@@ -88,7 +88,7 @@ Review the printed body (secret masked). Confirm the policy fields: `oidc_admin_
 ### Step 4. Apply (real PUT) — user approval required
 
 ```bash
-HARBOR_OIDC_CLIENT_SECRET='dg75ZmB20aP3XJKFBtSgHqG80PEp7mif' \
+HARBOR_OIDC_CLIENT_SECRET='<HARBOR_OIDC_CLIENT_SECRET>' \
   ./harbor-admin-en.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \

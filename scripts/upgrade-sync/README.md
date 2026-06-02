@@ -39,16 +39,16 @@ scripts/upgrade-sync/
 ├── check-versions.py                  # preflight upgrade scan (read-only)
 ├── manage-backups.py                  # bulk backup management (list/cleanup/purge)
 └── templates/
-    ├── external-standard.py           # external chart (helm repo) + default flow (Python; the first .py canonical)
+    ├── external-standard.py           # external chart (helm repo) + default flow
     ├── external-with-image-tag.py     # external + values image tag auto-update
     ├── external-oci.py                # external OCI chart + GitHub Releases tracking
     ├── external-oci-cr-version.py     # external OCI chart consumer (CR wrapper) + values.version tracking
     ├── local-with-templates.py        # local chart (Chart.yaml in repo) + custom templates
     ├── local-cr-version.py            # local chart (CR wrapper) + values.version + Chart.yaml.appVersion
-    └── ansible-github-release.py     # Ansible-deployed component + GitHub Releases tracking (Python; flipped in K7)
+    └── ansible-github-release.py     # Ansible-deployed component + GitHub Releases tracking
 ```
 
-> Phase 4 / MR-K6+K7 migrated `external-standard` + `ansible-github-release` to `.py` (canonicals + 14 consumers). The remaining 6 templates will be flipped over the K8~K13 sequence. The body lives in `scripts/python/upgrade_core/<template>.py`; each canonical is a thin wrapper around the placeholder dict + ancestor walk.
+> All canonicals are Python (Phase 4 K6~K13 sequence completed). The body lives in `scripts/python/upgrade_core/<template>.py`; each `templates/<name>.py` canonical is a thin wrapper around the placeholder dict + ancestor walk.
 
 <br/>
 
@@ -419,7 +419,6 @@ Verifies that every file matches its canonical bytewise. Exits non-zero on drift
   OK    [external-standard] cicd/gitlab-runner/upgrade.py
   OK    [external-with-image-tag] cicd/harbor-helm/upgrade.py
   ...
-All 23 managed file(s) are in sync.
 ```
 
 <br/>
@@ -697,102 +696,52 @@ Requires typing `PURGE` verbatim — `y` is not accepted. All rollback snapshots
 
 ## How it works (internals)
 
-### sync.py's three core functions
+### Package fan-out — `scripts/python/upgrade_sync/`
 
-#### `extract_config_block(file)` — extract the CONFIG block
+`sync.py` / `check-versions.py` / `manage-backups.py` are thin orchestrators. The actual logic lives in the package below.
 
-```awk
-/^# ={10,}$/ {
-  c++
-  print
-  if (c == 3) exit
-  next
-}
-c >= 1 { print }
+| Module | Role | Key symbols |
+|---|---|---|
+| `cli.py` | sync entry point (argparse + dispatch) | `main()` |
+| `commands.py` | `--check` / `--apply` / `--status` / `--print-expected` implementations | `cmd_check()`, `cmd_apply()`, `cmd_status()`, `cmd_print_expected()` |
+| `discovery.py` | repo walker — managed + unmanaged chart discovery | `find_managed_files()`, `find_unmanaged_charts()`, `parse_template_header()` |
+| `detect.py` | auto-detect the canonical type for headerless files | `detect_template()` |
+| `extract.py` | split CONFIG/body blocks + synthesize expected result | `extract_config_block()`, `extract_body()`, `build_expected()` |
+| `config_parse.py` | CONFIG block parser (KEY=VAL → `ConfigVars` dataclass) | `parse_config_block()`, `ConfigVars` |
+| `fetchers.py` | upstream version lookup (helm repo / GitHub API / OCI registry) | `fetch_latest_helm_repo()`, `fetch_latest_git_tags()`, `fetch_latest_chart_version_gh()`, `verify_image_exists()` |
+| `table.py` | check-versions result table rendering | `Row`, `ChartRow`, `resolve_row()`, `print_main_table()`, `print_chart_table()` |
+| `yaml_helpers.py` | values.yaml / helmfile.yaml value extraction (stdlib-only mini parser) | `read_yaml_value()`, `read_helmfile_chart_pin()` |
+| `manage_backups.py` | `backup/` directory list/cleanup/purge implementation | `cmd_list()`, `cmd_cleanup()`, `cmd_purge()` |
+
+`scripts/upgrade-sync/{sync.py, check-versions.py, manage-backups.py}` are launchers that import the modules above and dispatch.
+
+<br/>
+
+### Three core functions — `upgrade_sync.extract`
+
+#### `extract_config_block(path: Path) -> str`
+
+```python
+# scripts/python/upgrade_sync/extract.py
+# Returns marker 1 through marker 3 (inclusive) of the three `# ===` markers — the user-owned region.
 ```
 
-Counts `# ===` markers and prints from marker 1 through marker 3 (inclusive). This is the user-owned region.
+#### `extract_body(path: Path) -> str`
 
-#### `extract_body(file)` — extract the body
+Everything after the third marker — the canonical-owned region.
 
-```awk
-/^# ={10,}$/ { c++; next }
-c >= 3 { print }
-```
+#### `build_expected(target, template, templates_dir) -> str`
 
-Prints everything after the third marker. This is the canonical-owned region.
+Combines the target's CONFIG with the canonical's body to synthesize the expected result. `--check` byte-diffs this against the target; `--apply` writes it back to the target.
 
-#### `build_expected(target, template)` — synthesize the expected result
+### `upgrade_sync.detect.detect_template(upgrade_script: Path) -> str`
 
-```bash
-printf '#!/bin/bash\n'
-printf '# upgrade-template: %s\n' "$template"
-printf 'set -euo pipefail\n'
-printf '\n'
-extract_config_block "$target"     # CONFIG from target (user-owned)
-extract_body "$canonical"          # body from canonical (canonical-owned)
-```
+For legacy files without the `# upgrade-template: <name>` header, classifies the canonical type using deterministic patterns in the CONFIG block variables (`GITHUB_REPO=`, `VERSION_SOURCE=`, `CUSTOM_TEMPLATES=`, etc.). Add a branch here when introducing a new canonical.
 
-`--check` diffs this output against the target; `--apply` writes it to the target.
+### `upgrade_sync.discovery` — managed + unmanaged chart discovery
 
-### detect_template — auto-detect for headerless files
-
-```bash
-detect_template() {
-  local f="$1"
-  if grep -q '^GITHUB_REPO=' "$f"; then
-    echo "ansible-github-release"
-  elif grep -q '^VERSION_SOURCE=' "$f"; then
-    echo "local-cr-version"
-  elif grep -q '^CUSTOM_TEMPLATES=' "$f"; then
-    echo "local-with-templates"
-  elif grep -q 'Update image tags in values files' "$f"; then
-    echo "external-with-image-tag"
-  else
-    echo "external-standard"
-  fi
-}
-```
-
-Finds deterministic patterns that distinguish the five canonicals. Update this function when adding a new canonical variant.
-
-### Discovering managed files
-
-```bash
-find_managed_files() {
-  find "$REPO_ROOT" \
-    -type f \
-    -name 'upgrade.py' \
-    -not -path '*/backup/*' \
-    -not -path '*/_deprecated/*' \
-    -not -path '*/_optional/*' \
-    -not -path '*/scripts/upgrade-sync/*' \
-    | sort
-}
-```
-
-- Excludes `*/backup/*`: per-chart backups are not sync targets
-- Excludes `*/_deprecated/*`: deprecated charts are permanently excluded
-- Excludes `*/scripts/upgrade-sync/*`: the canonicals themselves are not targets
-
-### Auto-detecting unmanaged charts
-
-```bash
-find_unmanaged_charts() {
-  find "$REPO_ROOT" -type f -name 'Chart.yaml' \
-    -not -path '*/backup/*' \
-    -not -path '*/_deprecated/*' \
-    -not -path '*/templates/*' \
-    | while read -r chart; do
-        local dir; dir=$(dirname "$chart")
-        if [ ! -f "$dir/upgrade.py" ]; then
-          echo "${dir#$REPO_ROOT/}"
-        fi
-      done | sort -u
-}
-```
-
-Finds directories that have `Chart.yaml` but no `upgrade.py`. Shown in `--status` output so it's hard to forget about new charts that need onboarding.
+- `find_managed_files(repo_root)` — walks `upgrade.py` files and excludes `backup/`, `_deprecated/`, `_optional/`, `scripts/upgrade-sync/`.
+- `find_unmanaged_charts(repo_root)` — directories that have `Chart.yaml` but no `upgrade.py`. Surfaced in `--status` output so onboarding gaps stay visible.
 
 <br/>
 
@@ -1032,7 +981,7 @@ vim scripts/upgrade-sync/templates/local-with-templates.py
 
 # 4. Verify
 ./scripts/upgrade-sync/sync.py --check
-# All 23 managed file(s) are in sync.
+# All 25 managed file(s) are in sync.
 
 # 5. Verify behavior in one chart
 cd cicd/argo-cd && ./upgrade.py --help

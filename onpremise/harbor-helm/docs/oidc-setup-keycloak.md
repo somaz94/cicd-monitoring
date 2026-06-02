@@ -40,7 +40,7 @@ GitLab is wired into Keycloak as an **Identity Provider (alias `gitlab`)**, so t
 
 ## 2. Retrieve client secret
 
-Use the value captured during Phase 3 (e.g. `dg75ZmB20aP3XJKFBtSgHqG80PEp7mif`). If lost, query Keycloak:
+Use the value captured during Phase 3 (e.g. `<HARBOR_OIDC_CLIENT_SECRET>`). If lost, query Keycloak:
 
 ```bash
 KC_NS=keycloak
@@ -208,7 +208,7 @@ Cluster policy: **only `admin@example.com` is promoted**. Other accounts remain 
 
 ## 7. Rollback / Legacy GitLab procedure
 
-> ⚠️ The **full pre-Phase-4 procedure** is preserved verbatim in [`legacy/oidc-setup-gitlab-en.md`](./legacy/oidc-setup-gitlab-en.md) ([한국어](./legacy/oidc-setup-gitlab.md)) — GitLab Application creation, redirect URI, user impact, troubleshooting, all there.
+> ⚠️ The **full pre-Phase-4 procedure** is preserved verbatim in [`legacy/oidc-setup-gitlab-en.md`](./legacy/oidc-setup-gitlab-en.md) ([Korean](./legacy/oidc-setup-gitlab.md)) — GitLab Application creation, redirect URI, user impact, troubleshooting, all there.
 
 ### 7.1. Quick rollback (existing GitLab Application still alive)
 
