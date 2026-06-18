@@ -1,0 +1,49 @@
+# Minimal RBAC for the external Prometheus watchdog (docs/external-watchdog.md).
+#
+# The bastion host cron probes Prometheus health via the kube-apiserver service
+# proxy. It needs ONLY `get` on services/proxy in the monitoring namespace — far
+# less than the admin kubeconfig — so the watchdog host never holds cluster-admin
+# credentials. Apply once with:  kubectl apply -f watchdog-rbac.yaml
+#
+# The long-lived token Secret (kubernetes.io/service-account-token) is created
+# explicitly because Kubernetes 1.24+ no longer auto-generates SA token secrets.
+# Build the watchdog kubeconfig from this Secret's token + ca.crt.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-watchdog
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-watchdog
+  namespace: monitoring
+rules:
+  # GET on the service proxy is what `kubectl get --raw .../services/<svc>:<port>/proxy/-/healthy` needs.
+  - apiGroups: [""]
+    resources: ["services/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-watchdog
+  namespace: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-watchdog
+    namespace: monitoring
+roleRef:
+  kind: Role
+  name: prometheus-watchdog
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-watchdog-token
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: prometheus-watchdog
+type: kubernetes.io/service-account-token

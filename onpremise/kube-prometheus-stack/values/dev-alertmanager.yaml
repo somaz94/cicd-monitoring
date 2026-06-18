@@ -136,6 +136,14 @@ alertmanager:
       repeat_interval: 4h
       receiver: 'slack-infra-alerts'
       routes:
+        # Watchdog is the dead-man's-switch heartbeat (kube-prometheus-stack's
+        # default alert, always firing while Prometheus + Alertmanager are
+        # healthy). It is deliberately dropped to 'null' here: a push-based
+        # external receiver would require an external SaaS signup or a
+        # self-hosted endpoint reachable from the cluster's egress. Instead an
+        # OUT-OF-CLUSTER host cron on the bastion polls Prometheus health and
+        # pages Slack on failure — the same dead-man's-switch goal with no
+        # signup and no inbound exposure. See docs/external-watchdog.md.
         - receiver: 'null'
           matchers:
             - alertname = "Watchdog"

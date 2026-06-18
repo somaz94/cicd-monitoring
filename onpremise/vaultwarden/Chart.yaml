@@ -14,5 +14,5 @@ sources:
 - https://github.com/guerzon/vaultwarden
 - https://github.com/dani-garcia/vaultwarden
 type: application
-version: 0.36.4
+version: 0.38.0
 

@@ -80,3 +80,73 @@ es_fetch_password_from_k8s() {
 
   printf '%s' "${val}"
 }
+
+# es_pf_cleanup
+#   Kill the background port-forward started by es_ensure_port_forward (if any).
+#   Wired to the EXIT/INT/TERM trap so the tunnel never outlives the script.
+__ES_PF_PID=""
+es_pf_cleanup() {
+  if [[ -n "${__ES_PF_PID}" ]]; then
+    kill "${__ES_PF_PID}" 2>/dev/null || true
+    echo "▸ Stopped port-forward (pid ${__ES_PF_PID})" >&2
+    __ES_PF_PID=""
+  fi
+}
+
+# es_ensure_port_forward
+#   When the ES endpoint is localhost (the default for these scripts), open a
+#   background `kubectl port-forward` to the in-cluster ES service and tear it
+#   down automatically on script exit. Honors the CURRENT kubectl context — switch
+#   context to target a different cluster (on-prem vs AWS). No-op when the target
+#   is not localhost, a tunnel is already up, or ES_PF=off.
+#
+#   Env overrides:
+#     ES_PF       auto (default) | off
+#     ES_PF_NS    namespace (default: logging)
+#     ES_PF_SVC   service   (default: elasticsearch-es-http)
+#     ES_PF_PORT  local+remote port (default: 9200)
+#   Reads ELASTIC_HOST (or ES_URL) to decide whether the target is localhost.
+es_ensure_port_forward() {
+  [[ "${ES_PF:-auto}" == "off" ]] && return 0
+
+  local target="${ELASTIC_HOST:-${ES_URL:-}}"
+  case "${target}" in
+    *localhost*|*127.0.0.1*) ;;
+    *) return 0 ;;
+  esac
+
+  local ns="${ES_PF_NS:-logging}"
+  local svc="${ES_PF_SVC:-elasticsearch-es-http}"
+  local port="${ES_PF_PORT:-9200}"
+
+  # Reuse an existing tunnel / already-reachable endpoint (curl returns 0 even on
+  # 401, which still proves the connection works).
+  if curl -sk -o /dev/null --max-time 2 "https://localhost:${port}" 2>/dev/null; then
+    return 0
+  fi
+
+  if ! command -v kubectl >/dev/null 2>&1; then
+    echo "ERROR: kubectl not available; cannot auto port-forward" >&2
+    return 1
+  fi
+
+  echo "▸ Starting port-forward: $(kubectl config current-context) → svc/${svc}:${port} (ns ${ns})" >&2
+  kubectl -n "${ns}" port-forward "svc/${svc}" "${port}:${port}" >/dev/null 2>&1 &
+  __ES_PF_PID=$!
+  trap es_pf_cleanup EXIT INT TERM
+
+  local i
+  for ((i = 0; i < 30; i++)); do
+    if curl -sk -o /dev/null --max-time 2 "https://localhost:${port}" 2>/dev/null; then
+      return 0
+    fi
+    if ! kill -0 "${__ES_PF_PID}" 2>/dev/null; then
+      echo "ERROR: port-forward exited early (check kubectl context / namespace / service)" >&2
+      __ES_PF_PID=""
+      return 1
+    fi
+    sleep 0.5
+  done
+  echo "ERROR: port-forward did not become ready in time" >&2
+  return 1
+}

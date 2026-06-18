@@ -34,8 +34,6 @@ cicd/harbor-helm/scripts/image-cleanup/
 │   ├── harbor-config-en.sh                 # Configuration management (English)
 │   ├── harbor-utils.sh                     # Utility functions (Korean)
 │   ├── harbor-utils-en.sh                  # Utility functions (English)
-│   ├── harbor-auth.sh                      # Authentication management (Korean)
-│   ├── harbor-auth-en.sh                   # Authentication management (English)
 │   ├── harbor-repository.sh                # Repository management (Korean)
 │   ├── harbor-repository-en.sh             # Repository management (English)
 │   ├── harbor-image.sh                     # Image management (Korean)
@@ -63,20 +61,17 @@ cicd/harbor-helm/scripts/image-cleanup/
 - Harbor API version check
 - Startup information display
 
-### 3. harbor-auth.sh / harbor-auth-en.sh
-- Harbor authentication token acquisition
-
-### 4. harbor-repository.sh / harbor-repository-en.sh
+### 3. harbor-repository.sh / harbor-repository-en.sh
 - Repository listing
 - Repository information retrieval
 - Artifact count calculation
 
-### 5. harbor-image.sh / harbor-image-en.sh
+### 4. harbor-image.sh / harbor-image-en.sh
 - Image tag retrieval
 - Image deletion
 - Batch processing
 
-### 6. harbor-project-stats.sh / harbor-project-stats-en.sh
+### 5. harbor-project-stats.sh / harbor-project-stats-en.sh
 - Per-repository artifact statistics by project
 - Artifact count calculation and display
 - Color-coded display

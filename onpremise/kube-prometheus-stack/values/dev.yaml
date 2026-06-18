@@ -9,6 +9,16 @@
 # =============================================================================
 
 # =============================================================================
+# CRDs
+# =============================================================================
+# CRD lifecycle is owned by the dedicated `prometheus-operator-crds` helmfile
+# release (version-pinned to the operator appVersion), NOT this chart's bundled
+# `crds` subchart. Keeping this false avoids dual-ownership conflicts and lets
+# the pipeline reconcile/self-heal CRDs even if they are deleted out-of-band.
+crds:
+  enabled: false
+
+# =============================================================================
 # Grafana
 # =============================================================================
 grafana:

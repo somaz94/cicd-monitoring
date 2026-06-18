@@ -22,10 +22,14 @@ source "${SCRIPT_DIR}/lib/es-helpers.sh"
 # Global Variables #
 ###################
 
-# Elasticsearch connection settings
-ELASTIC_USER="elastic"
-ELASTIC_PASSWORD="exampleAdminPassword"
-ELASTIC_HOST="http://elasticsearch.example.com"
+# Elasticsearch connection settings (env-overridable; localhost defaults).
+# Default targets localhost:9200 so the script works over a port-forward:
+#   kubectl -n logging port-forward svc/elasticsearch-es-http 9200:9200
+# es_curl applies `-k`, so the ECK self-signed HTTPS cert is accepted. To hit a
+# different endpoint directly, export ELASTIC_HOST (e.g. http://elasticsearch.example.com).
+ELASTIC_USER="${ELASTIC_USER:-elastic}"
+ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-exampleAdminPassword}"
+ELASTIC_HOST="${ELASTIC_HOST:-https://localhost:9200}"
 
 # Index names to clean (array)
 INDEX_NAMES=()
@@ -103,6 +107,14 @@ Notes:
 EOF
   exit 0
 }
+
+# Auto port-forward to the in-cluster ES when ELASTIC_HOST is localhost (default).
+# Honors the current kubectl context; torn down automatically on exit. Skipped for
+# --help (no ES access needed) and when ELASTIC_HOST points elsewhere or ES_PF=off.
+case " $* " in
+  *" -h "*|*" --help "*) ;;
+  *) es_ensure_port_forward || exit 1 ;;
+esac
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do

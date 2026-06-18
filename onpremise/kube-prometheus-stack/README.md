@@ -46,6 +46,7 @@ kube-prometheus-stack/
 | Grafana dashboard layout | [docs/dashboards-en.md](docs/dashboards.md) |
 | Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format.md) |
 | Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting.md) |
+| External Prometheus watchdog (bastion cron) | [docs/external-watchdog-en.md](docs/external-watchdog.md) |
 
 Related external docs:
 - ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md) (KR)

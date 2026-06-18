@@ -21,7 +21,6 @@ unset _SCRIPT_PATH
 # Load all modules
 source "$SCRIPT_DIR/modules/harbor-config-en.sh"
 source "$SCRIPT_DIR/modules/harbor-utils-en.sh"
-source "$SCRIPT_DIR/modules/harbor-auth-en.sh"
 source "$SCRIPT_DIR/modules/harbor-repository-en.sh"
 source "$SCRIPT_DIR/modules/harbor-image-en.sh"
 source "$SCRIPT_DIR/modules/harbor-project-stats-en.sh"
@@ -322,16 +321,10 @@ main() {
     # Get repository info with artifact counts
     echo -e "${YELLOW}Getting repository information...${NC}"
     REPO_INFO=$(get_repository_info)
-    
-    # Try to get authentication token but continue with basic auth if it fails
-    echo -e "${YELLOW}Getting authentication token...${NC}"
-    TOKEN=$(get_auth_token)
-    if [ -n "$TOKEN" ]; then
-        echo -e "${GREEN}Successfully obtained authentication token${NC}"
-    else
-        echo -e "${YELLOW}No token obtained, will use basic authentication instead${NC}"
-    fi
-    
+
+    # All Harbor API calls below authenticate with HTTP basic auth
+    # (-u "$HARBOR_USER:$HARBOR_PASS"), so no separate token fetch is needed.
+
     # Check if 'all' repositories option was selected
     if [[ "${REPOSITORIES[*]}" =~ "all" ]]; then
         echo -e "${YELLOW}Processing ALL repositories in project $PROJECT_NAME${NC}"

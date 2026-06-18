@@ -8,6 +8,14 @@ repositories:
     url: https://prometheus-community.github.io/helm-charts
 
 releases:
+  # The monitoring.coreos.com CRDs are owned by the standalone wave_0 component
+  # `observability/monitoring/prometheus-operator-crds` (this chart's bundled
+  # `crds` subchart is disabled via crds.enabled=false in values/dev.yaml).
+  # The CRDs are cluster-wide and consumed from wave_0 onward, so they cannot
+  # live inside this wave_4 component — see that component's README for the
+  # ordering rationale and the 2026-06-12 outage root cause. The operator
+  # appVersion below (Chart.yaml) and that component's chart appVersion are kept
+  # in lockstep by scripts/ci/check-crds-lockstep.py (`make lint-governance`).
   - name: kube-prometheus-stack
     chart: prometheus-community/kube-prometheus-stack
     namespace: monitoring

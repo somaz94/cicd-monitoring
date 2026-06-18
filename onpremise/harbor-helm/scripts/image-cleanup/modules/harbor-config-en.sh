@@ -24,7 +24,7 @@ DEFAULT_REPOSITORIES=("admin")                    # Default repositories to proc
 # Resolve script path portably across bash and zsh (BASH_SOURCE → $0 fallback).
 _SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 # shellcheck disable=SC1091
-source "$(cd "$(dirname "$_SCRIPT_PATH")" && pwd)/../../../lib/colors.sh"
+source "$(cd "$(dirname "$_SCRIPT_PATH")" && pwd)/../../../../../scripts/lib/colors.sh"
 unset _SCRIPT_PATH
 
 # Print help message

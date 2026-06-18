@@ -439,7 +439,11 @@ extraObjects:
   #   enable-cors: true              → relies on Vaultwarden's own CORS handling (controlled via app ENV)
   #   backend-protocol: HTTP         → default value, no extra policy needed
   #
-  # Vaultwarden chart has no HTTPRoute template so injected via extraObjects (integrated with helm release lifecycle).
+  # The chart ships a native HTTPRoute template since 0.37.0 (httpRoute.enabled, default false), but we keep the
+  # extraObjects approach deliberately: the native template renders only ONE HTTPRoute — it cannot express the
+  # HTTP->HTTPS redirect sibling nor the NGF-specific ClientSettingsPolicy / RateLimitPolicy below. Also, with
+  # fullnameOverride=vaultwarden the native route would be named `vaultwarden` and collide with the main route
+  # here if httpRoute.enabled were ever flipped on. extraObjects stays the single source for routing + NGF policies.
 
   # Main HTTPRoute — attached to HTTPS listener (uses wildcard-example-tls).
   - apiVersion: gateway.networking.k8s.io/v1
