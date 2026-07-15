@@ -1,0 +1,20 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# One file per helmfile release: the generator emits one Application named `infra-<releaseName>`.
+#
+# This is the migration target of the Phase 1 PoC App (appsets/onprem/_poc/infra-mysql-exporter-app.yaml):
+# the generated App name `infra-example-project-mysql-exporter` matches the manually-applied PoC App, so the
+# ApplicationSet adopts it in place (no recreate) before the PoC manifest is retired.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+component: prometheus-mysql-exporter        # -> app-name label on the generated App
+releaseName: example-project-mysql-exporter        # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: monitoring                        # already helmfile-managed; do not contest ownership
+syncWave: "4"                                # observability tier (mirrors helmfile deploy wave 4)
+chart:
+  repoURL: https://prometheus-community.github.io/helm-charts
+  name: prometheus-mysql-exporter
+  version: "2.14.0"
+valueFile: observability/monitoring/prometheus-mysql-exporter/values/dev-example-project.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                       # 'monitoring' already exists
+autoSync: true                               # adopt-diff verified clean (no-op, zero recreate) -> auto-sync (prune+selfHeal) on

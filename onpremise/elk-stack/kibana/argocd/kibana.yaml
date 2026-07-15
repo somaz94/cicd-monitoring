@@ -1,0 +1,27 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# The generator emits one Application named `infra-<releaseName>`.
+#
+# Phase 3-4 target (ECK trio: eck-operator -> elasticsearch -> kibana). Adopts the live helmfile
+# release 'kibana' (logging ns) in place. OCI chart (oci://ghcr.io/somaz94/charts/kibana-eck) — the
+# registered repo Secret 'somaz94-charts-oci-repo' and the AppProject sourceRepos entry
+# 'ghcr.io/somaz94/charts' already exist (Phase 2: unity/ghost; reused for elasticsearch), so no
+# repo/AppProject change is needed.
+#
+# Stateful via ECK: the chart renders a Kibana CR (+ HTTPRoute). The ECK operator owns the real
+# Deployment 'kibana-kb' — not in the helm release, so ArgoCD never touches it. Adoption only annotates
+# the chart resources; the Kibana CR spec renders identical (same chart 0.1.5 + values) so the operator
+# does not roll the pod. Kibana health is green (no single-node yellow caveat like elasticsearch).
+#
+# OCI repoURL is no-scheme (ArgoCD appends chart name). This file is the chart-version SSOT.
+component: kibana                               # -> app-name label on the generated App
+releaseName: kibana                             # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: logging                              # already helmfile-managed; do not contest ownership
+syncWave: "4"                                   # observability tier (mirrors helmfile deploy wave 4)
+chart:
+  repoURL: ghcr.io/somaz94/charts               # registered OCI repo (no scheme) -> ArgoCD appends chart name
+  name: kibana-eck
+  version: "0.1.5"
+valueFile: observability/logging/kibana/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                          # 'logging' already exists
+autoSync: true                                  # adopt-diff verified (CR cpu 1000m==1 normalized by operator, zero kibana roll; HTTPRoute tracking-id only) -> auto-sync (prune+selfHeal) on

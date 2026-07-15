@@ -17,12 +17,54 @@ Manages [Thanos](https://thanos.io/) using Helmfile. Provides long-term storage 
 
 <br/>
 
+## Architecture
+
+```
+                          ┌──────────────────┐
+                          │  Thanos Query    │ ← unified query interface
+                          │  (dev-query)    │
+                          └───────┬──────────┘
+                                  │
+                    ┌─────────────┼─────────────┐
+                    │             │             │
+            ┌───────┴───┐  ┌─────┴─────┐  ┌───┴────────┐
+            │ Prometheus │  │  Store    │  │ (Remote    │
+            │ Sidecar    │  │  Gateway  │  │  Cluster)  │
+            └───────┬───┘  └─────┬─────┘  └────────────┘
+                    │            │
+                    │     ┌──────┴──────┐
+                    │     │  Object     │
+                    └────►│  Storage    │◄── Compactor
+                          │  (S3/MinIO) │
+                          └─────────────┘
+```
+
+<br/>
+
 ## Two Release Structure
 
 | Release | Values | Components |
 |---------|--------|-----------|
 | `thanos` | `dev.yaml` | Compactor, Store Gateway, Object Storage |
 | `thanos-query` | `dev-query.yaml` | Query, Query Frontend |
+
+<br/>
+
+## Directory Structure
+
+```
+thanos/
+├── Chart.yaml
+├── helmfile.yaml            # 2 releases (thanos + thanos-query)
+├── values/
+│   ├── dev.yaml            # Compactor, Store Gateway config
+│   └── dev-query.yaml      # Query config (stores connection)
+├── upgrade.sh
+├── backup/
+├── .helmignore
+├── README.md
+└── README-en.md
+```
 
 <br/>
 
@@ -41,6 +83,16 @@ helmfile sync
 
 # Subsequent updates
 helmfile apply
+```
+
+<br/>
+
+## Upgrade
+
+```bash
+./upgrade.sh                      # latest version
+./upgrade.sh --version <VERSION>  # specific version
+./upgrade.sh --dry-run            # preview
 ```
 
 <br/>

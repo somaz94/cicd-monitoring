@@ -1,0 +1,15 @@
+# Per-release ArgoCD metadata for the gitlab-runner LEGACY runner (helmfile release: old-build-deploy-image).
+# Pinned to chart 0.70.3 (older executor config) — distinct version from build/deploy (0.90.0).
+# Consumed by the infra-applicationset git-files generator -> Application infra-old-build-deploy-image.
+# autoSync:false = enroll MANUAL; verify adopt-diff (zero recreate) then flip to true.
+component: gitlab-runner
+releaseName: old-build-deploy-image           # MUST equal the existing helmfile release name (clean adoption)
+namespace: gitlab-runner
+syncWave: "5"
+chart:
+  repoURL: https://charts.gitlab.io
+  name: gitlab-runner
+  version: "0.70.3"
+valueFile: cicd/gitlab-runner/values/old-gitlab-runner.yaml
+createNamespace: false                        # 'gitlab-runner' already exists
+autoSync: true

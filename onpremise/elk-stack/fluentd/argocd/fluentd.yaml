@@ -1,0 +1,24 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# One file per helmfile release: the generator emits one Application named `infra-<releaseName>`.
+#
+# Phase 3-2 target. Adopts the live helmfile release 'fluentd' (logging ns, chart 0.5.3) in place.
+# ⚠️ FIRST real StatefulSet adoption in this migration: the workload is a StatefulSet (fluentd-0)
+# with a volumeClaimTemplate 'fluentd-buffer' (nfs-client-server, 10Gi RWO, PVC bound 75d). The STS
+# .spec.selector and .spec.volumeClaimTemplates are IMMUTABLE — a sync that tries to change them
+# FAILS (not a silent recreate). releaseName=fluentd keeps app.kubernetes.io/instance=fluentd, so
+# the selector renders identical to live. Verify the adopt-diff shows ZERO change to selector /
+# volumeClaimTemplates / serviceName before flipping autoSync.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+component: fluentd                              # -> app-name label on the generated App
+releaseName: fluentd                            # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: logging                              # already helmfile-managed; do not contest ownership
+syncWave: "4"                                   # observability tier (mirrors helmfile deploy wave 4)
+chart:
+  repoURL: https://fluent.github.io/helm-charts
+  name: fluentd
+  version: "0.5.3"
+valueFile: observability/logging/fluentd/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                          # 'logging' already exists (helmfile presync `kubectl create namespace` was an idempotent no-op)
+autoSync: true                                  # adopt-diff verified clean (STS = tracking-id annotation only, zero recreate; PrometheusRule + ServiceMonitor created from drift) -> auto-sync (prune+selfHeal) on

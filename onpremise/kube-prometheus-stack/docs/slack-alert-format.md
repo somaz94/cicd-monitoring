@@ -34,7 +34,7 @@ Color: Red (danger)
 
 ```
 🟡 [WARNING] NodeNetworkErrors
-Instance: 192.168.1.10:9100
+Instance: 192.0.2.10:9100
 Severity: warning
 Description: Interface enp4s0 has 10.7 errors/sec (RX+TX combined over 5m)
 Source: Prometheus
@@ -53,6 +53,57 @@ Description: Pod has been in not-ready state for 10 minutes
 Source: Prometheus
 ```
 Color: Green (good)
+
+<br/>
+
+## Format Configuration
+
+`values/dev-alertmanager.yaml` → `alertmanager.config.receivers.slack_configs`:
+
+```yaml
+slack_configs:
+  - api_url: "https://hooks.slack.com/services/YOUR_WEBHOOK_URL"
+    channel: "#infra-alerts"
+    send_resolved: true
+    color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+    title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+    text: |-
+      {{ range .Alerts -}}
+      {{- if .Labels.namespace }}
+      *Namespace:* `{{ .Labels.namespace }}`
+      {{- end -}}
+      {{- if .Labels.instance }}
+      *Instance:* `{{ .Labels.instance }}`
+      {{- end }}
+      *Severity:* `{{ .Labels.severity }}`
+      *Description:* {{ .Annotations.description }}
+      {{- if .GeneratorURL }}
+      *Source:* <{{ .GeneratorURL }}|Prometheus>
+      {{- end }}
+      {{ end }}
+```
+
+<br/>
+
+## Field Descriptions
+
+| Field | Description |
+|------|------|
+| `color` | When firing, danger (red) / warning (yellow) by severity; when resolved, good (green) |
+| `title` | Emoji + severity + alertname |
+| `Namespace` | Shown only for K8s workload alerts (hidden for node alerts) |
+| `Instance` | Target server/Pod IP (identifies the server for node alerts that have no namespace) |
+| `send_resolved` | Sends a RESOLVED message when the alert clears |
+
+<br/>
+
+## Slack Emoji Codes
+
+| Emoji | Code | Usage |
+|--------|------|------|
+| 🔴 | `:red_circle:` | Critical |
+| 🟡 | `:large_yellow_circle:` | Warning |
+| ✅ | `:white_check_mark:` | Resolved |
 
 <br/>
 
@@ -116,7 +167,7 @@ curl -X POST http://alertmanager.example.com/api/v2/alerts \
     "labels": {
       "alertname": "NodeNetworkErrors",
       "severity": "warning",
-      "instance": "192.168.1.10:9100",
+      "instance": "192.0.2.10:9100",
       "device": "enp4s0"
     },
     "annotations": {
@@ -133,7 +184,7 @@ curl -X POST http://alertmanager.example.com/api/v2/alerts \
     "labels": {
       "alertname": "NodeNetworkErrors",
       "severity": "warning",
-      "instance": "192.168.1.10:9100",
+      "instance": "192.0.2.10:9100",
       "device": "enp4s0"
     },
     "annotations": {
@@ -148,5 +199,5 @@ curl -X POST http://alertmanager.example.com/api/v2/alerts \
 | Test | Expected Result |
 |------|----------------|
 | Pod alert | Both `Namespace: slack-bots` and `Instance: 10.244.0.15:8080` shown |
-| Node alert | No `Namespace:` field, only `Instance: 192.168.1.10:9100` shown |
+| Node alert | No `Namespace:` field, only `Instance: 192.0.2.10:9100` shown |
 | Resolve | ✅ RESOLVED message with green color |

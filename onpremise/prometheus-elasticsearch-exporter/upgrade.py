@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# upgrade-template: external-standard
+# upgrade-template: argocd-pin
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
@@ -8,11 +8,16 @@
 # ============================================================
 CONFIG = {
     "SCRIPT_NAME":    "prometheus-elasticsearch-exporter Helm Chart Upgrade Script",
+    "BASE":           "standard",
     "HELM_REPO_NAME": "prometheus-community",
     "HELM_REPO_URL":  "https://prometheus-community.github.io/helm-charts",
     "HELM_CHART":     "prometheus-community/prometheus-elasticsearch-exporter",
     "CHANGELOG_URL":  "https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-elasticsearch-exporter",
     "CHART_TYPE":     "external",  # "local" or "external"
+    # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
+    "ARGOCD_PIN_FILES": [
+        "argocd/prometheus-elasticsearch-exporter.yaml",
+    ],
 }
 # ============================================================
 
@@ -26,7 +31,7 @@ for _anc in [_here, *_here.parents]:
         sys.path.insert(0, str(_anc / "scripts" / "python"))
         break
 
-from upgrade_core.external_standard import run  # noqa: E402
+from upgrade_core.argocd_pin import run  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(run(CONFIG, sys.argv[1:], script_path=__file__))

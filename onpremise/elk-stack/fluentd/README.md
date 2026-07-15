@@ -2,6 +2,8 @@
 
 Manages the [Fluentd](https://www.fluentd.org/) DaemonSet for Kubernetes log collection using Helmfile.
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/fluentd.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Directory Structure
@@ -17,6 +19,14 @@ fluentd/
 ├── backup/             # Auto-backup during upgrades
 └── README.md
 ```
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [zlogger normalization](docs/zlogger-normalization.md) | Work log + operational guide for normalizing the JSON schema changed by the ZLogger migration (`dev-example-project-battle`) in fluentd's `02_filters.conf` |
 
 <br/>
 

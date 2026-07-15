@@ -1,0 +1,50 @@
+# Deploy prometheus-operator-crds (the monitoring.coreos.com CRD foundation)
+# via helmfile, consuming the upstream prometheus-community chart.
+#
+# WHY THIS IS A STANDALONE wave_0 COMPONENT (not bundled in kube-prometheus-stack):
+#   The monitoring.coreos.com CRDs (ServiceMonitor / PodMonitor / PrometheusRule /
+#   Prometheus / Alertmanager / ScrapeConfig / Probe / ...) are CLUSTER-SCOPED and
+#   consumed by many components across every category — metallb (wave_0),
+#   nginx-gateway-fabric / argo-cd / harbor (wave_1), valkey (wave_3),
+#   eck-operator / fluent-bit / fluentd / the exporters (wave_4), ghost (wave_5).
+#   Several create their CRs in EARLIER waves than kube-prometheus-stack (wave_4),
+#   so the CRDs must exist FIRST — hence this component sits at the top of wave_0.
+#   Bundling the CRDs inside the stack's `crds` subchart caused the 2026-06-12
+#   Prometheus outage: when the CRDs were deleted out-of-band nothing reconciled
+#   them, and the stack's own chicken-and-egg (it needs the CRDs present to even
+#   render its Prometheus/Alertmanager CRs) blocked self-heal.
+#
+# Chart version pinned. Bump via ./upgrade.py after verifying the new release.
+# LOCKSTEP: the chart appVersion MUST equal kube-prometheus-stack's operator
+# appVersion — enforced by scripts/ci/check-crds-lockstep.py (`make lint-governance`).
+# When you bump kube-prometheus-stack, bump this release to the CRD chart whose
+# appVersion matches, in the same MR.
+
+repositories:
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+
+# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
+# full rendered manifest, so 10 revisions of a large chart make helm's history query
+# return several MB in a single response and the kube-apiserver stream aborts
+# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
+# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
+# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+helmDefaults:
+  historyMax: 3
+
+releases:
+  - name: prometheus-operator-crds
+    chart: prometheus-community/prometheus-operator-crds
+    namespace: monitoring
+    version: 30.0.1  # lockstep-appversion-match: observability/monitoring/kube-prometheus-stack
+
+# Ensure namespace before sync (idempotent no-op when present).
+# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
+hooks:
+  - events: ["presync"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - "kubectl create namespace monitoring 2>/dev/null || true"

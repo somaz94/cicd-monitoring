@@ -28,8 +28,8 @@ set -euo pipefail
 
 _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source-path=SCRIPTDIR
-# shellcheck source=lib/es-common.sh
-source "${_SCRIPT_DIR}/lib/es-common.sh"
+# shellcheck source=../lib/es-common.sh
+source "${_SCRIPT_DIR}/../lib/es-common.sh"
 
 # --- defaults -----------------------------------------------------------------
 

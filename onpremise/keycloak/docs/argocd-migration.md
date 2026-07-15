@@ -4,7 +4,7 @@
 
 Switches the ArgoCD dex GitLab connector to Keycloak OIDC. Keycloak brokers GitLab as IdP, so user credentials remain GitLab — the only user action is **a single re-login**.
 
-The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObjects` to bring ArgoCD in line with Harbor
+The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObjects` to bring ArgoCD in line with Harbor / Keycloak / vaultwarden (HTTP→HTTPS 301 hardening).
 
 <br/>
 
@@ -42,7 +42,7 @@ The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObject
    - `configs.secrets`: comment out `dex.gitlab.*`, add `dex.keycloak.clientSecret`
    - `extraObjects`: one new `argocd-https-redirect` HTTPRoute
 2. [`cicd/argo-cd/helmfile.yaml`](../../argocd/helmfile.yaml) — refresh values comment (mention extraObjects)
-3. [`security/keycloak/docs/argocd-migration.md`](./argocd-migration.md) — this stub → procedure
+3. [`security/keycloak/docs/argocd-migration-en.md`](./argocd-migration.md) — this stub → procedure
 
 > Legacy GitLab `dex.config` and `secrets` are **kept commented** in the same values file (swap to roll back).
 
@@ -160,7 +160,7 @@ The GitLab Application stays alive throughout the brokering phase, so the legacy
 | Login click → "Failed to query provider" | dex cannot reach Keycloak `auth.example.com` | From the dex pod: `curl -k https://auth.example.com/realms/example/.well-known/openid-configuration` — suspect TLS/network or missing `insecureSkipVerify` |
 | Past Keycloak but infinite redirect on the GitLab step | Keycloak's GitLab IdP regressed to `providerId=gitlab` (built-in) | Re-run Phase 4 fix's `kcadm-bootstrap.sh` — ensures providerId=oidc + trustEmail=true |
 | Logged in but "Forbidden" | group claim mapper missing or group name mismatch | Verify the user is mapped to `server`/`global-admin` in Keycloak. Also re-check `g, server, role:server-admin` in `policy.csv` |
-| `http://argocd.example.com` not redirected | extraObjects not applied
+| `http://argocd.example.com` not redirected | extraObjects not applied / parent Gateway listener name mismatch | `kubectl -n argocd get httproute argocd-https-redirect -o yaml` — review `status.parents.conditions`. `sectionName: http` must match the NGF Gateway listener name |
 
 <br/>
 

@@ -51,11 +51,11 @@ ADMIN_PW=$(grep '^harborAdminPassword:' ../values/dev.yaml | awk -F'"' '{print $
 OIDC_CLIENT_ID="<GitLab Application ID>"
 OIDC_CLIENT_SECRET="<GitLab Application Secret>"
 
-# 192.168.1.55 is the ingress-nginx LoadBalancer IP — use --resolve from inside the cluster
+# 192.0.2.55 is the ingress-nginx LoadBalancer IP — use --resolve from inside the cluster
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
   -X PUT --data @- \
   -w "HTTP %{http_code}\n" \
-  --resolve harbor.example.com:443:192.168.1.55 \
+  --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations <<EOF
 {
   "oidc_name": "GitLab",
@@ -92,7 +92,7 @@ EOF
 ```bash
 scripts/harbor-admin.sh config
 # or:
-curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
+curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations \
   | python3 -m json.tool | grep -A1 -E 'oidc_|auth_mode'
 ```
@@ -106,7 +106,7 @@ curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
 ```bash
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
   -X PUT --data '{"auth_mode":"oidc_auth"}' \
-  --resolve harbor.example.com:443:192.168.1.55 \
+  --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations
 ```
 
@@ -152,13 +152,13 @@ Equivalent raw calls:
 
 ```bash
 # Find the user_id
-curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
+curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.0.2.55 \
   "https://harbor.example.com/api/v2.0/users?page_size=100" | python3 -m json.tool
 
 # Promote (user_id=3 in this example)
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
   -X PUT --data '{"sysadmin_flag":true}' \
-  --resolve harbor.example.com:443:192.168.1.55 \
+  --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/users/3/sysadmin
 ```
 

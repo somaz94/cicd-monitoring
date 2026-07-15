@@ -25,7 +25,7 @@ Env overrides:
   REAL_ADMIN_SECRET      Secret holding admin credentials        (default: keycloak-master-admin)
   EXPECT_GITLAB_IDP      0 to skip GitLab IdP assertions         (default: 1)
   EXPECT_GITLAB_BASE_URL expected IdP issuer URL                  (default: http://gitlab.example.com)
-  NGF_IP                 IP for --resolve auth.example.com:443:   (default: 192.168.1.55)
+  NGF_IP                 IP for --resolve auth.example.com:443:   (default: 192.0.2.55)
 
 Exit code: 0 when all checks pass, 1 on any failure, 2 on setup error.
 EOF
@@ -255,7 +255,7 @@ fi
 echo
 echo "External reachability:"
 # Hostname header forced via --resolve to bypass macOS DNS cache flakiness during tests.
-NGF_IP="${NGF_IP:-192.168.1.55}"
+NGF_IP="${NGF_IP:-192.0.2.55}"
 DISC_HTTP=$(curl -sk --resolve "auth.example.com:443:$NGF_IP" -o /dev/null -w '%{http_code}' --max-time 10 \
   https://auth.example.com/realms/$REALM/.well-known/openid-configuration 2>/dev/null || echo "000")
 if [[ "$DISC_HTTP" == "200" ]]; then

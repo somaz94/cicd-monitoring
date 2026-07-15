@@ -97,10 +97,10 @@ kubectl get secret harbor-tls -n harbor -o jsonpath='{.data.tls\.crt}' \
 
 ```bash
 # Should return 308 Permanent Redirect
-curl -sI --resolve harbor.example.com:80:192.168.1.55 http://harbor.example.com/ | head -3
+curl -sI --resolve harbor.example.com:80:192.0.2.55 http://harbor.example.com/ | head -3
 
 # HTTPS should return 200
-curl -skI --resolve harbor.example.com:443:192.168.1.55 https://harbor.example.com/ | head -3
+curl -skI --resolve harbor.example.com:443:192.0.2.55 https://harbor.example.com/ | head -3
 ```
 
 ### Ingress TLS Binding
@@ -184,6 +184,20 @@ sudo crictl pull harbor.example.com/library/<image>:<tag>
 The Kaniko template (`gitlab-ci-templates/templates/build/kaniko-harbor.yml`) combining `--skip-tls-verify` + `--insecure-pull` **continues to work** — go-containerregistry probes HTTPS(skip-verify) first in insecure mode.
 
 Replacing `--insecure-pull` with `--skip-tls-verify-pull` is semantically cleaner but not required.
+
+### Docker CLI
+
+```bash
+# Distribute the CA certificate
+sudo mkdir -p /etc/docker/certs.d/harbor.example.com
+sudo cp .certs/harbor-cert.pem /etc/docker/certs.d/harbor.example.com/ca.crt
+
+docker login harbor.example.com
+```
+
+### Kaniko (GitLab CI)
+
+Kaniko can be handled with `--skip-tls-verify` + `--skip-tls-verify-pull`. The current project uses `--insecure-pull`, which works because go-containerregistry probes HTTPS(skip-verify) first, so swapping the pipeline flags is optional.
 
 <br/>
 

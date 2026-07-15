@@ -1,14 +1,16 @@
 # shellcheck shell=bash
-# Shared environment defaults + helper functions for Elasticsearch operations
-# scripts under this directory. Source this file from another shell script —
-# do not execute it directly.
+# Repo-root shared environment defaults + helper functions for Elasticsearch
+# operations. Sourced by both the self-hosted (observability/logging/elasticsearch)
+# and the AWS-managed (observability/logging/elasticsearch-aws) component scripts,
+# so it lives here as the single source of truth. Source this file from another
+# shell script — do not execute it directly.
 #
-# Usage:
+# Usage (from a component under observability/logging/<component>/scripts/):
 #   #!/usr/bin/env bash
 #   set -euo pipefail
 #   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-#   # shellcheck source=lib/es-common.sh
-#   source "${_SCRIPT_DIR}/lib/es-common.sh"
+#   # shellcheck source=../../../../scripts/lib/es-common.sh
+#   source "${_SCRIPT_DIR}/../../../../scripts/lib/es-common.sh"
 #
 # Conventions:
 #   - All defaults use `${VAR:-...}` so the caller can override by simply

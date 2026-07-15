@@ -27,7 +27,7 @@ alertmanager:
     #       - alertmanager.example.com
 
   # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
-  # - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+  # - Temporary IP: 192.0.2.69 (ngf Gateway), swap to .55 at Phase 6 cutover
   # - upstream chart natively supports the route: block (templates/alertmanager/route.yaml)
   # - After verification, cutover by setting ingress.enabled: false
   # - Only matches specified → chart auto-wires backend to alertmanager Service (port 9093)
@@ -158,7 +158,7 @@ alertmanager:
             channel: "#infra-alerts"
             send_resolved: true
             color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
-            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.cluster }}] [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [{{ .CommonLabels.cluster }}] [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
             text: |-
               {{ range .Alerts -}}
               {{- if .Labels.namespace }}

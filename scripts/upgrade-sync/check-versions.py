@@ -17,6 +17,8 @@ on line 2 of each managed upgrade.sh):
   local-with-templates      -> helm search repo OR git ls-remote --tags
   local-cr-version          -> VERSION_SOURCE feed
   ansible-github-release    -> GitHub Releases API (GITHUB_REPO)
+  argocd-pin                -> helm repo (BASE=standard) or GitHub Releases
+                               (BASE=oci); version SSOT in argocd/<release>.yaml
 
 Output: human-readable status table on stdout. Format string widths match the
 bash version verbatim so the awk state machine in `auto-upgrade.py`'s
@@ -61,6 +63,7 @@ from upgrade_sync.table import (  # noqa: E402
     print_main_table,
 )
 from upgrade_sync.yaml_helpers import (  # noqa: E402
+    read_argocd_chart_version,
     read_helmfile_chart_pin,
     read_yaml_value,
 )
@@ -135,6 +138,23 @@ def parse_managed_files(
             fetcher_arg = "github-releases"
             version_source_arg = cfg.github_repo
             tag_prefix = cfg.github_tag_prefix
+        elif template == "argocd-pin":
+            # Version SSOT is <component>/argocd/<release>.yaml chart.version
+            # (the migrated components have no helmfile). BASE selects the
+            # fetcher: "oci" -> GitHub Releases, else helm repo.
+            current = read_argocd_chart_version(chart_dir)
+            if cfg.base == "oci":
+                fetcher = "version-source"
+                fetcher_arg = "github-releases"
+                version_source_arg = cfg.github_repo
+                tag_prefix = cfg.github_tag_prefix
+            else:
+                fetcher = "helm-repo"
+                fetcher_arg = cfg.helm_chart
+                if cfg.helm_repo_name and cfg.helm_repo_url:
+                    pair = f"{cfg.helm_repo_name}={cfg.helm_repo_url}"
+                    if pair not in helm_repos_seen:
+                        helm_repos_seen.append(pair)
         elif template == "local-with-templates":
             chart_yaml = chart_dir / "Chart.yaml"
             if chart_yaml.is_file():
@@ -188,7 +208,13 @@ def parse_managed_files(
 
         # OCI chart-pin tracking (Phase 4 — external-oci-cr-version today).
         if cfg.chart_source_type and cfg.chart_source_repo and cfg.chart_name:
-            chart_current = read_helmfile_chart_pin(chart_dir)
+            # Migrated CR components (elasticsearch / kibana) have no helmfile;
+            # their chart-pin SSOT moved to argocd/<release>.yaml. Prefer the
+            # helmfile pin, fall back to the ArgoCD metadata.
+            chart_current = (
+                read_helmfile_chart_pin(chart_dir)
+                or read_argocd_chart_version(chart_dir)
+            )
             chart_rows.append(ChartRow(
                 rel=rel,
                 name=cfg.chart_name,

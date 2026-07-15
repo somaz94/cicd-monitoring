@@ -367,6 +367,22 @@ database:
   ## @param database.maxConnections Define the size of the connection pool used for connecting to the database.
   ##
   maxConnections: 10
+  ## @param database.enableWal Enable Write-Ahead Logging (WAL) for the database
+  ## Note: Read wiki documentation before enabling
+  ##
+  enableWal: true
+  ## @param database.timeout Timeout when acquiring database connection (seconds)
+  ##
+  timeout: 30
+  ## @param database.idleTimeout Timeout before idle connections are closed (seconds)
+  ##
+  idleTimeout: 600
+  ## @param database.minConnections Minimum size of the connection pool
+  ##
+  minConnections: 2
+  ## @param database.connInit Database connection initialization SQL statements
+  ##
+  connInit: ""
 
 ## @section Push Notifications
 ## Supported since 1.29.0.
@@ -600,9 +616,8 @@ adminToken:
   ##
   existingSecretKey: ""
   ## @param adminToken.value Plain or argon2 string containing the admin token.
-  ## This example is the argon2 has of "R@ndomTokenString" (no quotes).
   ##
-  value: "$argon2id$v=19$m=19456,t=2,p=1$Vkx1VkE4RmhDMUhwNm9YVlhPQkVOZk1Yc1duSDdGRVYzd0Y5ZkgwaVg0Yz0$PK+h1ANCbzzmEKaiQfCjWw+hWFaMKvLhG2PjRanH5Kk"
+  value: ""
 
 ## @param adminRateLimitSeconds Number of seconds, on average, between admin login requests from the same IP address before rate limiting kicks in.
 ##
@@ -735,6 +750,9 @@ smtp:
   ## @param smtp.acceptInvalidCerts Accept Invalid Certificates
   ##
   acceptInvalidCerts: "false"
+  ## @param smtp.heloName HELO Hostname: override the pod hostname used in the SMTP HELO command
+  ##
+  heloName: ""
   ## @param smtp.debug SMTP debugging
   ##
   debug: false
@@ -750,6 +768,14 @@ rocket:
   address: "0.0.0.0"
   port: "8080"
   workers: "10"
+  tls:
+    ## @param rocket.tls.secretName Name of the kubernetes.io/tls secret to use for HTTPS.
+    ## If unset, Vaultwarden service listens to HTTP.
+    ##
+    secretName: ""
+    ## @param rocket.tls.path Path to mount TLS secrets within the container
+    ##
+    path: "/certs"
 
 ## Service configuration
 service:
@@ -833,50 +859,56 @@ ingress:
 ## Ref: https://gateway-api.sigs.k8s.io/
 ##
 
-httpRoute:
-  ## @param httpRoute.enabled Deploy an HTTPRoute resource (Kubernetes Gateway API).
-  ## Requires the Gateway API CRDs to be installed in the cluster.
-  ## Ref: https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api
-  ##
-  enabled: false
-  ## @param httpRoute.labels Additional labels for the HTTPRoute resource.
-  ##
-  labels: {}
-  ## @param httpRoute.additionalAnnotations Additional annotations for the HTTPRoute resource.
-  ##
-  additionalAnnotations: {}
-  ## @param httpRoute.parentRefs List of parent Gateway references. Required when enabled.
-  ## Ref: https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.ParentReference
-  ## Example:
-  ## parentRefs:
-  ##   - name: my-gateway
-  ##     namespace: gateway-system
-  ##     sectionName: https
-  ##
-  parentRefs: []
-  ## @param httpRoute.hostnames Hostnames this HTTPRoute should match.
-  ## Equivalent to the host field in an Ingress rule. Leave empty to match all hostnames.
-  ## Example:
-  ## hostnames:
-  ##   - "vw.example.com"
-  ##
-  hostnames: []
-  ## @param httpRoute.path Default path prefix for the routing rule. Used only when httpRoute.rules is not set.
-  ##
-  path: "/"
-  ## @param httpRoute.rules Custom routing rules. When set, overrides the default rule generated from httpRoute.path.
-  ## Ref: https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io/v1.HTTPRouteRule
-  ## Example:
-  ## rules:
-  ##   - matches:
-  ##       - path:
-  ##           type: PathPrefix
-  ##           value: /
-  ##     backendRefs:
-  ##       - name: my-service
-  ##         port: 80
-  ##
-  rules: []
+## @param httpRoute HTTPRoute configuration. Supports two shapes — see examples below.
+## Requires Gateway API CRDs to be installed in the cluster.
+## Ref: https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api
+##
+## Shape 1 — Flat (single HTTPRoute, backward-compatible with chart v0.37.0):
+## httpRoute:
+##   enabled: true
+##   labels: {}
+##   additionalAnnotations: {}
+##   parentRefs:
+##     - name: my-gateway
+##       namespace: gateway-system
+##       sectionName: https
+##   hostnames:
+##     - vw.example.com
+##   path: /
+##   rules: []           # full override; takes precedence over path and httpsRedirect
+##   httpsRedirect: false
+##
+## Shape 2 — Map (multiple named HTTPRoutes, e.g. HTTPS backend + HTTP-to-HTTPS redirect):
+## httpRoute:
+##   main:
+##     enabled: true
+##     parentRefs:
+##       - name: my-gateway
+##         namespace: gateway-system
+##         sectionName: https
+##     hostnames:
+##       - vw.example.com
+##     path: /
+##     rules: []
+##     httpsRedirect: false
+##     apiVersion: gateway.networking.k8s.io/v1   # optional override
+##     kind: HTTPRoute                             # optional override
+##     labels: {}
+##     additionalAnnotations: {}
+##   redirect:
+##     enabled: true
+##     parentRefs:
+##       - name: my-gateway
+##         namespace: gateway-system
+##         sectionName: http
+##     hostnames:
+##       - vw.example.com
+##     httpsRedirect: true   # emits a 301 RequestRedirect filter; no backendRefs
+##
+## Route naming: the "main" route uses the chart's fullname; all other routes get a
+## "-<name>" suffix (e.g. "<release>-vaultwarden-redirect").
+##
+httpRoute: {}
 
 ## @section SSO OpenID Connect Configuration support for https://github.com/dani-garcia/vaultwarden/pull/3899
 ##

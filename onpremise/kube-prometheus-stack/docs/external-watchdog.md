@@ -2,7 +2,7 @@
 
 Prometheus cannot alert on its own death. That is exactly why the 2026-06-12 outage (the `monitoring.coreos.com` CRDs deleted out-of-band → the Prometheus pod gone) went unnoticed for so long — **nothing outside Prometheus was watching Prometheus.**
 
-This watchdog closes that blind spot. It runs as a cron **outside** the cluster's in-cluster failure domain — on the bastion
+This watchdog closes that blind spot. It runs as a cron **outside** the cluster's in-cluster failure domain — on the bastion / kubespray control host that already has kubectl — probing Prometheus health every 5 minutes through the kube-apiserver proxy and posting to the existing Slack webhook on failure.
 
 <br/>
 
@@ -34,11 +34,11 @@ bastion cron (5m)
 
 | Item | Value |
 |---|---|
-| Host | `server4` (192.168.1.15) — non-cluster, always-on |
+| Host | `server4` (192.0.2.15) — non-cluster, always-on |
 | Install path | `/home/example/.prometheus-watchdog/` |
 | Files | `watchdog-check.sh` · `kubectl` (v1.34.3) · `kubeconfig` (SA token, 600) · `watchdog.env` (Slack webhook, 600) |
 | Credential | Minimal ServiceAccount `prometheus-watchdog` (`monitoring` ns, `services/proxy` get only — not admin). Manifest: [scripts/watchdog-rbac.yaml](../scripts/watchdog-rbac.yaml) |
-| API endpoint | `https://192.168.1.17:6443` |
+| API endpoint | `https://192.0.2.17:6443` |
 | cron | `*/5 * * * *` (cron service active) |
 | Status check | `ssh server4 'cat /var/tmp/prometheus-watchdog.state'` (UP/DOWN) |
 
@@ -101,7 +101,7 @@ To avoid putting cluster-admin credentials on the watchdog host, build the kubec
 kubectl apply -f scripts/watchdog-rbac.yaml
 
 # (2) build a standalone kubeconfig from the SA token + CA
-NS=monitoring; API=https://192.168.1.17:6443
+NS=monitoring; API=https://192.0.2.17:6443
 kubectl -n $NS get secret prometheus-watchdog-token -o jsonpath='{.data.token}'    | base64 -d > token
 kubectl -n $NS get secret prometheus-watchdog-token -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
 kubectl --kubeconfig=kubeconfig config set-cluster example-cluster --server="$API" --certificate-authority=ca.crt --embed-certs=true
@@ -179,6 +179,6 @@ Remove the state file to reset: `rm -f /var/tmp/prometheus-watchdog.state`
 
 ## Relationship to Alertmanager
 
-kube-prometheus-stack's default `Watchdog` alert (always firing) is dropped to the `null` receiver in `dev-alertmanager.yaml` because there is **no external dead-man's-switch receiver** (the push model would require signing up for an external SaaS
+kube-prometheus-stack's default `Watchdog` alert (always firing) is dropped to the `null` receiver in `dev-alertmanager.yaml` because there is **no external dead-man's-switch receiver** (the push model would require signing up for an external SaaS / self-host, which we did not adopt). This host cron (pull model) plays that role instead — same goal, no signup, no inbound exposure.
 
 > To also watch Alertmanager itself, register a second cron with `PROM_SVC=kube-prometheus-stack-alertmanager PROM_PORT=9093`.

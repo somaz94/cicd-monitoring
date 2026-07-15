@@ -2,7 +2,9 @@ annotations:
   artifacthub.io/category: security
   artifacthub.io/changes: |
     - kind: changed
-      description: Bump appVersion from 26.6.1 to 26.6.2 (refresh templates/crd-*.yaml from upstream)
+      description: Bump appVersion from 26.6.4 to 26.7.0 (refresh CRD templates from upstream).
+    - kind: added
+      description: Add KeycloakOIDCClient and KeycloakSAMLClient CRDs plus their controller ClusterRoles, RoleBindings, and watch-namespace env vars (new in operator 26.7.0).
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: Source
@@ -17,7 +19,7 @@ annotations:
   artifacthub.io/operatorCapabilities: Seamless Upgrades
   artifacthub.io/prerelease: "false"
 apiVersion: v2
-appVersion: 26.6.2
+appVersion: 26.7.0
 description: Keycloak Operator install (CRDs + Deployment + RBAC + Service) wrapped
   from the upstream keycloak-k8s-resources raw YAML. Pin upstream releases via upgrade.sh;
   operate Keycloak instances with the keycloak-cr chart.
@@ -41,5 +43,5 @@ sources:
 - https://github.com/keycloak/keycloak-k8s-resources
 - https://github.com/keycloak/keycloak
 type: application
-version: 0.1.4
+version: 0.2.0
 

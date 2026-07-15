@@ -38,7 +38,7 @@ harbor-helm/
 - Helmfile
 - Ingress controller (nginx)
 - StorageClass (e.g., `nfs-client-server`)
-- TLS Secret for HTTPS — see [`docs/tls-setup.md`](./docs/tls-setup.md) (self-signed, prepared before `helmfile apply`)
+- TLS Secret for HTTPS — see [`docs/tls-setup-en.md`](./docs/tls-setup.md) (self-signed, prepared before `helmfile apply`)
 
 <br/>
 

@@ -233,7 +233,7 @@ fileConfigs:
       emit_invalid_record_to_error false
     </filter>
 
-    # Step 2: Pino
+    # Step 2: Pino / Serilog / ZLogger → Winston normalization
     # Four input shapes converge on (level / message / label):
     #   - Pino (Node.js):   level is Integer (10/20/30/40/50/60), msg is the body
     #   - Serilog (.NET):   Level is capital-L String ("Information"/"Warning"/...),
@@ -260,7 +260,7 @@ fileConfigs:
     #   - Serilog: Timestamp (ISO8601 String w/ offset) → Asia/Seoul ISO8601
     #   - ZLogger: Timestamp (ISO8601 String w/ offset, same capital-T shape as
     #              Serilog) → handled by the same branch
-    #   - generic timestamp
+    #   - generic timestamp / @timestamp already present → keep
     #   - fallback → receive time (Asia/Seoul ISO8601)
     # Serilog/ZLogger parse is wrapped in `rescue` so a malformed Timestamp
     # falls back to the raw string instead of breaking the filter chain.

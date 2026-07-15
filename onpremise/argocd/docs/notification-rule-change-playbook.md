@@ -19,9 +19,41 @@ A documented procedure for managing the **one-time redelivery storm** that occur
 Avoidance approaches that were tried and **do not work**:
 - Emptying the subscription temporarily and restarting the controller → no subscription means no send attempt at all, so the annotation is never updated; the same redelivery happens once the subscription is restored.
 - Scaling the controller to 0 → deleting the annotations manually → scaling back up: manual deletion resets every hash to "never seen", which causes the same mass redelivery.
-- Pre-computing new-formula hashes into the annotation: the hashing logic lives inside the controller and cannot be replicated externally.
+- Temporarily repointing the recipient channel to drain the burst → the recipient is part of the state key, so restoring the original channel leaves that channel's key unrecorded and the redelivery happens anyway.
 
 Therefore, this playbook targets **"minimize impact and keep it predictable"** rather than "eliminate it".
+
+<br/>
+
+## Correction: annotation precompute IS possible (verified 2026-07-15)
+
+This document previously stated that "the hashing logic lives inside the controller and cannot be replicated externally". **That is not accurate — it was disproven by direct measurement.** The actual state key format is:
+
+```
+<oncePer value>:<trigger name>:<condition hash>:<service>:<recipient>
+```
+
+Real examples (extracted from `.metadata.annotations.notified.notifications.argoproj.io`):
+
+```
+[harbor.example.com/example-project/game:0b43ca6d]:on-deployed:[0].BNdKn1I8xAYb7NkSpHE-fRPOFkA:slack:#argocd-alarm
+<nil>:on-deployed:[0].BNdKn1I8xAYb7NkSpHE-fRPOFkA:slack:#infra-argocd-alarm
+```
+
+Why precompute works:
+
+1. **The condition hash derives from the `when` clause only — it is unaffected by `oncePer` / `description` changes.** The same `BNdKn1I8xAYb7NkSpHE-fRPOFkA` was observed both before and after switching `oncePer` from `finishedAt` to `summary.images`. So you never need to compute it — **just read it from the existing annotation.**
+2. **Identical `when` clauses produce identical hashes across clusters.** The same hash was confirmed on both onprem-dev and example-app-prod.
+3. **The `oncePer` value is Go's `%v` formatting, which is reproducible externally.** With images → `[img1 img2]` (space-separated; ArgoCD already sorts them); without images → **`<nil>`**, not `[]`.
+
+That makes a **zero-burst deployment procedure** viable:
+
+- [ ] 1. Scale the controller to 0 — stops delivery and prevents the controller from racing you on the annotation write (skip this and it may overwrite your seed).
+- [ ] 2. For each application, build the new key from its `summary.images` and `notify-channel` label, and inject it into `notified.notifications.argoproj.io` with the current unix timestamp.
+- [ ] 3. `helmfile apply`.
+- [ ] 4. Scale the controller back to 1 → the key already exists on evaluation → `already sent` → **zero notifications**.
+
+Caveat: the procedure is fiddly, and a wrong key simply means that one application delivers once as usual (no workload impact). When the application count is small or the window is quiet, **accepting the burst per the "Minimizing impact" principles below is simpler and safer.** The 2026-07-15 `oncePer` change (25 on dev / 27 on prod) was handled by accepting the burst.
 
 <br/>
 

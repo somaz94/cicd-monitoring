@@ -20,7 +20,7 @@ keycloak:
     httpEnabled: true
 
   # DB connection — references the Secret rendered by the keycloak-postgresql release (= chart fullname `keycloak-postgresql`).
-  # Keys default to username
+  # Keys default to username / password — matches the secretKeys override in dev-postgresql.yaml.
   db:
     vendor: postgres
     host: keycloak-postgresql.keycloak.svc

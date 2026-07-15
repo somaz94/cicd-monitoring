@@ -1,0 +1,25 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# One file per helmfile release: the generator emits one Application named `infra-<releaseName>`.
+#
+# Phase 3 (wave 4 observability) first target. Adopts the live helmfile release
+# 'prometheus-elasticsearch-exporter' (logging ns, chart 7.2.1) in place — no recreate
+# (annotation resourceTrackingMethod + matching releaseName keep the Deployment selector stable).
+#
+# NOTE: the chart's ServiceMonitor (serviceMonitor.enabled: true) is currently MISSING in-cluster
+# (live drift — Prometheus is not scraping ES exporter metrics via it). Adoption re-creates it:
+# additive, the Deployment/pod is untouched, and it restores the intended scrape config. So the
+# adopt-diff is NOT a pure no-op like prometheus-mysql-exporter — expect a ServiceMonitor create.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+component: prometheus-elasticsearch-exporter   # -> app-name label on the generated App
+releaseName: prometheus-elasticsearch-exporter # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: logging                             # already helmfile-managed; do not contest ownership
+syncWave: "4"                                  # observability tier (mirrors helmfile deploy wave 4)
+chart:
+  repoURL: https://prometheus-community.github.io/helm-charts
+  name: prometheus-elasticsearch-exporter
+  version: "7.3.0"
+valueFile: observability/monitoring/prometheus-elasticsearch-exporter/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                         # 'logging' already exists
+autoSync: true                                 # adopt-diff verified clean (only tracking-id annotation + missing-SM create, zero pod recreate) -> auto-sync (prune+selfHeal) on

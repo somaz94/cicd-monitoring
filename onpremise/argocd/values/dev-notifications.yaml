@@ -324,6 +324,49 @@ notifications:
             ]
           }]
 
+    template.app-health-restored: |
+      message: |
+        :white_check_mark: Application {{.app.metadata.name}} has recovered to Healthy.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Health Restored",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#18be52",
+            "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "App Health",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Last Sync",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "short": true
+            },
+            {
+              "title": "Destination Server",
+              "value": "{{.app.spec.destination.server}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
     # template.app-healthy: |
     #   message: |
     #     :white_check_mark: Application {{.app.metadata.name}} is healthy.
@@ -358,16 +401,28 @@ notifications:
     #       }]
     
   triggers:
-    # Fires on successful sync + Healthy state; dedup per sync operation to avoid duplicate alerts during rolling updates.
+    # Fires on successful sync + Healthy state. Dedup keyed on the deployed image set,
+    # so a chart/values-only sync (image set unchanged) sends NO alert; only an actual
+    # image change notifies. Trade-off: a rollback to an image still in the engine's
+    # last-100 notified history is also suppressed (rollbacks are rare here, accepted).
+    #
+    # The 120s settle buffer prevents a duplicate alert per deploy. Once the new pods are
+    # Ready the app flips to Healthy while the old pods are still terminating, so
+    # summary.images transiently holds BOTH images — a different oncePer key than the
+    # final single-image set, which fired a second alert ~20s later. The buffer clears the
+    # rollout's terminationGracePeriodSeconds (60s on app-admin) so the trigger only
+    # evaluates once summary.images has settled to the final set.
     trigger.on-deployed: |
-      - description: Application is synced and healthy after any operation.
+      - description: Application deployed with a changed image set (chart-only syncs are deduped).
         send:
         - app-deployed
         when: |
           app.status.operationState.phase == 'Succeeded' and
           app.status.health.status == 'Healthy' and
-          app.status.operationState != null
-        oncePer: app.status.operationState.finishedAt
+          app.status.operationState != null and
+          app.status.operationState.finishedAt != nil and
+          time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 120
+        oncePer: app.status.summary.images
 
     # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per sync operation.
     trigger.on-health-degraded: |
@@ -436,6 +491,13 @@ notifications:
         when: app.status.health.status == 'Unknown'
         oncePer: app.status.reconciledAt
 
+    # Fires when an app returns to Healthy. Edge-triggered (no oncePer) so it re-arms each time health leaves Healthy. Subscribed to the infra channel only. A real deploy (Progressing->Healthy) also fires this, so an infra deploy emits a deploy + restored pair; drain/crash recovery (no new sync) emits only restored.
+    trigger.on-health-restored: |
+      - description: Application recovered to Healthy (not due to sync)
+        send:
+        - app-health-restored
+        when: app.status.health.status == 'Healthy'
+
     # trigger.test-notification: |
     #   - description: Test notification - when application is healthy
     #     send:
@@ -450,9 +512,14 @@ notifications:
   #     2) enable the 3 commented-out alerts in observability/.../dev-alerts.yaml
   #     3) enable the ArgoCD inhibit_rule in observability/.../dev-alertmanager.yaml
   #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
+  # Channel routing by the notify-channel label on each Application (set in the appset templates):
+  #   notify-channel: server -> #argocd-alarm   |   notify-channel: infra -> #infra-argocd-alarm
+  # Positive selectors on BOTH sides — an app with NO notify-channel label gets NO notification,
+  # so every appset MUST set notify-channel on its generated apps.
   subscriptions:
     - recipients:
       - slack:#argocd-alarm
+      selector: notify-channel=server
       triggers:
       - on-deployed
       - on-sync-failed
@@ -462,3 +529,15 @@ notifications:
       - on-health-missing    # A: comment out when moving to Alertmanager
       - on-health-unknown    # A: comment out when moving to Alertmanager
       # - test-notification
+    - recipients:
+      - slack:#infra-argocd-alarm
+      selector: notify-channel=infra
+      triggers:
+      - on-deployed
+      - on-sync-failed
+      - on-sync-status-out-of-sync
+      - on-restarted
+      - on-health-degraded
+      - on-health-missing
+      - on-health-unknown
+      - on-health-restored

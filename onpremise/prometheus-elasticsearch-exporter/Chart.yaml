@@ -1,16 +1,25 @@
 apiVersion: v2
-name: prometheus-elasticsearch-exporter
+appVersion: v1.10.0
 description: Elasticsearch stats exporter for Prometheus
-type: application
-version: 7.2.1
-appVersion: "v1.10.0"
 home: https://github.com/prometheus-community/elasticsearch_exporter
-sources:
-  - https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-elasticsearch-exporter
+keywords:
+- metrics
+- elasticsearch
+- monitoring
+kubeVersion: '>=1.19.0-0'
 maintainers:
-  - name: svenmueller
-    url: https://github.com/svenmueller
-  - name: desaintmartin
-    url: https://github.com/desaintmartin
-  - name: zeritti
-    url: https://github.com/zeritti
+- email: sven.mueller@commercetools.com
+  name: svenmueller
+  url: https://github.com/svenmueller
+- email: cedric@desaintmartin.fr
+  name: desaintmartin
+  url: https://github.com/desaintmartin
+- email: rootsandtrees@posteo.de
+  name: zeritti
+  url: https://github.com/zeritti
+name: prometheus-elasticsearch-exporter
+sources:
+- https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-elasticsearch-exporter
+type: application
+version: 7.3.0
+

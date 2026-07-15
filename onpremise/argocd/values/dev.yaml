@@ -2,6 +2,11 @@ global:
   # -- Default domain used by all components
   ## Used for ingresses, certificates, SSO, notifications, etc.
   domain: argocd.example.com
+  # Pin networkPolicy.create to false (chart 10.0.0 flipped the default false -> true).
+  # Preserves the pre-10.0 behavior (no bundled NetworkPolicies); adopt NP separately
+  # as a deliberate change once the CNI enforcement + UI/webhook/SSO traffic is verified.
+  networkPolicy:
+    create: false
 
 configs:
   cm:
@@ -11,6 +16,46 @@ configs:
     # Hard reconciliation timeout (default: 0s, disabled).
     # Setting to 0 prevents forced termination of reconciliation operations.
     timeout.hard.reconciliation: 0s
+    # Resource tracking via the argocd.argoproj.io/tracking-id annotation instead of the default
+    # app.kubernetes.io/instance label. Required before adopting helmfile-deployed infra components
+    # into ArgoCD (app-of-apps migration): the default label tracking rewrites instance labels that
+    # many charts use in immutable Deployment/StatefulSet selectors, forcing a recreate (downtime).
+    # Annotation tracking leaves selector labels untouched -> zero-downtime adoption. Existing
+    # example-project/secondary-project apps re-track via annotation on next sync (no resource churn).
+    application.resourceTrackingMethod: annotation
+    # Custom health for the single-node ECK Elasticsearch (logging/elasticsearch). A single-node ES
+    # cluster is permanently `yellow` (replica shards can't be assigned with one node), which ArgoCD's
+    # bundled health check maps to Progressing forever — cosmetic, but it never settles to Healthy.
+    # The override is SCOPED by namespace/name to THIS ES only: any other / multi-node Elasticsearch
+    # keeps the standard green=Healthy / yellow=Progressing / red=Degraded mapping. Display-only — does
+    # not affect sync, prune, or the operator. Added when logging/elasticsearch was adopted into ArgoCD.
+    resource.customizations.health.elasticsearch.k8s.elastic.co_Elasticsearch: |
+      local hs = {}
+      local singleNode = obj.metadata.namespace == "logging" and obj.metadata.name == "elasticsearch"
+      if obj.status ~= nil and obj.status.health ~= nil then
+        local h = obj.status.health
+        if h == "green" then
+          hs.status = "Healthy"
+          hs.message = "Elasticsearch cluster status is green"
+          return hs
+        elseif h == "yellow" then
+          if singleNode then
+            hs.status = "Healthy"
+            hs.message = "Elasticsearch cluster status is yellow (single-node: normal steady state)"
+          else
+            hs.status = "Progressing"
+            hs.message = "Elasticsearch cluster status is yellow"
+          end
+          return hs
+        elseif h == "red" then
+          hs.status = "Degraded"
+          hs.message = "Elasticsearch cluster status is red"
+          return hs
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Elasticsearch"
+      return hs
     # =============================================================================
     # SSO — Keycloak OpenID Connect (Phase 6, 2026-04-29+)
     #

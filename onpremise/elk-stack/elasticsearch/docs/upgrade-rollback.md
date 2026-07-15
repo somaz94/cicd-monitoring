@@ -91,6 +91,29 @@ cd ../kibana
 helmfile apply
 ```
 
+### Behavior when the image is not published yet
+
+If a version is registered in the artifacts API but its Docker image is not available yet, Step 4 automatically searches for the newest available version:
+
+```
+[Step 4/7] Verifying container image...
+  Checking: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
+
+  WARNING: Container image not found in registry.
+  The version 9.4.0 is listed in the upstream feed but the
+  container image has not been published yet.
+
+  Searching for the newest GA version with a published image...
+    9.4.0: not found
+    9.3.3: available
+
+  Latest available (with published image): 9.3.3
+
+  Use 9.3.3 instead of 9.4.0? [y/N]:
+```
+
+Entering `y` proceeds with 9.3.3. Entering `n` aborts and prints the `--version 9.3.3` command to use. Up to this point neither the local files nor the cluster state have been changed.
+
 ### Upgrade abort scenarios
 
 **Step 2 — cluster health abnormal**

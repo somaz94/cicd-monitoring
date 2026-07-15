@@ -18,7 +18,7 @@ User → ArgoCD/Harbor → "Login with Keycloak" → Keycloak `example` realm
 
 ## GitLab side
 
-Do not reuse the existing ArgoCD
+Do not reuse the existing ArgoCD / Harbor GitLab Applications (`cd5caacf...`, `gloas-...`) — create a **new application dedicated to Keycloak brokering**.
 
 GitLab Admin → Applications → New Application:
 

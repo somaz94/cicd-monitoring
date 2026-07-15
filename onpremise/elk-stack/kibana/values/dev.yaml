@@ -12,7 +12,7 @@ name: kibana
 
 # Elastic Stack version — must match (or be compatible with) the linked
 # Elasticsearch CR. Kibana must be <= Elasticsearch version.
-version: "9.4.1"
+version: "9.4.2"
 
 replicas: 1
 
@@ -59,7 +59,7 @@ ingress:
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
 
 # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
-# - Temporary IP: 192.168.1.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+# - Temporary IP: 192.0.2.69 (ngf Gateway), swap to .55 at Phase 6 cutover
 # - When backendRefs name is omitted, defaults to `<name>-kb-http`; when port is omitted, defaults to 5601
 httproute:
   enabled: true

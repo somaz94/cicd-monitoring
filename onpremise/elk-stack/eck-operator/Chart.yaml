@@ -1,10 +1,10 @@
 apiVersion: v2
-appVersion: 3.4.0
+appVersion: 3.4.1
 dependencies:
 - condition: installCRDs
   name: eck-operator-crds
   repository: ""
-  version: 3.4.0
+  version: 3.4.1
 description: Elastic Cloud on Kubernetes (ECK) operator
 home: https://github.com/elastic/cloud-on-k8s
 icon: https://helm.elastic.co/icons/eck.png
@@ -23,5 +23,5 @@ maintainers:
   name: Elastic
 name: eck-operator
 type: application
-version: 3.4.0
+version: 3.4.1
 

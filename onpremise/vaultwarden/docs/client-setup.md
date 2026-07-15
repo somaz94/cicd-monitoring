@@ -37,6 +37,6 @@ Setup:
 
 ## Network Requirements
 
-- `vault.example.com` resolves to `192.168.1.55` via internal DNS
+- `vault.example.com` resolves to `192.0.2.55` via internal DNS
 - **Same network**: Direct access
 - **External**: VPN required

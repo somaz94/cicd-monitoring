@@ -17,7 +17,7 @@ The fluent-bit topology in `values/dev.yaml` was switched from a single-replica 
 | parser | `example-project_json` (direct NDJSON parse) | `cri` → lua strip_ansi → `pino_pretty_extract` → `example-project_json_extract` |
 | ingest gap during update | Tens of seconds (Recreate stop-then-start) | ~10 seconds (rolling) |
 | Single node failure impact | Aggregator pod dies → ingest fully halts | One node down → other 2 pods keep ingesting |
-| Single fail-domain | One NFS server (192.168.1.5) | None (per-node independence) |
+| Single fail-domain | One NFS server (192.0.2.5) | None (per-node independence) |
 
 Three primary motivations:
 1. **Single NFS aggregator → SPOF.** A stuck NFS server or RWX mount halts ingest entirely.
@@ -110,7 +110,7 @@ git commit -m "feat(observability/logging/fluent-bit): migrate to stdout DaemonS
 - `PVC/qa-example-project-game-app-logs-pvc-fluentbit`
 - `PVC/stg-example-project-game-app-logs-pvc-fluentbit`
 - `PVC/fluent-bit-state-pvc`
-- The 4 explicit-manifest PVs (`*-app-logs-pv-fluentbit`). Their `reclaimPolicy: Retain` did not block deletion — they were chart-managed objects, so helm removed them too. The data on the NFS server (192.168.1.5) itself was preserved (which is what Retain actually guarantees)
+- The 4 explicit-manifest PVs (`*-app-logs-pv-fluentbit`). Their `reclaimPolicy: Retain` did not block deletion — they were chart-managed objects, so helm removed them too. The data on the NFS server (192.0.2.5) itself was preserved (which is what Retain actually guarantees)
 
 **One manual cleanup — the fluent-bit-state-pvc dynamically-provisioned PV**
 
@@ -125,11 +125,11 @@ kubectl get pv | grep -iE "Released.*fluent-bit"
 kubectl delete pv pvc-<uuid>
 ```
 
-PV cleaned up in this migration: `pvc-c3bca255-fdf5-44be-9230-da3643774535` (NFS path `/data/nfs/logging/fluent-bit-state-pvc`, server 192.168.1.10). Reclaim the NFS-side disk space separately if needed.
+PV cleaned up in this migration: `pvc-c3bca255-fdf5-44be-9230-da3643774535` (NFS path `/data/nfs/logging/fluent-bit-state-pvc`, server 192.0.2.10). Reclaim the NFS-side disk space separately if needed.
 
 So the plan's separate `kubectl delete` step for the NFS aggregator PVC/PVs is **not required** (helm handles them), and only the state-pvc's dangling PV needs one manual cleanup.
 
-> The NFS server (192.168.1.5) still holds the application log files under `/volume1/nfs/example-project/*/server/logs/` — applications keep writing to them. For stdout-vs-NFS verification or for index loss recovery, [reingest-procedure-en.md](./reingest-procedure.md) describes how to replay from the NFS originals.
+> The NFS server (192.0.2.5) still holds the application log files under `/volume1/nfs/example-project/*/server/logs/` — applications keep writing to them. For stdout-vs-NFS verification or for index loss recovery, [reingest-procedure-en.md](./reingest-procedure.md) describes how to replay from the NFS originals.
 
 <br/>
 

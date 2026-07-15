@@ -1,0 +1,21 @@
+# Per-release ArgoCD metadata consumed by the infra-LOCAL-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-local-applicationset.yaml).
+# Marker dir is `argocd-local/` (NOT `argocd/`) so only the local-chart generator reads it.
+# The generator emits one Application named `infra-<releaseName>` whose single git source points at
+# this component's VENDORED chart dir (`chart: .` in the helmfile -> path-based App source).
+#
+# Phase 3-3 target. Adopts the live helmfile release 'fluent-bit' (logging ns, local chart 0.57.7,
+# DaemonSet 3/3) in place. releaseName=fluent-bit keeps app.kubernetes.io/instance=fluent-bit so the
+# DaemonSet selector renders identical to live -> no recreate. The chart's ServiceMonitor already
+# exists in-cluster (no drift), so the adopt-diff is expected to be tracking-id annotations only.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps version here; for a
+# vendored chart the version lives in the in-repo Chart.yaml, kept in sync with this field).
+component: fluent-bit                           # -> app-name label on the generated App
+releaseName: fluent-bit                         # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: logging                              # already helmfile-managed; do not contest ownership
+syncWave: "4"                                   # observability tier (mirrors helmfile deploy wave 4)
+chartPath: observability/logging/fluent-bit     # repo-root-relative dir of the vendored chart (App source `path`)
+valueFile: values/dev.yaml                      # RELATIVE TO chartPath (single git source -> no $values ref)
+createNamespace: false                          # 'logging' already exists
+autoSync: true                                  # adopt-diff verified clean (tracking-id annotation only, zero DaemonSet recreate) -> auto-sync (prune+selfHeal) on

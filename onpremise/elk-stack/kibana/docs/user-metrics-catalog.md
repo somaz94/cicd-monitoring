@@ -1,6 +1,6 @@
 # User metrics catalog — dev-pm-retention-dashboard
 
-Definitions of all 10 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
+Definitions of all 12 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -29,26 +29,29 @@ Cohort-index fields:
 | `first_seen` / `last_seen` | date | First / last activity timestamp |
 | `total_events` | long | Total events per user |
 | `active_days_count` | long | Distinct active days in KST |
-| `d1_returning` … `d30_returning` | long (0/1) or null | D-1 … D-30 retention flag. 1 if the user had activity on `/users/create` day + N, 0 if not, null when the user never had a signup event |
+| `active_dates` | keyword array | List of active KST dates (`YYYY-MM-DD`). The source data for D-N retention |
+| `max_cleared_chapter` | long | Highest chapter the user has cleared |
+| `d1_live` … `d30_live` | runtime long (0/1) or null | Not in index mapping — a Kibana data view runtime field. 1 if `first_seen` + N appears in `active_dates`, 0 if not. A maturity guard emits nothing for horizons that have not yet elapsed (excluded from avg, not 0). The transform does not compute retention; these runtime fields compute it at query time |
 | `cohort_date` | runtime keyword | Not in index mapping — a Kibana data view runtime field. Emits `first_seen` as a KST date string → row-grouping key for the Daily Cohort Retention table |
 
 <br/>
 
 ## Panel catalog
 
-10 panels, all on the same dashboard (`dev-pm-retention-dashboard`). Default time range `now-30d ~ now` (`timeRestore: true`).
+12 panels, all on the same dashboard (`dev-pm-retention-dashboard`). Default time range `now-30d ~ now` (`timeRestore: true`).
 
 | Row | Panel | Kind | Data source |
 |---|---|---|---|
 | 1 | NU (Today) / NU (Last 7d) / NU (Last 30d) | Vega-Lite KPI ×3 | raw |
 | 2 | DAU / WAU / MAU | Vega-Lite KPI ×3 | raw |
-| 3 | NU Trend (30d) / DAU Trend | Lens lnsXY ×2 | raw |
+| 3 | NU (Total) / NU Trend (30d) / DAU Trend | KPI ×1 + Lens lnsXY ×2 | raw |
 | 4 | Average Retention Curve (D+1..D+30) | Vega (full) | cohort |
 | 5 | Daily Cohort Retention (table) | Lens lnsDatatable | cohort |
+| 6 | Chapter Distribution (per user latest) | Vega | cohort |
 
 <br/>
 
-### 1) NU (Today)
+### 1) NU (Today) / NU (Last 7d) / NU (Last 30d) — new-user KPIs
 
 | Item | Value |
 |---|---|
@@ -63,7 +66,7 @@ Operational meaning: a fast read on daily / weekly / monthly signup velocity. Re
 
 <br/>
 
-### 2) DAU
+### 2) DAU / WAU / MAU — active-user KPIs
 
 | Item | Value |
 |---|---|
@@ -119,7 +122,7 @@ Operational meaning: the noise-cleaned version of the DAU KPI. Any gap between D
 | Saved-object id | `dev-pm-retention-curve` |
 | Chart | Vega (vega/v5) — area + line + symbol + `.1%` labels above each point |
 | Time filter | `%timefield% = first_seen`, `%context% = true` (dashboard time range applied) |
-| Query | 30 × `avg(dN_returning)` for N=1..30 |
+| Query | 30 × `avg(dN_live)` for N=1..30 — `dN_live` are cohort data-view runtime fields |
 | Y axis | 0 ~ 1 (`.0%` format) |
 
 Operational meaning: the average retention curve 1..30 days after signup. `null` values (users that never signed up) are automatically excluded → the denominator naturally reduces to "signed-up users only". The `defined: rate != null` guard hides points where data is missing, so early-prod thin data doesn't render misleading 0% spikes.
@@ -136,10 +139,37 @@ Operational meaning: the average retention curve 1..30 days after signup. `null`
 | Chart | Lens `lnsDatatable` |
 | Row group | `terms(cohort_date)` (runtime keyword field, max 100 rows) — "Date" |
 | Col 1 | `count(___records___)` — "NU" (number of signups in that cohort) |
-| Cols 2 ~ 31 | `average(d1_returning)` … `average(d30_returning)` labels `D+1` … `D+30` |
+| Cols 2 ~ 31 | `average(d1_live)` … `average(d30_live)` labels `D+1` … `D+30` (`dN_live` are cohort data-view runtime fields) |
 | Time filter | dashboard `now-30d ~ now`, by `first_seen` |
 
 Operational meaning: the raw decomposition behind the Retention Curve. Surfaces which cohort day has an anomalous retention pattern at a row-by-row level. Cohorts with very small NU (e.g. NU=1) render D+N as exactly 0% or 100%, so apply a **small-sample caveat** — trust rows only when cohort NU ≥ 10.
+
+<br/>
+
+### 7) NU (Total) — cumulative new users
+
+| Item | Value |
+|---|---|
+| Definition | Cumulative unique new signups in the time range (unique `data.userId` that hit `/users/create`) |
+| Data source | `dev-example-project-game` (raw) |
+| Saved-object id | `dev-pm-retention-nu-total` |
+| Chart | Vega-Lite big-number card |
+| Agg | `cardinality(data.userId)` (no period sub-filter; the whole dashboard time range) |
+
+Operational meaning: unlike the per-period (Today/7d/30d) KPIs, this shows the cumulative signup volume across the entire dashboard time range at a glance.
+
+<br/>
+
+### 8) Chapter Distribution (per user latest) — chapter-progress distribution
+
+| Item | Value |
+|---|---|
+| Definition | Distribution of each user's latest cleared chapter (`max_cleared_chapter`) |
+| Data source | `dev-example-project-game-user-cohort` (cohort) |
+| Saved-object id | `dev-pm-retention-chapter-dist` |
+| Chart | Vega — histogram of `max_cleared_chapter` (one latest value per user) |
+
+Operational meaning: the user distribution of content progress. Reveals which chapter concentrates drop-off (a bottleneck).
 
 <br/>
 
@@ -149,7 +179,7 @@ Operational meaning: the raw decomposition behind the Retention Curve. Surfaces 
 - **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README.md#data-view-management-policy).
 - **DAU vs DAU Trend mismatch**: caused by the KQL filter. If health-check traffic frequency varies over time, the ratio between the two will drift.
 - **Timezone**: Curve / Table cohort-day boundaries follow `params.tz = Asia/Seoul` (in the transform). Independent of viewer browser timezone.
-- **`/users/create` as anchor**: for other services
+- **`/users/create` as anchor**: for other services / games with a different signup endpoint, update the NU KPI's `term` filter **and** the transform's `params.path` together — otherwise NU and Retention anchor desynchronize. Full migration recipe in [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -157,8 +187,8 @@ Operational meaning: the raw decomposition behind the Retention Curve. Surfaces 
 
 | Change | Affected files |
 |---|---|
-| Retention horizon extension (e.g. D-60) | `elasticsearch/transforms/dev-example-project-game-user-cohort.json` (add `dN_returning`), `dev-pm-retention-curve` Vega `aggs` + `points` N-range, `dev-pm-retention-daily-table` Lens columns |
-| Signup endpoint change | NU KPI ×3 `term` filter, transform `params.path` (every `dN_returning`), README / catalog text |
+| Retention horizon extension (e.g. D-60) | add one `dN_live` runtime field on the cohort data view (the transform stays untouched — it only produces atomic facts), `dev-pm-retention-curve` Vega `aggs` + `points` N-range, `dev-pm-retention-daily-table` Lens columns |
+| Signup endpoint change | NU KPI ×3 `term` filter, transform `params.path` (the anchor for `active_dates`), README / catalog text |
 | New panel (e.g. PU, ARPU) | `dev-pm-retention-dashboard.ndjson` lens/visualization + dashboard refs/grid, this catalog table |
 | Timezone change | every `params.tz` in the transform, cohort data view's `cohort_date` runtime field script |
 

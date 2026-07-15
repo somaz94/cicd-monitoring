@@ -6,14 +6,14 @@
 
 Between 06:33 and 06:54 KST on 2026-04-23, a burst of "restarted" / "deploy success" notifications hit the `#argocd-alarm` Slack channel for five `example-project`-family Applications. On investigation:
 
-- **dev-example-project-game
-- **qa-example-project-game
+- **dev-example-project-game / dev-example-project-admin**: A real new image (`b4482c5f`) was deployed. However, the commits landed the previous evening, yet the deploy fired **~11–12 hours later** at this time window.
+- **qa-example-project-game / staging-example-project-game**: **No actual deploy or restart happened.** Pods had been up 8–15 days (RESTARTS=0). The "restarted" + "deploy success" alarms still fired — these are **ghost alarms**.
 
 Three root causes stacked. The **essential one is a design flaw in the notification rules (Cause C)**; A and B are environmental triggers that let the flaw surface.
 
 1. **(Environmental) `argocd-application-controller` reconcile gap**: Some apps had their `reconciledAt` frozen from 2026-04-21 21:11 UTC, others from 2026-04-22 08:54 UTC — **12 to 24 hours of no reconciliation**, all of them released at once on 04-22 21:33 UTC (04-23 06:33 KST).
 2. **(Environmental) dedup key reshuffle from a notifications config change**: `dev-notifications.yaml` was upgraded on 2026-04-22 15:27 KST, changing the `oncePer` dedup key formula for every trigger. Existing "already sent" annotations no longer matched the new keys — **previously-sent events became eligible for redelivery**.
-3. **(Essential) Design flaw in the `on-restarted`
+3. **(Essential) Design flaw in the `on-restarted` / `on-deployed` dedup keys**: The dedup key was a **state snapshot** (`reconciledAt`, `images.join(',')`) rather than an **event identifier**. As rolling updates progressed and the polling cadence ticked, the key changed naturally — which **structurally produces duplicate / ghost alarms for the same event**.
 
 <br/>
 
@@ -42,7 +42,7 @@ All times show UTC and KST. CI commit times are based on the commit date in the 
 
 <br/>
 
-### 1. dev-example-project-game
+### 1. dev-example-project-game / dev-example-project-admin — real deploy, 11–12 h delayed
 
 **Evidence:**
 
@@ -74,7 +74,7 @@ Similarly, `on-deployed`'s `oncePer: app.status.summary.images.join(',')` saw `o
 
 <br/>
 
-### 2. qa-example-project-game
+### 2. qa-example-project-game / staging-example-project-game — ghost alarms
 
 **Evidence:**
 
@@ -269,7 +269,7 @@ Git log under `cicd/argo-cd/` in `kuberntes-infra` (newest first):
 | `8b89f73` | 2026-04-16 18:49 | `somaz` | `refactor(cicd/argo-cd): split dev.yaml into core/server/redis/notifications value files` |
 
 Changes relevant to this incident:
-- `996e330` — **the commit that introduced Cause B (dedup key reshuffle)**. The intent in adding `oncePer` was to suppress duplicate alarms; choosing `reconciledAt`
+- `996e330` — **the commit that introduced Cause B (dedup key reshuffle)**. The intent in adding `oncePer` was to suppress duplicate alarms; choosing `reconciledAt` / `images.join(',')` — **state snapshots** — directly caused Cause C (design flaw).
 - `678c8b4` — the chart upgrade, whose timing overlaps with Cause A (the controller collectively skipping some apps). There is no direct evidence that the upgrade caused the stuck state (controller pod AGE 40h with no restarts), but the correlation is worth recording.
 - `8b89f73` — unrelated to this incident (values file split refactor).
 
@@ -704,6 +704,16 @@ Do not forget to add `on-health-recovered` to `subscriptions`.
 
 **Limitation:** ArgoCD notifications cannot trigger directly on "state transitions". The trigger above fires whenever "current = Healthy + recent sync" — meaning it does **not** distinguish "recovered after Degraded" from "always healthy" (it also fires on the latter). A sidecar controller that stores previous health in an annotation would be required to separate them; for simplicity this limitation is acceptable.
 
+**Implemented (2026-07-02):** shipped in a **different form** from the proposal above. The original proposal text is left in place; the actual implementation is summarized below.
+
+- **Trigger name is `on-health-restored`** (not the proposed `on-health-recovered`), with template `app-health-restored`.
+- The only condition is `when: app.status.health.status == 'Healthy'` — **edge-triggered, NO `oncePer`, NO time-window** (deliberately different from the proposal's `finishedAt` + `< 1h` + `oncePer: finishedAt` design).
+- **Reason for the deviation:** the proposal's `finishedAt`+1h+`oncePer` approach is tied to a sync operation, so it would **not** fire for a **drain/crash recovery** (no new sync → `finishedAt` stays old). The pure edge trigger fires on any Degraded/Unknown/Progressing → Healthy transition, which is exactly the node-rollover recovery case that motivated it.
+- **Subscribed to the infra channel (`#infra-argocd-alarm`) only** — deliberately NOT the `server` channel. Server apps deploy frequently, so a real deploy (Progressing→Healthy) also fires this trigger, which would double-message the busy server channel. Infra apps deploy rarely, so the deploy-double there is tolerable.
+- **Applied symmetrically to both clusters:** `cicd/argo-cd/values/dev-notifications.yaml` (onprem-dev) **and** `cicd/argo-cd-aws/values/prod-notifications.yaml` (example-app-prod / AWS EKS).
+- **Known one-time side effect** (matches the playbook's "add a trigger → full re-send to all apps" rule): adding the trigger fired a one-time burst of `Health Restored` (health restored) for every currently-Healthy infra app — 24 on onprem-dev, 7 on example-app-prod. Dedup state persists in the `notified.notifications.argoproj.io` app annotation, so it does not re-burst on controller restart.
+- **Why not Option A (Alertmanager auto-RESOLVED) here:** example-app-prod EKS has no prometheus/alertmanager deployed, so Alertmanager-based recovery alerting is infeasible there without standing up the stack. The notifications-trigger path works identically on both clusters.
+
 <br/>
 
 ### Second-round priority
@@ -817,7 +827,7 @@ The 5-second window (02:11:30 – 02:11:35Z) right before the stall is the key:
 > **Every time an `argocd-cm`-family ConfigMap is externally patched, the controller's settings-reload path leaks goroutines or deadlocks a work-queue goroutine. Once stuck, the controller does not self-heal without a restart.**
 
 - Version-correlated observation: visible **after the upgrade to ArgoCD v3.3.7 (helm chart 9.5.2)**. Not previously seen on v3.3.6.
-- The pod itself is `Running`
+- The pod itself is `Running` / `Ready` and passes the liveness probe → not detectable at the Kubernetes layer.
 - Only `argocd_app_reconcile_count`'s `increase() == 0` catches it → **the `ArgoCDControllerReconcileStuck` alert added during this incident is effectively the only automated detection mechanism.**
 
 <br/>
@@ -881,6 +891,7 @@ A chronological digest of everything done that day. In subsequent operation, thi
 | `trigger.on-deployed.oncePer` | `app.status.operationState.finishedAt` | 1 sync = 1 alarm |
 | `trigger.on-restarted.oncePer` | `app.status.operationState.finishedAt` | Same principle |
 | `trigger.on-health-degraded.oncePer` | `app.status.operationState.finishedAt` | Role split with Alertmanager (Option B) — still active in subscriptions |
+| `trigger.on-health-restored` (new, 2026-07-02) | `when: health == 'Healthy'` (edge, no oncePer) | Recovery alarm. Subscribed to the infra channel only (server excluded). Applied on both onprem-dev and example-app-prod. See "Improvement E" above for details |
 | `controller.env` — `ARGOCD_APPLICATION_CONTROLLER_PPROF` | `true` | For pprof capture on the next stall. Endpoint verification is open |
 
 **Alertmanager / PrometheusRule (`observability/monitoring/kube-prometheus-stack/`):**

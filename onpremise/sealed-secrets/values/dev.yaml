@@ -1,0 +1,25 @@
+# Override the upstream chart defaults for the dev (example dev) cluster.
+# Vendor reference: ../values.yaml (chart default). Diff this file with values.yaml on
+# chart bumps to spot drift. Release name = "sealed-secrets", namespace = "sealed-secrets"
+# (helmfile.yaml) — so the controller name kubeseal targets is also "sealed-secrets".
+
+# Resource sizing for dev — single controller pod, light workload (a handful of
+# SealedSecrets). The controller is mostly idle after the initial reconcile; do not
+# starve it of memory during key generation / mass re-encryption.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Prometheus integration is off by default. Enable out-of-band once the kube-prometheus-stack
+# release label selector is wired in (the ServiceMonitor must carry the stack's discovery
+# label, e.g. `release: <kps-release>`, or it will not be scraped). Same out-of-band pattern
+# as ../keycloak-operator/values/dev.yaml.
+metrics:
+  serviceMonitor:
+    enabled: false
+  prometheusRule:
+    enabled: false

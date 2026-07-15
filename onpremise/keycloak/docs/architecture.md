@@ -119,7 +119,7 @@ Covered by the follow-up effort (OpenLDAP + Keycloak User Federation track):
 
 | App | User impact | Notes |
 |---|---|---|
-| **ArgoCD** | Sign in once via the new flow | RBAC keys off `email`
+| **ArgoCD** | Sign in once via the new flow | RBAC keys off `email` / `groups` — claim names match, permissions auto-resolve |
 | **vaultwarden** | Sign in once via the new flow | `signupsMatchEmail: true` keeps email-based matching |
 | **Harbor** | Sign in once + a one-time admin task | OIDC `sub` changes → existing project memberships need to be re-attached. Admin runs the procedure in [harbor-migration-en.md](harbor-migration.md); end-users just sign in afresh |
 

@@ -1,0 +1,136 @@
+# Elasticsearch index retention CronJob (on-prem dev).
+#
+# On-prem log indices are FIXED-NAME and ever-growing (fluentd writes
+# `index_name ${log_source}` with no date suffix — see
+# observability/logging/fluentd/values/dev.yaml). Unlike the AWS cluster
+# (date-based daily indices trimmed by an ILM delete phase — see
+# ../../elasticsearch-aws/scripts/bootstrap-ilm-template.sh), a whole-index
+# ILM delete cannot be used here: it would drop the live index. Retention is
+# therefore document-level via `_delete_by_query` on `@timestamp`.
+#
+# This is the in-cluster, scheduled counterpart of the manual laptop script
+# `../scripts/delete_old_indices.sh` (which port-forwards from a developer
+# machine). The manual script stays for ad-hoc ops; this CronJob automates the
+# daily trim.
+#
+# Targets are an EXPLICIT allow-list — the cohort transform outputs
+# (`*-example-project-game-user-cohort`) and ES system indices are never named here,
+# so they can never be touched. Deleting old docs from a cohort index would
+# corrupt the transform's first_seen / dN observation window.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: es-index-retention
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: es-index-retention
+    app.kubernetes.io/component: logging-maintenance
+spec:
+  # Daily 04:00 KST. spec.timeZone requires K8s v1.27+ (cluster is v1.34.x, OK).
+  # Offset from the etcd-defrag Sunday 03:00 job to avoid maintenance overlap.
+  schedule: "0 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      # Hard cap so a hung run cannot wedge concurrencyPolicy:Forbid forever
+      # (a stuck Job would otherwise suppress every subsequent daily run silently).
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800   # Clean up finished Job after 7d
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: es-index-retention
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: retention
+              # Minimal curl image; pinned by digest-less tag (bump via upgrade flow).
+              image: curlimages/curl:8.11.1
+              imagePullPolicy: IfNotPresent
+              env:
+                # Days of data to retain. ES date-math computes the cutoff
+                # (now-${RETENTION_DAYS}d) server-side — no client date math.
+                - name: RETENTION_DAYS
+                  value: "90"
+                # Space-separated allow-list of raw log indices to trim.
+                # NEVER add cohort (*-user-cohort) or system (.ds-*/.internal.*) indices.
+                - name: INDICES
+                  value: "dev-example-project-game qa-example-project-game dev-example-project-battle"
+                # In-namespace ES HTTPS service (ECK self-signed cert -> curl -k).
+                - name: ES_HOST
+                  value: "https://elasticsearch-es-http:9200"
+                - name: ELASTIC_USER
+                  value: "elastic"
+                - name: ELASTIC_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: elasticsearch-es-elastic-user
+                      key: elastic
+              command: ["/bin/sh", "-eu", "-c"]
+              args:
+                - |
+                  if [ -z "${ELASTIC_PASSWORD:-}" ]; then
+                    echo "ERROR: ELASTIC_PASSWORD is empty (secret not mounted?)" >&2
+                    exit 1
+                  fi
+                  echo "Index retention: deleting docs older than now-${RETENTION_DAYS}d"
+                  echo "Targets: ${INDICES}"
+                  echo
+
+                  RC=0
+                  for IDX in ${INDICES}; do
+                    echo "=== ${IDX} ==="
+                    # Query = old docs (range @timestamp < now-Nd) MINUS the cohort
+                    # anchor. The cohort transform's first_seen is a scripted_metric
+                    # over /users/create docs in THIS raw index
+                    # (transforms/dev-example-project-game-user-cohort.json). If a still-active
+                    # user's /users/create doc ages out and is deleted, the continuous
+                    # transform re-triggers and recomputes first_seen as null, silently
+                    # corrupting the cohort record. must_not on data.requestPath.keyword
+                    # keeps the anchor forever (tiny volume: one doc per registration).
+                    # conflicts=proceed: a live-writing index yields version conflicts on
+                    # concurrently-updated docs; proceed instead of aborting the batch.
+                    # wait_for_completion=true so the deleted count lands in this log;
+                    # --max-time caps a runaway synchronous delete (paired with the Job
+                    # activeDeadlineSeconds) so a hang cannot wedge concurrencyPolicy:Forbid.
+                    # || true: a transport-level curl failure must not abort the loop
+                    # under set -e; the RC aggregation below handles it per-index.
+                    RESP=$(curl -sk --connect-timeout 10 --max-time 1800 \
+                      -u "${ELASTIC_USER}:${ELASTIC_PASSWORD}" \
+                      -X POST "${ES_HOST}/${IDX}/_delete_by_query?conflicts=proceed&wait_for_completion=true" \
+                      -H 'Content-Type: application/json' \
+                      -d "{\"query\":{\"bool\":{\"filter\":[{\"range\":{\"@timestamp\":{\"lt\":\"now-${RETENTION_DAYS}d\"}}}],\"must_not\":[{\"term\":{\"data.requestPath.keyword\":\"/users/create\"}}]}}}" || true)
+                    echo "${RESP:-<no response — curl failed>}"
+                    # Surface a non-zero exit on an ES error object, a timed-out query,
+                    # or an empty response (curl transport failure), but attempt every
+                    # index first.
+                    case "${RESP}" in
+                      '') echo "  ! ${IDX}: no response (curl failed)" >&2; RC=1 ;;
+                      *'"error"'*) echo "  ! ${IDX}: ES returned an error" >&2; RC=1 ;;
+                      *'"timed_out":true'*) echo "  ! ${IDX}: query timed out" >&2; RC=1 ;;
+                    esac
+                    echo
+                  done
+                  echo "Retention run complete."
+                  exit "${RC}"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 100
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 32Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi

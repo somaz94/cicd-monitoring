@@ -1,6 +1,6 @@
 # pm-retention-dashboard — Prod templating guide
 
-Analysis and qa/prod-portable templating of the Kibana dashboard `Game User Matric & Retention` (slug `<env>-pm-retention-dashboard`) that is currently live on the dev cluster. Captures the **data sources
+Analysis and qa/prod-portable templating of the Kibana dashboard `Game User Matric & Retention` (slug `<env>-pm-retention-dashboard`) that is currently live on the dev cluster. Captures the **data sources / transform / visualizations / parameters** needed to replicate it on a qa or prod cluster. This dashboard is the repo's single source of truth and consists of 12 panels (7 Vega-Lite KPI cards + 2 Lens Trends + 1 Vega Curve + 1 Lens Cohort Table + 1 Vega Chapter Distribution) — the analyst-grade configuration.
 
 <br/>
 
@@ -21,7 +21,7 @@ Five substitutions:
 | 1 | Raw index name | `dev-example-project-game` → `<env>-example-project-game` |
 | 2 | Cohort index name + transform id | `dev-example-project-game-user-cohort` → `<env>-example-project-game-user-cohort` |
 | 3 | Kibana data view UUID (raw / cohort) | new UUIDs issued on the target cluster |
-| 4 | Dashboard
+| 4 | Dashboard / 12 panel saved-object ids | `pm-retention-*` → `<env>-pm-retention-*` (avoid id collision) |
 | 5 | (Optional) KPI card 4-color palette | per-env visual cue — dev/qa/prod different palettes recommended |
 
 Things that do **not** need to change (env-invariant):
@@ -86,7 +86,7 @@ The template was **validated end-to-end on QA — full dashboard imported and ve
 | Core field schema | matches dev — `@timestamp:date`, `data.userId:long`, `data.requestPath:text + .keyword` multi-field, `data.statusCode:long` |
 | `/users/create` events | 31 hits / 30 unique `data.userId` (signup events present) |
 | Transform `qa-example-project-game-user-cohort` | PUT + start succeeded, state=started, checkpoint=1, docs_processed=13,646, docs_indexed=33, failures=0 |
-| Cohort index `qa-example-project-game-user-cohort` | 33 rows (= preview's 33), `first_seen`, `total_events`, `d1_returning..d30_returning` populated |
+| Cohort index `qa-example-project-game-user-cohort` | 33 rows (= preview's 33), `first_seen`, `total_events`, `active_dates`, `active_days_count` atomic facts populated |
 | Avg retention agg (whole cohort) | D+1=16.7%, D+7=13.3%, D+30=0% (cohort has not reached D+30 yet) |
 | Cohort data view `qa-example-project-game-user-cohort-logs` | includes `cohort_date` runtime keyword field, time field `first_seen` |
 | Dashboard `qa-pm-retention-dashboard` | NDJSON import succeeded (7 viz + 3 lens + 1 dashboard, all references mapped correctly) — title `QA — Game User Matric & Retention` |
@@ -96,7 +96,7 @@ The template was **validated end-to-end on QA — full dashboard imported and ve
 
 Live URL: `http://kibana.example.com/app/dashboards#/view/qa-pm-retention-dashboard`.
 
-> The actual commands used for QA are exactly Steps 1~3 of [§Prod migration recipe](#prod-migration-recipe) (substitute index names
+> The actual commands used for QA are exactly Steps 1~3 of [§Prod migration recipe](#prod-migration-recipe) (substitute index names / saved-object ids / data view UUIDs + `apply.sh --file`). Recommended prod rollout order: capture dev → apply qa (this validation) → 1–2 weeks of observation → apply prod.
 
 <br/>
 
@@ -111,9 +111,12 @@ ES index: dev-example-project-game            ◀── raw events
    │ [ES Transform: dev-example-project-game-user-cohort]
    │  continuous, frequency 5m, sync.delay 60s
    ▼
-ES index: dev-example-project-game-user-cohort  ◀── 1 row = 1 user
-                                            (first_seen, total_events, d1_returning … d30_returning)
+ES index: dev-example-project-game-user-cohort  ◀── 1 row = 1 user (atomic facts)
+                                            (first_seen, last_seen, total_events,
+                                             active_days_count, active_dates, max_cleared_chapter)
                                             anchor = day of first /users/create event
+   │                                        (D-N retention is NOT computed by the transform;
+   │                                         cohort data-view runtime fields d1_live..d30_live compute it at query time)
    │
    ▼ Kibana data view (runtime field: cohort_date)
 Kibana dashboard: <env>-pm-retention-dashboard
@@ -121,7 +124,7 @@ Kibana dashboard: <env>-pm-retention-dashboard
 
 <br/>
 
-## Dashboard layout (10 panels, 48-grid)
+## Dashboard layout (12 panels, 48-grid)
 
 Coordinates are Kibana grid (48 columns). `y` grows downward.
 
@@ -156,7 +159,7 @@ Coordinates are Kibana grid (48 columns). `y` grows downward.
 
 ### 2) ES Transform (cohort pivot)
 
-Definition is stored at [`elasticsearch/transforms/dev-example-project-game-user-cohort.json`](../../elasticsearch/transforms/dev-example-project-game-user-cohort.json) — **but the live cluster has drifted past the repo copy** (see *drift* section below).
+Definition is stored at [`elasticsearch/transforms/dev-example-project-game-user-cohort.json`](../../elasticsearch/transforms/dev-example-project-game-user-cohort.json). The repo was exported from live on 2026-07-01 and matches the current live (`active_dates` atomic-facts design) (see *drift* section below).
 
 Live spec (`kubectl ... GET /_transform/dev-example-project-game-user-cohort`):
 
@@ -164,36 +167,30 @@ Live spec (`kubectl ... GET /_transform/dev-example-project-game-user-cohort`):
 |---|---|
 | Source | `dev-example-project-game`, query `exists(data.userId)` |
 | Group by | `user_id` (terms on `data.userId`) |
-| Aggregations | `first_seen` (min @timestamp), `last_seen` (max), `total_events` (value_count), `active_days_count` (cardinality of KST local-date string), `d1_returning … d30_returning` (30 scripted_metric blocks) |
+| Aggregations | `first_seen` (min @timestamp), `last_seen` (max), `total_events` (value_count), `active_days_count` (cardinality of KST local-date string), `active_dates` (scripted_metric — array of active KST dates), `max_cleared_chapter` (max). **Does not compute retention** — D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live` reading `active_dates` |
 | Dest | `dev-example-project-game-user-cohort` |
 | Frequency | `5m` (live) |
 | Sync | `time.field: @timestamp`, `delay: 60s` |
 | Settings | `max_page_search_size: 500` |
 
-`dN_returning` scripted_metric shape (same template for every D+N):
+`active_dates` scripted_metric shape (collects each user's active days):
 
 ```text
 params:
-  offset_days: N            # 1..30
   tz: Asia/Seoul            # day-boundary timezone
-  path: /users/create       # requestPath that anchors the cohort
 
-init_script:   state.create_days = []; state.all_days = []
-map_script:    epoch = doc[@timestamp] → KST → toLocalDate().toEpochDay()
-               state.all_days.add(epoch)
-               if doc[data.requestPath.keyword] == params.path:
-                 state.create_days.add(epoch)
-combine:       return state
-reduce:        firstCreate = min(state.create_days across all states)
-               allDays = union(state.all_days across all states)
-               if no create event seen for this user: return null
-               else return allDays.contains(firstCreate + offset_days) ? 1 : 0
+init_script:   state.days = []
+map_script:    date = doc[@timestamp] → KST → toLocalDate().toString()  # YYYY-MM-DD
+               state.days.add(date)
+combine:       return state.days
+reduce:        return the sorted keyword array of union(state.days across all states)
 ```
 
-Key consequences:
-- The **anchor is the first occurrence of `params.path` (`/users/create`)**, not just `min(@timestamp)`.
-- Users without any `/users/create` event have D-N as **`null`** → the ES `avg()` operator skips them automatically → the Retention Curve / Table divisor naturally becomes "signed-up users only".
-- Timezone is controlled in one place via `params.tz`.
+Key consequences (retention is computed by query-time runtime fields, not the transform):
+- The transform produces only per-user **atomic facts** (`first_seen`, `last_seen`, `total_events`, `active_days_count`, `active_dates`, `max_cleared_chapter`). It stores no D-N retention flag.
+- D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live`: 1 if `first_seen + N day` appears in `active_dates`, 0 if not. A maturity guard emits nothing for horizons that have not yet elapsed → the ES `avg()` operator skips them automatically (excluded, not 0).
+- The anchor is the first `/users/create` day (= `first_seen`, resolved via the `params.path` filter).
+- Timezone is controlled by the transform `params.tz` (`active_dates` / `active_days_count`) plus the data-view runtime fields' `ZoneId`.
 
 ### 3) Cohort Kibana data view (with runtime field)
 
@@ -283,7 +280,7 @@ KPI Vega-Lite skeleton:
 | Chart | Vega (vega/v5) — area + line + symbol + text label |
 | Data view | `dev-example-project-game-user-cohort-logs` (cohort) |
 | Time filter | `%timefield% = first_seen`, `%context% = true` (dashboard time range applied) |
-| Query | 30 × `avg(dN_returning)` aggregations for N=1..30 |
+| Query | 30 × `avg(dN_live)` aggregations for N=1..30 — `dN_live` are cohort data-view runtime fields |
 | Visual | X = D+1..D+30, Y = `[0, 1]` (% scale) |
 | Markings | symbol point + `.1%` label above each point (e.g. `12.5%`); area fill `#1ea7fd` at 12% opacity; line stroke `#1ea7fd` 2.5px |
 | `defined` guard | when `rate == null` the point/label is suppressed |
@@ -300,10 +297,10 @@ Critical `data` block:
     "body": {
       "size": 0,
       "aggs": {
-        "d1":  { "avg": { "field": "d1_returning"  } },
-        "d2":  { "avg": { "field": "d2_returning"  } },
-        // ... d3 through d30 ...
-        "d30": { "avg": { "field": "d30_returning" } }
+        "d1":  { "avg": { "field": "d1_live"  } },
+        "d2":  { "avg": { "field": "d2_live"  } },
+        // ... d3 through d30 ... (all cohort data-view runtime fields)
+        "d30": { "avg": { "field": "d30_live" } }
       }
     }
   },
@@ -323,7 +320,7 @@ Then a `points` dataset (D+1..D+30) is joined to `es_agg` via a `formula` transf
 | Data view | `dev-example-project-game-user-cohort-logs` (cohort) |
 | Row group | `terms(cohort_date)` (runtime field, size 100) — "Date" |
 | Col 1 | `count(___records___)` — "NU" (number of signups in that cohort) |
-| Cols 2..31 | `average(d1_returning)` … `average(d30_returning)` — labels `D+1` … `D+30` |
+| Cols 2..31 | `average(d1_live)` … `average(d30_live)` — labels `D+1` … `D+30` (`dN_live` are cohort data-view runtime fields) |
 | Time filter | dashboard `now-30d ~ now`, by `first_seen` |
 | Sorting | none (terms order via the data view) |
 
@@ -345,11 +342,11 @@ Values to substitute for prod:
 | `<SIGNUP_PATH>` | `/users/create` | NU KPI `term` filters, Transform `params.path` | same or game-specific endpoint |
 | `<HEALTH_EXCLUDES>` | `/api/health`, `/api/stats`, `statusCode >= 4` | DAU Trend Lens KQL | adjust to your operational endpoints |
 | `<TIMEZONE>` | `Asia/Seoul` | All Transform `params.tz`, cohort data view `cohort_date` script | `UTC` for global games etc. |
-| `<RETENTION_HORIZONS>` | D+1..D+30 (30 values) | Transform `dN_returning` aggs, Curve Vega aggs+points, Table Lens columns | same, or extend to D+1..D+60 |
+| `<RETENTION_HORIZONS>` | D+1..D+30 (30 values) | cohort data-view runtime fields `dN_live`, Curve Vega aggs+points, Table Lens columns (the transform is not involved — it only produces `active_dates`) | same, or extend to D+1..D+60 |
 | `<DEFAULT_TIME_RANGE>` | `now-30d ~ now`, `timeRestore: true` | Dashboard `timeFrom` / `timeTo` | same |
 | `<FREQUENCY>` | `5m` | Transform `frequency` | start with `1h` if data volume is high |
 | `<DASHBOARD_ID>` | `<env>-pm-retention-dashboard` | dashboard saved-object id | `prod-pm-retention-dashboard` (namespace separation) |
-| `<PANEL_ID_PREFIX>` | `pm-retention-` | prefix of the 10 panel saved-object ids | `prod-pm-retention-` |
+| `<PANEL_ID_PREFIX>` | `pm-retention-` | prefix of the 12 panel saved-object ids | `prod-pm-retention-` |
 
 > The colors (`#16a34a`, `#1ea7fd`, `#2c8a96`, `#7c47ab`) act as intentional prod/dev disambiguation. Pick a different palette for prod so an analyst can never mistake one environment for the other at a glance.
 
@@ -357,7 +354,7 @@ Values to substitute for prod:
 
 ## Automation strategy
 
-Instead of hand-editing NDJSON and running apply, build a **state-driven Python builder**. One command idempotently (re)creates the transform + data views (runtime field included) + 10 saved objects + dashboard. The repo does not yet ship such a builder under `dashboards/` (current standard is NDJSON substitution + `apply.sh`); the skeleton below is a blueprint for future implementation.
+Instead of hand-editing NDJSON and running apply, build a **state-driven Python builder**. One command idempotently (re)creates the transform + data views (runtime field included) + 12 saved objects + dashboard. The repo does not yet ship such a builder under `dashboards/` (current standard is NDJSON substitution + `apply.sh`); the skeleton below is a blueprint for future implementation.
 
 ### Execution model
 
@@ -373,7 +370,7 @@ build-pm-retention.py
        ├─ Trend Lens ×2 (NU Trend, DAU Trend)            ← from METRICS_TREND
        ├─ Curve Vega ×1 (D+1..D+N)                       ← HORIZONS expand to aggs + points
        ├─ Table Lens ×1 (Daily Cohort, D+1..D+N)         ← HORIZONS expand to columns
-       └─ Dashboard    (panelsJSON
+       └─ Dashboard    (panelsJSON / references — grid coordinates computed in code)
 ```
 
 ### dev / prod switching
@@ -397,6 +394,8 @@ KPI_COLORS       = {"NU": "#16a34a", "DAU": "#1ea7fd", "WAU": "#2c8a96", "MAU": 
 The state file (`pm-retention.state.json`) auto-allocates UUIDs on first run; later runs reuse them so the script is idempotent under `overwrite=true`.
 
 ### Transform builder (HORIZONS loop)
+
+> **Note (legacy blueprint)**: the `transform_aggs` example below still shows the **retired old design** (computing `d{n}_returning` inside the transform). In the current design the transform emits only atomic facts (`active_dates` + `max_cleared_chapter`) and D-N is computed at query time by the Kibana cohort data-view runtime fields `d1_live`..`d30_live`. A real builder implementation should drop the `d{n}_returning` blocks and emit an `active_dates` scripted_metric instead.
 
 ```python
 def transform_aggs(horizons: list[int], tz: str, path: str) -> dict:
@@ -482,10 +481,10 @@ The state file is per-environment (`pm-retention.{ENV}.state.json`) so dev and p
 
 ### Recommended two-stage operating pattern
 
-1. **Develop
+1. **Develop / tune in Kibana** — edit in the UI, run `./export.sh` to capture, update `METRICS_*` / `HORIZONS` in the builder, commit.
 2. **Replay on prod** — `ENV=prod ./build-pm-retention.py` once. Humans never click in the prod Kibana UI.
 
-The UI-first stage mirrors the `export.sh` flow from [`dashboards/README.md`](../dashboards/README.md). The builder's job is to freeze the result into code.
+The UI-first stage mirrors the `export.sh` flow from [`dashboards/README-en.md`](../dashboards/README.md). The builder's job is to freeze the result into code.
 
 > Recommended rollout order: capture the live state via `export.sh` and commit first; then implement the builder incrementally — first cut covers transform + cohort data view + 6 KPI Vega; second cut adds the Trend / Table Lenses and the dashboard.
 
@@ -519,7 +518,7 @@ Then `git commit`.
 
 Recommended workflow:
 
-1. Copy `dev-pm-retention-dashboard.ndjson` to `prod-pm-retention-dashboard.ndjson` and substitute (`<RAW_INDEX>`, `<SIGNUP_PATH>`, dashboard
+1. Copy `dev-pm-retention-dashboard.ndjson` to `prod-pm-retention-dashboard.ndjson` and substitute (`<RAW_INDEX>`, `<SIGNUP_PATH>`, dashboard / panel id prefix `dev-` → `prod-`, colors, …). The `qa-pm-retention-dashboard.ndjson` already in the repo is a worked example of the same substitution applied to qa.
 2. Copy `dev-example-project-game-user-cohort.json` to `prod-example-project-game-user-cohort.json` and apply the same substitutions.
 3. Pre-create the raw + cohort data views on prod Kibana (UI or via the same `ensure_data_view` logic from the build script), then plug the issued UUIDs back into the NDJSON `references` fields.
 
@@ -565,7 +564,8 @@ The cohort D-N boundary and the Daily Cohort Retention row grouping are both tim
 
 | Location | DEV | QA | Source of truth |
 |---|---|---|---|
-| Transform `params.tz` (31 aggs: 30 × `dN_returning` + `active_days_count`) | `Asia/Seoul` | `Asia/Seoul` | live ES + repo `*-example-project-game-user-cohort.json` |
+| Transform `params.tz` (`active_dates` scripted_metric + `active_days_count` cardinality script) | `Asia/Seoul` | `Asia/Seoul` | live ES + repo `*-example-project-game-user-cohort.json` |
+| Cohort data view runtime fields `dN_live` `ZoneId` (30 fields, D-N judgement) | `Asia/Seoul` | `Asia/Seoul` | live Kibana data view + repo `example-project-game-data-view.ndjson` |
 | Cohort data view `cohort_date` runtime field `ZoneId.of('…')` | `Asia/Seoul` | `Asia/Seoul` | live Kibana data view + repo `example-project-game-data-view.ndjson` (the 4-data-view bootstrap NDJSON includes both env cohort data views) |
 
 All four points across both environments unified at KST. The transform's `first_seen` is timezone-independent (effectively `min(@timestamp)`) and not in scope.
@@ -629,7 +629,7 @@ done
 
 If the server runs in KST (`Asia/Seoul`), the current setup is already correct — no change. If the server runs in a different zone (UTC, …), swap to that zone.
 
-### Scenario B — match a specific country
+### Scenario B — match a specific country / region (e.g. global game targeting US EST, Japan JST, …)
 
 Replace with the IANA `ZoneId` string of the target zone (`UTC`, `America/Los_Angeles`, `America/New_York`, `Asia/Tokyo`, `Europe/London`, …).
 
@@ -639,11 +639,11 @@ Replace with the IANA `ZoneId` string of the target zone (`UTC`, `America/Los_An
 
 **1) Transform definition (`elasticsearch/transforms/dev-example-project-game-user-cohort.json`)**
 
-Inside `pivot.aggregations`:
+Inside `pivot.aggregations` (these two are the only tz-bearing aggs — there is no retention agg):
+- `active_dates.scripted_metric.params.tz`
 - `active_days_count.cardinality.script.params.tz`
-- `d1_returning.scripted_metric.params.tz` … `d30_returning.scripted_metric.params.tz` (30 entries)
 
-Replace every occurrence with the same value, then:
+Replace every occurrence with the same value. **Additionally** replace the `ZoneId` of the cohort data view's 30 `d1_live..d30_live` runtime fields (handled together with `cohort_date` in step 2 below) with the same zone. Then:
 
 ```bash
 cd observability/logging/elasticsearch/transforms
@@ -653,9 +653,9 @@ cd observability/logging/elasticsearch/transforms
 ./apply.sh --replace
 ```
 
-**2) Cohort Kibana data view's `cohort_date` runtime field**
+**2) Cohort Kibana data view runtime fields (`cohort_date` + `d1_live..d30_live`)**
 
-Replace the runtime field script's `ZoneId.of('Asia/Seoul')` with the same target zone. If the data view is not managed by the bootstrap NDJSON (`example-project-game-data-view.ndjson`) and was added via UI, patch via API:
+Replace each runtime field script's `ZoneId.of('Asia/Seoul')` with the same target zone (`cohort_date` ×1 + `dN_live` ×30). If the data view is not managed by the bootstrap NDJSON (`example-project-game-data-view.ndjson`) and was added via UI, patch via API:
 
 ```bash
 PASS=$(kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
@@ -685,7 +685,7 @@ EOF
 |---|---|
 | D-N boundary (Transform `params.tz`) | Cohort signup-day (first `/users/create`) and D+N activity-day judged at the new zone |
 | Daily Cohort Retention row grouping (`cohort_date`) | Row labels emitted as date strings in the same zone |
-| KPI
+| KPI / Trend (queries raw index directly) | Driven by the dashboard's `dateFormat:tz` (Kibana Advanced Setting). Change separately. Recommend pinning `dateFormat:tz` to the same zone via Stack Management → Advanced Settings |
 | Retention Curve (Vega) | Curve plots cohort-averaged retention over time. `%timefield%` is `first_seen` (date) so ES is timezone-agnostic at the query level — only the dashboard time range (`now-30d` etc.) is affected |
 | Existing cohort index data | `--replace` keeps existing rows in the destination index untouched, but the transform re-traverses source from the start and overwrites every row consistent with the new zone |
 
@@ -709,21 +709,21 @@ If the two zones diverge, cohort day boundaries follow the transform's zone but 
 
 <br/>
 
-## Known drift (repo vs live, snapshot 2026-05-13)
+## Drift reconciled (repo vs live, snapshot 2026-07-01)
 
-Differences found while analysing the live cluster. **Do not apply the repo definitions to prod until Step 0 captures the live state.**
+The repo was exported from live on 2026-07-01, so **the previously recorded repo↔live differences are all resolved**. The repo now reflects live's `active_dates` atomic-facts design + the 12 panels. Below is the reconciliation trail — which item was aligned how.
 
-| Item | repo (`dev-example-project-game-user-cohort.json`) | live |
+| Item | previous repo | current repo = live |
 |---|---|---|
-| Retention horizons | D-1, D-7 (2 values) | D-1 … D-30 (30 values) |
-| D-N anchor | `min(@timestamp)` (first activity day) | first `/users/create` day (`params.path`) |
-| Users with no signup event | returns 0 or 1 (included in the denominator) | returns `null` (excluded from avg / denominator) |
+| Retention horizons | D-1, D-7 (2 values) | D-1 … D-30 (30 values, cohort data-view runtime fields `d1_live..d30_live`) |
+| D-N anchor | `min(@timestamp)` (first activity day) | first `/users/create` day (= `first_seen`) |
+| Users with no signup event | returns 0 or 1 (included in the denominator) | no `active_dates` entry → the runtime field emits nothing (excluded from avg / denominator) |
+| Where retention is computed | transform scripted_metric (`dN_returning`) | cohort data-view runtime fields (`dN_live`) at query time; the transform only produces the `active_dates` atomic fact |
 | `frequency` | `1h` | `5m` |
-| Cohort data view `cohort_date` runtime field | not managed in repo (likely absent from `-data-view.ndjson`) | configured in Kibana |
-| Dashboard NDJSON | absent | live only (`<env>-pm-retention-dashboard`) |
-| `cohort_entries` in cohort mapping | absent | present in live mapping (no current agg writes to it — leftover from a prior iteration; new docs do not populate it) |
+| Cohort data view `cohort_date` / `dN_live` runtime fields | not managed in repo | captured in `example-project-game-data-view.ndjson` |
+| Dashboard NDJSON | absent | present in repo (`dev-/qa-pm-retention-dashboard.ndjson`, 12 panels) |
 
-> Follow-up: when committing the Step 0 export, code-review the three artifacts (transform JSON / dashboard NDJSON / data view NDJSON) to confirm they accurately mirror the live state. The leftover `cohort_entries` field can be cleaned up by `DELETE /<dest-index>` + `--replace` (optional).
+> Because the repo mirrors live accurately, a prod rollout can parameterise the current repo definitions directly — no need to re-run the Step 0 export first.
 
 <br/>
 
@@ -731,7 +731,7 @@ Differences found while analysing the live cluster. **Do not apply the repo defi
 
 - [dashboards/README-en.md](../dashboards/README.md) — apply.sh / export.sh / build script usage
 - [docs/dashboards-saved-objects-en.md](dashboards-saved-objects.md) — NDJSON schema, two flavours of apply.sh, data view policy
-- [docs/user-metrics-catalog-en.md](user-metrics-catalog.md) — this dashboard's 10-panel catalog (definitions + operational caveats)
+- [docs/user-metrics-catalog-en.md](user-metrics-catalog.md) — this dashboard's 12-panel catalog (definitions + operational caveats)
 - [elasticsearch/transforms/README-en.md](../../elasticsearch/transforms/README.md) — transform management commands
 - [docs/example-project-user-metrics-overview.md](../../../../docs/example-project-user-metrics-overview.md) — pipeline-wide entry point (Korean, internal)
 

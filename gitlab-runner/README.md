@@ -2,6 +2,8 @@
 
 This guide describes how to install and configure GitLab Runner on Kubernetes using Helmfile.
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/build-image.yaml` + `argocd/deploy-image.yaml` (old-build-deploy-image stays pinned), bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Directory Structure

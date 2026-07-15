@@ -1,6 +1,6 @@
 # Kibana / Elasticsearch user creation guide
 
-Operations doc for [`../scripts/create-kibana-readonly-user.sh`](../scripts/create-kibana-readonly-user.sh). PUTs a **user account mapped to an existing role** via the Security API, idempotently. Role creation itself lives in a sibling script — see [create-elastic-role-en.md](create-elastic-role.md). Keeping them split lets a single role back many users (e.g. `viewer`, `qa-viewer`, `pm-viewer` all mapped to `read_only_role`).
+Operations doc for [`../create-kibana-readonly-user.sh`](../create-kibana-readonly-user.sh). PUTs a **user account mapped to an existing role** via the Security API, idempotently. Role creation itself lives in a sibling script — see [create-elastic-role-en.md](create-elastic-role.md). Keeping them split lets a single role back many users (e.g. `viewer`, `qa-viewer`, `pm-viewer` all mapped to `read_only_role`).
 
 > Script name says "readonly-user", but the user can be attached to any existing role via `--role-name`. `read_only_role` is just the default.
 
@@ -87,7 +87,7 @@ ES_SVC=localhost   ES_PORT=9200   ES_SCHEME=https
 ES_SECRET=elasticsearch-es-elastic-user   ES_USER=elastic
 ```
 
-These defaults live in [`../scripts/lib/es-common.sh`](../scripts/lib/es-common.sh) and are shared across the other scripts in this directory.
+These defaults live in [`scripts/lib/es-common.sh`](../../lib/es-common.sh) and are shared across the sibling ES scripts in this directory.
 
 <br/>
 
@@ -155,6 +155,6 @@ kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
 ## Related documentation
 
 - [create-elastic-role-en.md](create-elastic-role.md) — prerequisite. Role creation, permission flags, security guards.
-- [scripts/README-en.md](../scripts/README.md) — directory index.
-- [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
+- [README-en.md](../README.md) — directory index.
+- [shell-script-conventions](../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
 - [Elasticsearch Security API — Create or update user](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-put-user.html)

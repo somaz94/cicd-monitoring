@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# upgrade-template: external-standard
+# upgrade-template: argocd-pin
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
@@ -8,11 +8,19 @@
 # ============================================================
 CONFIG = {
     "SCRIPT_NAME":    "GitLab Runner Helm Chart Upgrade Script",
+    "BASE":           "standard",
     "HELM_REPO_NAME": "gitlab",
     "HELM_REPO_URL":  "https://charts.gitlab.io",
     "HELM_CHART":     "gitlab/gitlab-runner",
     "CHANGELOG_URL":  "https://gitlab.com/gitlab-org/charts/gitlab-runner/-/blob/main/CHANGELOG.md",
     "CHART_TYPE":     "local",  # "local" or "external"
+    # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
+    # Track the two active runner releases only; old-build-deploy-image stays
+    # pinned (intentionally excluded from auto-upgrade).
+    "ARGOCD_PIN_FILES": [
+        "argocd/build-image.yaml",
+        "argocd/deploy-image.yaml",
+    ],
 }
 # ============================================================
 
@@ -26,7 +34,7 @@ for _anc in [_here, *_here.parents]:
         sys.path.insert(0, str(_anc / "scripts" / "python"))
         break
 
-from upgrade_core.external_standard import run  # noqa: E402
+from upgrade_core.argocd_pin import run  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(run(CONFIG, sys.argv[1:], script_path=__file__))

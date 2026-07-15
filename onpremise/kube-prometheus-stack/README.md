@@ -2,6 +2,8 @@
 
 Manages the Kubernetes cluster monitoring stack using Helmfile.
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Included Components
@@ -30,6 +32,7 @@ kube-prometheus-stack/
 │   └── sync-etcd-client-cert.sh
 ├── docs/                   # Detailed guides
 │   ├── dashboards-en.md
+│   ├── external-watchdog-en.md
 │   ├── slack-alert-format-en.md
 │   └── troubleshooting-en.md
 ├── upgrade.py              # Version upgrade script
@@ -157,7 +160,7 @@ Install node-exporter on target servers, then add IPs to `values/dev.yaml` `addi
 
 ```yaml
 - targets:
-    - "192.168.1.10:9100"
+    - "192.0.2.10:9100"
 ```
 
 Verify: `http://prometheus.example.com/targets` → `physical-servers` group
@@ -222,11 +225,11 @@ The `kubeEtcd` ServiceMonitor scrapes etcd metrics on port 2379 over mTLS, which
 ```bash
 cd observability/monitoring/kube-prometheus-stack
 
-# Default — pull from control-01 (192.168.1.17), refresh monitoring/etcd-client-cert
+# Default — pull from control-01 (192.0.2.17), refresh monitoring/etcd-client-cert
 ./scripts/sync-etcd-client-cert.sh
 
 # Different node / SSH user
-./scripts/sync-etcd-client-cert.sh -H 192.168.1.18 -u ubuntu
+./scripts/sync-etcd-client-cert.sh -H 192.0.2.18 -u ubuntu
 
 # Render the manifest only, do not apply
 ./scripts/sync-etcd-client-cert.sh --dry-run

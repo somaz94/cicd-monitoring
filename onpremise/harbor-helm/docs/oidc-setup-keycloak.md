@@ -113,7 +113,7 @@ HARBOR_CLIENT_SECRET="<harbor client secret>"
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
   -X PUT --data @- \
   -w "HTTP %{http_code}\n" \
-  --resolve harbor.example.com:443:192.168.1.55 \
+  --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations <<EOF
 {
   "oidc_name": "Keycloak",
@@ -136,7 +136,7 @@ EOF
 ```bash
 ./harbor-admin.sh config
 # or raw:
-curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
+curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations \
   | python3 -m json.tool | grep -A1 -E 'oidc_|auth_mode'
 ```
@@ -154,7 +154,7 @@ curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.168.1.55 \
 ```bash
 curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
   -X PUT --data '{"auth_mode":"oidc_auth"}' \
-  --resolve harbor.example.com:443:192.168.1.55 \
+  --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations
 ```
 
@@ -243,7 +243,7 @@ Reverting the endpoint to GitLab flips the OIDC `sub` back to GitLab basis:
 
 | Symptom | Cause / Fix |
 | --- | --- |
-| `failed to get token` on OIDC click | `oidc_verify_cert` does not match endpoint scheme (https→true
+| `failed to get token` on OIDC click | `oidc_verify_cert` does not match endpoint scheme (https→true / http→false), or Keycloak `harbor` client's Valid Redirect URI does not match `https://harbor.example.com/c/oidc/callback` |
 | Login succeeds but no Harbor user created | User is not in `oidc_group_filter` (`server`). Check the Keycloak group mapping (`server-group-map` IdP mapper) |
 | Groups claim is empty | On the Keycloak `harbor` client, ensure the group mapper has `Add to ID token` / `Add to userinfo` ON |
 | Harbor returns `invalid_state` after Keycloak | Pod clock skew (NTP) or cookie domain issue. Check `kubectl -n harbor logs deploy/harbor-core` |

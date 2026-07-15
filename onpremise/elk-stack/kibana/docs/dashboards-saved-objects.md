@@ -48,7 +48,7 @@ cd ../../kibana/dashboards && ./apply.sh --include-data-view   # first bootstrap
 ```
                 ┌─────────────────────────────────────────┐
                 │            Kibana (logging ns)          │
-                │  - lens
+                │  - lens / dashboard / data-view objects │
                 │  - .kibana_* internal index             │
                 └────────┬─────────────────────────▲──────┘
                          │ POST /_export           │ POST /_import
@@ -70,12 +70,12 @@ cd ../../kibana/dashboards && ./apply.sh --include-data-view   # first bootstrap
 Kibana export uses newline-delimited JSON — one object per line. Our `dev-pm-retention-dashboard.ndjson` looks like:
 
 ```
-{ "type": "visualization", "id": "dev-pm-retention-…", "attributes": {…}, "references": [{…}] }  ← 7 Vega
+{ "type": "visualization", "id": "dev-pm-retention-…", "attributes": {…}, "references": [{…}] }  ← 9 Vega
 …
 { "type": "lens",          "id": "dev-pm-retention-…", "attributes": {…}, "references": [{…}] }  ← 3 Lens
 …
 { "type": "dashboard",     "id": "dev-pm-retention-dashboard", "attributes": {…}, "references": [{…}] }
-{ "excludedObjects": [], "exportedCount": 11, "missingReferences": [], … }    ← summary
+{ "excludedObjects": [], "exportedCount": 13, "missingReferences": [], … }    ← summary
 ```
 
 Key invariants:

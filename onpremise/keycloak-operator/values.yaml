@@ -17,7 +17,7 @@
 # upgrade.sh on a successful bump. Used to render the operator image tag and
 # the RELATED_IMAGE_KEYCLOAK env value below when their corresponding tag
 # fields are left empty.
-version: "26.6.2"
+version: "26.7.0"
 
 # ---------------------------------------------------------------------------
 # Resource metadata
@@ -77,7 +77,7 @@ imagePullSecrets: []
 # ---------------------------------------------------------------------------
 replicas: 1
 
-# Container resources. Defaults match the upstream manifest at version 26.6.1
+# Container resources. Defaults match the upstream manifest at version 26.7.0
 # (request == limit on memory, generous CPU bursting).
 resources:
   requests:

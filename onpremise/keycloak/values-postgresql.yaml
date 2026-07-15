@@ -12,7 +12,7 @@
 # Topology: single-replica with `Recreate` update strategy. PVC RWO. Suits dev /
 # staging / single-replica installs and legacy raw-YAML migrations (use
 # `fullnameOverride` + `existingClaim` + `existingSecret` for in-place adoption).
-# For HA prefer an external managed DB (RDS
+# For HA prefer an external managed DB (RDS / CloudSQL / Patroni) — out of scope.
 #
 # Extensibility: every resource has a `specExtra` / `podTemplateExtra` escape
 # hatch for fields not surfaced in this file. `kubernetesExtra` lets you render

@@ -139,6 +139,35 @@ runners:
         poll_timeout = 600
         # Allow graceful pod termination instead of immediate delete (reduces etcd churn).
         cleanup_grace_period_seconds = 30
+        # Resource requests/limits for the transient CI job pods. These keys belong to
+        # the [runners.kubernetes] table, so they MUST stay above the node_selector /
+        # node_tolerations sub-table headers below (TOML would otherwise bind them to the
+        # last-opened sub-table). Sized from the 7d Prometheus peaks on the FIXED single
+        # ci-build node k8s-compute-04 (~14.7Gi/3.4cpu allocatable, no autoscale):
+        #   build peak ~2.65Gi mem / 0.69 cpu, helper peak ~242Mi, observed peak
+        #   concurrency ~9-10 across the 3 controller replicas but with only ~5.6Gi total
+        #   at that moment (many light jobs, rarely a heavy build). memory_request=1Gi lets
+        #   all ~9 slots schedule (9Gi < 14.7Gi) while the real footprint leaves ample
+        #   headroom; memory_limit=3.5Gi caps a heavy build above its 2.65Gi peak.
+        #   cpu_request=300m matches the observed per-pod average so CPU does not throttle
+        #   scheduling on the 3.4-core node.
+        cpu_request = "300m"
+        cpu_limit = "2"
+        memory_request = "1Gi"
+        memory_limit = "3.5Gi"
+        helper_cpu_request = "100m"
+        helper_cpu_limit = "500m"
+        helper_memory_request = "128Mi"
+        helper_memory_limit = "512Mi"
+        # service_* applies ONLY to jobs that declare a `services:` container — here the
+        # docker:dind of the gitlab-toolchain-images build_custom (buildx multi-arch) job.
+        # No dind job ran in the 7d sample window, so these are a defensive ESTIMATE, not a
+        # measurement: they cap the one uncapped OOM vector on this fixed node (an unbounded
+        # dind builder). Revisit with `kubectl top pod` the next time a build_custom job runs.
+        service_cpu_request = "250m"
+        service_cpu_limit = "2"
+        service_memory_request = "512Mi"
+        service_memory_limit = "3Gi"
         # Pin build pods to k8s-compute-04 (tainted with dedicated=ci-build:NoSchedule + labeled role=ci-build)
         # to isolate buildx/dind disk IO from compute-01/02/03. Deploy runners deliberately omit these so
         # the same NoSchedule taint keeps them on the other nodes.

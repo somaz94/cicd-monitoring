@@ -7,6 +7,15 @@ repositories:
   - name: harbor
     url: https://helm.goharbor.io
 
+# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
+# full rendered manifest, so 10 revisions of a large chart make helm's history query
+# return several MB in a single response and the kube-apiserver stream aborts
+# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
+# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
+# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+helmDefaults:
+  historyMax: 3
+
 releases:
   - name: harbor
     namespace: harbor

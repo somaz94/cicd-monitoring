@@ -9,7 +9,7 @@
 #
 # Environment overrides:
 #   HARBOR_URL              default: https://harbor.example.com
-#   HARBOR_IP               default: 192.168.1.55   (for --resolve bypass)
+#   HARBOR_IP               default: 192.0.2.55   (for --resolve bypass)
 #   HARBOR_ADMIN            default: admin
 #   HARBOR_ADMIN_PASSWORD   default: read from ../../values/dev.yaml (harbor-helm chart)
 #   HARBOR_NO_RESOLVE=1     skip --resolve (use OS DNS)
@@ -34,7 +34,7 @@ unset _SCRIPT_PATH
 VALUES_FILE="$SCRIPT_DIR/../../values/dev.yaml"
 
 HARBOR_URL="${HARBOR_URL:-https://harbor.example.com}"
-HARBOR_IP="${HARBOR_IP:-192.168.1.55}"
+HARBOR_IP="${HARBOR_IP:-192.0.2.55}"
 HARBOR_ADMIN="${HARBOR_ADMIN:-admin}"
 if [ -z "${HARBOR_ADMIN_PASSWORD:-}" ]; then
   if [ -f "$VALUES_FILE" ]; then

@@ -119,6 +119,13 @@ prometheus:
         cpu: 2000m
         memory: 4Gi
 
+    # Stamp every alert with the source cluster — alerts share the #infra-alerts Slack
+    # channel with the AWS prod cluster (kube-prometheus-stack-aws), and this label drives
+    # the [example-cluster] title prefix (dev-alertmanager.yaml). externalLabels attach only
+    # to alerts / remote_write, not to locally-stored series, so dashboards are unaffected.
+    externalLabels:
+      cluster: example-cluster
+
     # Retention period
     retention: 15d
 
@@ -139,10 +146,10 @@ prometheus:
         scrape_interval: 30s
         static_configs:
           - targets:
-              - "192.168.1.10:9100"  # server1
-              - "192.168.1.12:9100"  # server2
-              - "192.168.1.20:9100"  # server3
-              - "192.168.1.15:9100"  # server4
+              - "192.0.2.10:9100"  # server1
+              - "192.0.2.12:9100"  # server2
+              - "192.0.2.20:9100"  # server3
+              - "192.0.2.15:9100"  # server4
             labels:
               env: "physical"
               group: "on-premise"
@@ -151,7 +158,7 @@ prometheus:
         scrape_interval: 30s
         static_configs:
           - targets:
-              - "192.168.1.60:9100"  # gitlab
+              - "192.0.2.60:9100"  # gitlab
             labels:
               env: "vm"
               group: "on-premise"
@@ -204,7 +211,7 @@ kubeEtcd:
   enabled: true
   # External etcd is a host systemd service, not a static pod — point endpoints at the node IP.
   endpoints:
-    - 192.168.1.17
+    - 192.0.2.17
   service:
     enabled: true
     # etcd does not expose a separate metrics port (no --listen-metrics-urls); scrape the client port (2379).

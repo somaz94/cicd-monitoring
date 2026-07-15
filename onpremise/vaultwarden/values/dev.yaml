@@ -26,7 +26,7 @@ fullnameOverride: "vaultwarden"
 #   2. SSRF guard (RFC1918 block) — set ICON_BLACKLIST_NON_GLOBAL_IPS=false,
 #      same drop. SSRF would reject in CustomDnsResolver::post_resolve, but
 #      our connection reaches TCP/TLS handshake.
-#   3. Keycloak proxy header
+#   3. Keycloak proxy header / NGF reachability — NGF nginx + Keycloak
 #      access log show ZERO trace of vaultwarden's discovery attempt.
 #      Server is innocent; vaultwarden's H2 client aborts the connection
 #      AFTER ALPN h2 negotiation but BEFORE sending any HTTP/2 frame.
@@ -48,7 +48,7 @@ fullnameOverride: "vaultwarden"
 #      extraVolumes/extraVolumeMounts) — required for self-signed
 #      auth.example.com until cert-manager / Cloudflare DNS delegation lands.
 #   5. (optional) Set iconBlacklistNonGlobalIps: "false" — required because
-#      auth.example.com resolves to 192.168.1.55 (NGF MetalLB, RFC1918).
+#      auth.example.com resolves to 192.0.2.55 (NGF MetalLB, RFC1918).
 #   6. helmfile -f security/vaultwarden/helmfile.yaml apply
 # =============================================================================
 

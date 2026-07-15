@@ -4,7 +4,7 @@ Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/res
 
 `--env NAME` accepts any DNS-label-ish prefix — `qa`, `dev`, `stg`, `prod`, etc. The index / transform names resolve to `<NAME>-example-project-game` / `<NAME>-example-project-game-user-cohort`.
 
-> **Scope (2026-05-22 cleanup)** — the script only automates the **ES-side reset** (transform stop
+> **Scope (2026-05-22 cleanup)** — the script only automates the **ES-side reset** (transform stop / cohort+raw DELETE / fluent-bit DaemonSet rollout restart / transform start / verify). The legacy "scenario A" macro that wiped fluent-bit checkpoint + fluentd buffer was removed — its two foundational assumptions (Deployment + RWO PVC fluent-bit; "wipe-all-envs OK") both became stale (DaemonSet + hostPath migration on 2026-05-19; per-env QA-only intent in operations). If you really need to drop in-flight fluent-bit / fluentd state, see [Manual cleanup — fluent-bit / fluentd state](#manual-cleanup--fluent-bit--fluentd-state) below.
 
 <br/>
 
@@ -114,7 +114,7 @@ cd observability/logging/elasticsearch/scripts
 
 <br/>
 
-### Verification (Manual
+### Verification (Manual / Script — same)
 
 ```bash
 # 1. New UUIDs + raw docs.count > 0
@@ -197,7 +197,7 @@ Automation is intentionally omitted — fluent-bit DaemonSet (hostPath) and flue
 </buffer>
 ```
 
-`persistence.enabled: true`
+`persistence.enabled: true` / 10Gi / RWO / nfs-client-server — the buffer lives on PVC `fluentd-buffer-fluentd-0`.
 
 > **Warning**: this wipe discards every env's buffered chunks at once — typically 0 to a few seconds of in-flight data per env when fluentd is healthy. For an env-scoped wipe, dig into the `elasticsearch-buffers/` filenames (chunks are tagged) or wait for the buffer to drain naturally.
 

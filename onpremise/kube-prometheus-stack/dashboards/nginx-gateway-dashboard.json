@@ -288,7 +288,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "Active Connections by State",
-      "description": "nginx_http_connection_count_connections (gauge) grouped by nginx_connections_outcome = ACTIVE
+      "description": "nginx_http_connection_count_connections (gauge) grouped by nginx_connections_outcome = ACTIVE / READING / WRITING / WAITING. Summed across pods — split by pod via the $pod filter if needed.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
       "fieldConfig": { "defaults": { "unit": "short" } },

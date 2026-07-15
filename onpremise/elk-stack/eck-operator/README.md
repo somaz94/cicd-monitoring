@@ -4,6 +4,8 @@ Manages the [ECK (Elastic Cloud on Kubernetes) Operator](https://www.elastic.co/
 
 ECK Operator is the official operator from Elastic that lets you run Elasticsearch, Kibana, APM Server, Beats, and related products declaratively through CRDs.
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/eck-operator.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Directory Structure

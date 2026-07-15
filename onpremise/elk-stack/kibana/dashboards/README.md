@@ -12,7 +12,7 @@ dashboards/
 ├── export.sh                                   # live Kibana → repo NDJSON (capture edits, per Space)
 ├── setup-spaces.sh                             # Kibana Space bootstrap (default=KST + cst=CST)
 ├── manifest.txt                                # Managed dashboards (id + filename)
-├── dev-pm-retention-dashboard.ndjson           # "DEV — Game User Matric & Retention" (7 Vega + 3 Lens + 1 Dashboard)
+├── dev-pm-retention-dashboard.ndjson           # "DEV — Game User Matric & Retention" (9 Vega + 3 Lens + 1 Dashboard)
 ├── qa-pm-retention-dashboard.ndjson            # "QA — Game User Matric & Retention" (same structure, qa-example-project-game indices)
 ├── example-project-game-data-view.ndjson          # Data view bootstrap (usually not imported, holds 4 data views — dev raw / dev cohort / qa raw / qa cohort)
 ├── README.md
@@ -33,7 +33,7 @@ Three scripts, distinct roles:
 | **DEV** | `dev-pm-retention-dashboard` | DEV — Game User Matric & Retention | `dev-example-project-game` | `dev-example-project-game-user-cohort` | `dev-pm-retention-dashboard.ndjson` |
 | **QA** | `qa-pm-retention-dashboard` | QA — Game User Matric & Retention | `qa-example-project-game` | `qa-example-project-game-user-cohort` | `qa-pm-retention-dashboard.ndjson` |
 
-Both dashboards share the same structure (10 panels = 7 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
+Both dashboards share the same structure (12 panels = 9 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -48,13 +48,25 @@ Both dashboards share the same structure (10 panels = 7 Vega + 3 Lens). Env-spec
 - **CST Space** dashboard URLs use auto-generated UUIDs (Kibana 9.x single-namespace constraint — the same slug ID cannot live in two Spaces). Content is 100% identical to the Default Space; only the display timezone differs (`Asia/Shanghai`).
 - Since the UUIDs change if the cluster is rebuilt, prefer guiding users via **top-left Space switcher → CST → Dashboards → "DEV — …"** rather than pinning the UUID URLs in external docs.
 
-10-panel analyst-grade dashboard. Default time range `now-30d ~ now` (`timeRestore: true`).
+12-panel analyst-grade dashboard. Default time range `now-30d ~ now` (`timeRestore: true`).
+
+- `dev-example-project-game` (raw) — Kibana data view `dev-example-project-game-logs` (id `b50c59ea-…0fe`)
+- `dev-example-project-game-user-cohort` (ES Transform output) — data view `dev-example-project-game-user-cohort-logs` (id `410571c2-…b8e2`, time field `first_seen`, runtime field `cohort_date`)
+
+| Row | Panel | Type | Data source |
+|---|---|---|---|
+| 1 | NU (Today) / NU (Last 7d) / NU (Last 30d) | Vega-Lite KPI ×3 | raw |
+| 2 | DAU / WAU / MAU | Vega-Lite KPI ×3 | raw |
+| 3 | NU (Total) / NU Trend (30d) / DAU Trend | KPI ×1 + Lens lnsXY ×2 | raw |
+| 4 | Average Retention Curve (D+1..D+30) | Vega (full) | cohort |
+| 5 | Daily Cohort Retention (table) | Lens lnsDatatable | cohort |
+| 6 | Chapter Distribution (per user latest) | Vega | cohort |
 
 Per-panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog.md). For prod migration / automation / compatibility checks see [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
 
 Saved-object ID pattern (per-env prefix):
 - Dashboard: `<env>-pm-retention-dashboard` (slug)
-- Visualization (Vega) ×7: `<env>-pm-retention-{nu-today,nu-7d,nu-30d,dau-today,wau-7d,mau-30d,curve}`
+- Visualization (Vega) ×9: `<env>-pm-retention-{nu-today,nu-7d,nu-30d,dau-today,wau-7d,mau-30d,nu-total,curve,chapter-dist}`
 - Lens ×3: `<env>-pm-retention-{nu-trend,dau-trend,daily-table}`
 - DEV data view (raw):    `b50c59ea-73c1-4feb-8b42-d642248c8647` — `dev-example-project-game`
 - DEV data view (cohort): `410571c2-5b86-4ba9-a02e-418671d0b8e2` — `dev-example-project-game-user-cohort` (time field `first_seen`)
@@ -83,7 +95,7 @@ We present KST and CST(UTC+8) as two views via a **Kibana Space split**.
 
 Users toggle via the Kibana Space switcher (top-left) — same NDJSON, different display timezone. Both Spaces share the same ES indices, so there is no data duplication.
 
-**Model — single NDJSON, import into both**: Kibana 9.x treats dashboard
+**Model — single NDJSON, import into both**: Kibana 9.x treats dashboard / lens / visualization / data view as single-namespace objects, so the same saved-object id cannot exist in two Spaces. Therefore `apply.sh --space-id default --space-id cst` imports the same NDJSON into both Spaces. **The repo NDJSON is the single source of truth** — the dashboards are content-identical, but cst Space objects receive auto-generated UUIDs (so URLs in cst are not slug-based — accepted trade-off).
 
 > ⚠️ Edit flow: always edit dashboards in the default Space → `./export.sh` to capture → `./apply.sh --space-id default --space-id cst` to redeploy to both. Editing directly in the cst Space will diverge the two and should be avoided.
 
@@ -102,7 +114,7 @@ Users toggle via the Kibana Space switcher (top-left) — same NDJSON, different
 ./apply.sh --space-id default --space-id cst --space-id jst       # routine sync going forward
 ```
 
-For a fuller list of IANA timezones (Asia/Tokyo
+For a fuller list of IANA timezones (Asia/Tokyo / America/Los_Angeles / America/New_York / Europe/Berlin / UTC etc.), operational mechanics, live URLs, and verification steps, see → [docs/timezone-toggle-en.md](../docs/timezone-toggle.md).
 
 <br/>
 
@@ -160,7 +172,7 @@ git diff -- .                                     # review changes
 git add -- *.ndjson && git commit
 ```
 
-`export.sh` calls Kibana with `includeReferencesDeep=true`, so every visualization
+`export.sh` calls Kibana with `includeReferencesDeep=true`, so every visualization / lens / data view referenced by the dashboard is captured. The NDJSON output is sorted `visualization → lens → dashboard` for stable diffs.
 
 > ⚠️ `export.sh` **overwrites** the NDJSON with whatever is live in Kibana right now. Inspect `git diff` first if you have unmerged local NDJSON edits.
 >
@@ -267,7 +279,7 @@ The end-to-end guide (with the qa-example-project-game validated procedure) live
 
 ## Roadmap
 
-- **Retention horizons extension**: D-1 through D-30 are currently stored as boolean fields in the cohort index. For D-60
+- **Retention horizons extension**: D-1 through D-30 are computed by the cohort data view's runtime fields `d1_live..d30_live` (the transform only stores the `active_dates` atomic fact). For D-60 / D-90, add one `dN_live` runtime field on the cohort data view (the transform stays untouched), then extend the Curve Vega N range.
 - **User LTV / billing metrics**: once payment events are standardized in the raw index, add mappings + a separate cohort or Lens.
 - **State-driven build script**: today, new-environment rollout is NDJSON substitution. The [build-pm-retention.py](../docs/pm-retention-dashboard-template.md#automation-strategy) pattern documented in the template guide codifies it.
 

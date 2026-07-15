@@ -22,8 +22,8 @@ persistence:
 
 # Chart-managed credential Secret. The chart renders a Secret named `keycloak-postgresql` (= fullname) holding the credentials below.
 # secretKeys override changes the keys inside the Secret from POSTGRES_USER / POSTGRES_PASSWORD to username / password.
-# Why: Keycloak CR's default secret key names are `username`
-# Container env names (POSTGRES_USER
+# Why: Keycloak CR's default secret key names are `username` / `password`. Sharing the same Secret with matching keys lets the Keycloak CR reference it directly via existingSecret — no external manifest needed.
+# Container env names (POSTGRES_USER / POSTGRES_PASSWORD) stay the same — only the secretKeyRef.key lookup changes.
 auth:
   user: keycloak
   password: exampleAdminPassword

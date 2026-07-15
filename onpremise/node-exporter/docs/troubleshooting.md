@@ -58,7 +58,7 @@ python3.10 --version
 **Specify Python path in inventory.ini:**
 
 ```ini
-server1 ansible_host=192.168.1.10 ansible_python_interpreter=/usr/bin/python3.10
+server1 ansible_host=192.0.2.10 ansible_python_interpreter=/usr/bin/python3.10
 ```
 
 <br/>
@@ -109,20 +109,45 @@ ansible-playbook -i inventory.ini playbook.yml -e "node_exporter_port=9101"
 
 ## SSH Connection Failure
 
+### Symptom
+
+```
+server1 | UNREACHABLE! => {
+    "msg": "Failed to connect to the host via ssh"
+}
+```
+
 ### Solution
 
 ```bash
-ssh -i ~/.ssh/id_rsa_example example@192.168.1.10  # Test directly
+ssh -i ~/.ssh/id_rsa_example example@192.0.2.10  # Test directly
 chmod 600 ~/.ssh/id_rsa_example                     # Fix key permissions
-ssh-keygen -R 192.168.1.10                           # Reset host key
+ssh-keygen -R 192.0.2.10                           # Reset host key
 ```
 
 <br/>
 
 ## Python Interpreter Warning
 
-Warning only, no functional impact. Suppress by specifying in inventory:
+### Symptom
+
+```
+[WARNING]: Host 'server2' is using the discovered Python interpreter at '/usr/bin/python3.12',
+but future installation of another Python interpreter could cause a different interpreter to be discovered.
+```
+
+### Solution
+
+Warning only, no functional impact. To suppress it, specify the interpreter in inventory:
 
 ```ini
-server1 ansible_host=192.168.1.10 ansible_python_interpreter=/usr/bin/python3.10
+[node_exporter:vars]
+ansible_python_interpreter=/usr/bin/python3
+```
+
+Or specify per server:
+
+```ini
+server1 ansible_host=192.0.2.10 ansible_python_interpreter=/usr/bin/python3.10
+server2 ansible_host=192.0.2.12 ansible_python_interpreter=/usr/bin/python3.12
 ```

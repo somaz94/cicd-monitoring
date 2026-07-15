@@ -2,7 +2,7 @@
 
 Stores definitions of **continuous pivot transforms** that materialize analytics-friendly indices on top of raw log indices like `dev-example-project-game`. Once registered, ES incrementally updates these indices automatically.
 
-Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices (`dev-pm-retention-dashboard`
+Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices (`dev-pm-retention-dashboard` / `qa-pm-retention-dashboard`). For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects-en.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects.md#two-flavours-of-applysh-dont-confuse-them).
 
 <br/>
 
@@ -65,7 +65,7 @@ Place a sibling **`<id>.mapping.json`** next to each transform definition (`<id>
 - Dest index **absent** → PUT mapping → PUT transform + start.
 - Dest index **present** → skip mapping PUT (ES does not allow live property-type changes). To actually replace the mapping use the workflow: `scripts/restart-transform.sh <id> --stop-only` → `DELETE /<dest-index>` → `apply.sh --file <id>.json --replace`.
 
-**File shape** (identical across dev
+**File shape** (identical across dev / qa / prod — the same template applies):
 
 ```json
 {
@@ -227,8 +227,8 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 
 ## Design choices
 
-- **`params.tz` indirection**: every day-boundary calculation uses `scripted_metric`
-- **D-N retention horizons**: stored as `params.offset_days` per scripted_metric. The current definition covers D-1 … D-30. To add D-60 / D-90, copy any `dN_returning` block and change `offset_days`.
+- **`params.tz` indirection**: every day-boundary calculation uses `scripted_metric` / `script` `params.tz` (default `Asia/Seoul`). To change timezone, edit the `params.tz` values and run `./apply.sh --replace` — no code changes elsewhere. Full timezone-change procedure in [kibana/docs/pm-retention-dashboard-template-en.md "Timezone change procedure"](../../kibana/docs/pm-retention-dashboard-template.md#timezone-change-procedure).
+- **D-N retention horizons**: computed at query time by the cohort data view runtime fields `d1_live..d30_live` (from `active_dates` + `first_seen`, with a maturity guard excluding not-yet-due horizons), not the transform. D-1 … D-30 are defined today; to add D-60 / D-90, add one runtime field on the cohort data view — the transform is untouched.
 - **Signup-anchored cohort**: D-N counts only users with a `/users/create` event (anchored via `params.path`). Users without a signup event return `null`, so ES `avg()` excludes them automatically.
 - **Source query filter**: only docs with `data.userId` are considered (`source.query.filter.exists`). Prevents transform failures on records that lack the field.
 - **Frequency 5m**: matches the live cluster (was `1h` historically). Tighten further only when finer granularity is needed; widen if cluster load becomes an issue.
@@ -240,7 +240,7 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 | Symptom | Cause / fix |
 |---|---|
 | `script_exception` from `_preview` | Painless syntax error in scripted_metric. Check that `reduce_script` handles the `states` (list of combine outputs) properly. |
-| state `failed` | Check `_stats` for `node`
+| state `failed` | Check `_stats` for `node` / `reason`. Common case: conflicting mapping in the dest index — `DELETE dev-example-project-game-user-cohort` then `--replace`. |
 | Dest index stays empty | Either `sync.time.field` (`@timestamp`) is missing/typed differently in source, or `delay` is too long for anything to be visible yet. |
 | Edited the JSON but no effect | Transforms are immutable — use `./apply.sh --replace`. |
 | Backfill is slow | Increase `settings.max_page_search_size` (default 500). Watch cluster load. |

@@ -8,6 +8,15 @@
 # Chart versions pinned. Bump via ./upgrade.sh (external-oci template, manages keycloak-cr only;
 # postgresql is bumped via the db-redis cycle).
 
+# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
+# full rendered manifest, so 10 revisions of a large chart make helm's history query
+# return several MB in a single response and the kube-apiserver stream aborts
+# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
+# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
+# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+helmDefaults:
+  historyMax: 3
+
 releases:
   # PostgreSQL — single-node, NFS PVC, dedicated to Keycloak.
   # `keycloak-postgresql` is the chart fullnameOverride that determines the Service hostname.
@@ -23,7 +32,7 @@ releases:
   - name: keycloak
     namespace: keycloak
     chart: oci://ghcr.io/somaz94/charts/keycloak-cr
-    version: "0.1.1"
+    version: "0.1.2"
     needs:
       - keycloak/keycloak-postgresql
     values:

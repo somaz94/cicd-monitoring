@@ -21,7 +21,8 @@ argo-cd/
 ├── docs/
 │   ├── ghost-alarm-incident-2026-04-23.md      # 2026-04-23 ghost-alarm incident analysis + Notification rules design
 │   ├── ghost-alarm-followup-prompt.md          # Prompt template for asking Claude when similar symptoms recur
-│   └── notification-rule-change-playbook.md    # Playbook for minimizing resends when changing notification rules
+│   ├── notification-rule-change-playbook.md    # Playbook for minimizing resends when changing notification rules
+│   └── helm-release-history-bloat.md           # Recovery when helm release-history bloat breaks helmfile diff/apply
 ├── scripts/
 │   └── notify-rule-change.sh                   # Rule-change helper (check/pre/post/status)
 ├── README.md
@@ -34,9 +35,11 @@ argo-cd/
 
 | Topic | Document |
 |---|---|
+| Resource Tracking — background for the annotation method. Prevents immutable-selector conflict during app-of-apps adoption (zero-downtime prerequisite), greenfield vs adoption distinction, why it stays permanent, apply impact | [docs/argocd-resource-tracking-en.md](docs/argocd-resource-tracking.md) |
 | SSO — Keycloak OIDC migration (Phase 6, 2026-04-29). dex.config replacement / argocd-https-redirect HTTPRoute / 5 pitfalls lessons learned | [security/keycloak/docs/argocd-migration-en.md](../keycloak/docs/argocd-migration.md) |
 | 2026-04-23 ghost-alarm incident analysis, Notification rules (Option A/B) design, Alertmanager role split | [docs/ghost-alarm-incident-2026-04-23-en.md](docs/ghost-alarm-incident-2026-04-23.md) |
 | Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook-en.md](docs/notification-rule-change-playbook.md) |
+| Helm release-history bloat (~700KB × 10 revisions) breaking `helmfile diff` / `apply` with stream error / timeout — root cause, recovery, and `historyMax` prevention | [docs/helm-release-history-bloat-en.md](docs/helm-release-history-bloat.md) |
 | Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt-en.md](docs/ghost-alarm-followup-prompt.md) |
 | Upstream issue submission template (English) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template.md) |
 

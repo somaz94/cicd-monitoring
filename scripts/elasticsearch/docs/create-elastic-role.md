@@ -1,6 +1,6 @@
 # Elasticsearch role creation guide
 
-Operations doc for [`../scripts/create-elastic-role.sh`](../scripts/create-elastic-role.sh). Idempotent `PUT /_security/role/<name>` via the Elasticsearch Security API. Defaults compose a safe read-only role, but flags let the same script handle read-write / Kibana-only / index-restricted / Dev-Tools-included roles too.
+Operations doc for [`../create-elastic-role.sh`](../create-elastic-role.sh). Idempotent `PUT /_security/role/<name>` via the Elasticsearch Security API. Defaults compose a safe read-only role, but flags let the same script handle read-write / Kibana-only / index-restricted / Dev-Tools-included roles too.
 
 <br/>
 
@@ -113,7 +113,7 @@ ES_SVC=localhost   ES_PORT=9200   ES_SCHEME=https
 ES_SECRET=elasticsearch-es-elastic-user   ES_USER=elastic
 ```
 
-These defaults are defined in [`../scripts/lib/es-common.sh`](../scripts/lib/es-common.sh) and shared across the other scripts in this directory.
+These defaults are defined in [`scripts/lib/es-common.sh`](../../lib/es-common.sh) and shared across the sibling ES scripts in this directory.
 
 <br/>
 
@@ -194,7 +194,7 @@ EOF
 ## Related documentation
 
 - [create-kibana-readonly-user-en.md](create-kibana-readonly-user.md) — guide for attaching a role made by this script to a user account.
-- [scripts/README-en.md](../scripts/README.md) — directory index.
-- [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
+- [README-en.md](../README.md) — directory index.
+- [shell-script-conventions](../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
 - [Elasticsearch Security API — Create or update role](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-api-put-role.html)
 - [Kibana — Built-in role privileges](https://www.elastic.co/guide/en/kibana/current/kibana-privileges.html)

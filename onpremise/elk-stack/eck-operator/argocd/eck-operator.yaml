@@ -1,0 +1,28 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# The generator emits one Application named `infra-<releaseName>`.
+#
+# Phase 3-4 target. Adopts the live helmfile release 'eck-operator' (elastic-system ns, chart 3.4.0)
+# in place. The chart manages the ECK OPERATOR (StatefulSet elastic-operator) PLUS 12 CRDs and a
+# ValidatingWebhookConfiguration. releaseName=eck-operator keeps app.kubernetes.io/instance=eck-operator,
+# so the StatefulSet selector renders identical to live -> no recreate.
+#
+# Adoption notes (verify in the canonical adopt-diff before flipping autoSync):
+#  - The webhook caBundle is injected by the operator at runtime; the chart omits it. ServerSideApply
+#    (set on every generated App) means ArgoCD does not own that field, so the injected caBundle is
+#    preserved (no removal) and ServerSideDiff should not flag it.
+#  - The 12 CRDs (managed-by=Helm, instance=eck-operator) get a tracking-id annotation on adoption;
+#    CRD spec is unchanged at the same chart version.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+component: eck-operator                         # -> app-name label on the generated App
+releaseName: eck-operator                       # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: elastic-system                       # already helmfile-managed; do not contest ownership
+syncWave: "4"                                   # observability tier (mirrors helmfile deploy wave 4)
+chart:
+  repoURL: https://helm.elastic.co
+  name: eck-operator
+  version: "3.4.1"
+valueFile: observability/logging/eck-operator/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                          # 'elastic-system' already exists
+autoSync: true                                  # adopt-diff verified clean (tracking-id only; STS/12 CRD/webhook caBundle unchanged via ServerSideApply, ServiceMonitor created) -> auto-sync (prune+selfHeal) on

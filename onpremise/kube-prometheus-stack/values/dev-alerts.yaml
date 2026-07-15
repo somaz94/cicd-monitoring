@@ -16,6 +16,14 @@
 # Default Rules — disable built-in alerts that duplicate custom rules
 # -----------------------------------------------------------------------------
 defaultRules:
+  # DO NOT add `additionalRuleLabels: {cluster: ...}` here. It rewrites the cluster label on the
+  # built-in RECORDING rules too, and the apiserver-availability *:increase30d rules then collapse
+  # historical cluster="" series into the new value over their 30d lookback -> "vector contains
+  # metrics with the same labelset after applying rule labels" (PrometheusRuleFailures, critical).
+  # The [cluster] Slack title prefix already comes from prometheusSpec.externalLabels — enough to
+  # tell clusters apart in the shared #infra-alerts channel. The alert description body may show an
+  # empty "on cluster ." (an upstream default-rule annotation quirk); that cosmetic gap is accepted.
+  # (Reverted 2026-07-07 after additionalRuleLabels broke recording-rule evaluation.)
   disabled:
     # Pod lifecycle — replaced by custom PodCrashLooping (critical) / PodNotReady
     KubePodCrashLooping: true
@@ -57,7 +65,7 @@ additionalPrometheusRulesMap:
           # Memory usage > 85% for 5 minutes
           # Calculates: (total - available) / total * 100
           - alert: HighMemoryUsage
-            expr: (1 - (node_memory_AvailableBytes / node_memory_MemTotalBytes)) * 100 > 85
+            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
             for: 5m
             labels:
               severity: warning
@@ -277,10 +285,19 @@ additionalPrometheusRulesMap:
           # The `time() - timestamp(...) < 300` clause filters out stale series from
           # recently-deleted pods (pod restarts leave old instance IPs in Prometheus
           # for ~5 min with counter frozen, which would otherwise cause false firing).
+          #
+          # The `{dest_server!=""}` filter excludes the near-static empty-dest_server series:
+          # argocd_app_reconcile_count carries one series per destination, and a few transient
+          # reconciles land in dest_server="" while a newly-generated Application's destination is
+          # still resolving (e.g. when an ApplicationSet first creates apps). That series then
+          # freezes (count stays tiny) but keeps being scraped (fresh) — and since this expr is
+          # evaluated per-series with no aggregation, the frozen-but-fresh empty series would trip
+          # the alert (increase==0 AND fresh) even though the real per-cluster series keeps
+          # incrementing normally. Scoping to dest_server!="" watches only real cluster reconciles.
           - alert: ArgoCDControllerReconcileStuck
             expr: |
-              (increase(argocd_app_reconcile_count[30m]) == 0)
-              and ((time() - timestamp(argocd_app_reconcile_count)) < 300)
+              (increase(argocd_app_reconcile_count{dest_server!=""}[30m]) == 0)
+              and ((time() - timestamp(argocd_app_reconcile_count{dest_server!=""})) < 300)
             for: 10m
             labels:
               severity: critical

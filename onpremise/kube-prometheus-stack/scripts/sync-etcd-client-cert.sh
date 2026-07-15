@@ -18,7 +18,7 @@ set -euo pipefail
 # ============================================================
 
 SCRIPT_NAME="etcd Client Cert Sync"
-DEFAULT_NODE="192.168.1.17"
+DEFAULT_NODE="192.0.2.17"
 DEFAULT_SSH_USER="example"
 DEFAULT_NS="monitoring"
 DEFAULT_SECRET="etcd-client-cert"
@@ -55,7 +55,7 @@ Examples:
   $(basename "$0")
 
   # Different node / user
-  $(basename "$0") -H 192.168.1.18 -u ubuntu
+  $(basename "$0") -H 192.0.2.18 -u ubuntu
 
   # Render only — preview the Secret without applying
   $(basename "$0") --dry-run

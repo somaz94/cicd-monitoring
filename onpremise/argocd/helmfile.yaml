@@ -9,12 +9,21 @@ repositories:
   - name: dandydeveloper
     url: https://dandydeveloper.github.io/charts/
 
+# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
+# full rendered manifest, so 10 revisions of a large chart make helm's history query
+# return several MB in a single response and the kube-apiserver stream aborts
+# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
+# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
+# See docs/helm-release-history-bloat.md.
+helmDefaults:
+  historyMax: 3
+
 releases:
   - name: argocd
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 9.5.21
+    version: 10.1.3
     values:
       - values/dev.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/dev-server.yaml        # controller, dex, server, repoServer, applicationSet

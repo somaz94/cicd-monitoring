@@ -99,7 +99,7 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
 | Variable | Default | Description |
 | --- | --- | --- |
 | `HARBOR_URL` | `https://harbor.example.com` | Harbor base URL |
-| `HARBOR_IP` | `192.168.1.55` | Target IP for `--resolve` (ingress LoadBalancer) |
+| `HARBOR_IP` | `192.0.2.55` | Target IP for `--resolve` (ingress LoadBalancer) |
 | `HARBOR_ADMIN` | `admin` | Admin username |
 | `HARBOR_ADMIN_PASSWORD` | Auto-extracted from `../../../cicd/harbor-helm/values/dev.yaml` (`harborAdminPassword`) | Admin password |
 | `HARBOR_OIDC_CLIENT_SECRET` | unset | Env replacement for `set-oidc --client-secret` (avoids CLI history exposure) |

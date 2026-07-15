@@ -1,0 +1,42 @@
+# Sealed Secrets controller install via helmfile, consuming the upstream
+# bitnami/sealed-secrets chart (https://github.com/bitnami/sealed-secrets).
+#
+# The controller owns the cluster's asymmetric key pair: a public cert (used by the
+# `kubeseal` CLI to encrypt) and a private key (used in-cluster to decrypt). Operators
+# commit only the encrypted `SealedSecret` CR to git; the controller materialises the
+# plain `Secret` in-cluster on reconcile. This lets registry credentials — e.g. the
+# Harbor robot dockerconfig consumed by the argocd-applicationset repo — live in git
+# without plaintext exposure.
+#
+# NOTE: the controller private key is the single decryption root. Back it up out of
+# band (see README "Key backup") — losing it makes every committed SealedSecret
+# permanently undecryptable.
+#
+# Chart version pinned. Bump via ./upgrade.py after verifying the new release.
+
+repositories:
+  - name: sealed-secrets
+    url: https://bitnami.github.io/sealed-secrets
+
+# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
+# full rendered manifest, so 10 revisions of a large chart make helm's history query
+# return several MB in a single response and the kube-apiserver stream aborts
+# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
+# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
+# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+helmDefaults:
+  historyMax: 3
+
+releases:
+  - name: sealed-secrets
+    namespace: sealed-secrets
+    createNamespace: true
+    chart: sealed-secrets/sealed-secrets
+    # Chart version reference (keep in sync with upgrade.py output).
+    version: 2.19.1
+    # wait for the controller Deployment to be Ready so the SealedSecret CRD and the
+    # signing key are available before any downstream `kubeseal` / SealedSecret apply.
+    wait: true
+    timeout: 300
+    values:
+      - values/dev.yaml

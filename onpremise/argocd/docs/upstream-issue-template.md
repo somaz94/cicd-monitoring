@@ -61,7 +61,7 @@ Attach `/tmp/argocd-goroutine-summary-*.txt` to the GitHub issue (the `debug=1` 
 ```markdown
 ### Describe the bug
 
-On Argo CD **v3.3.7** (helm chart `argo-cd` 9.5.2), the `application-controller` StatefulSet silently stops processing its reconcile queue while the pod remains `Running` with healthy probes. The internal `Goroutines` counter (visible in the 10-minute stats log line) climbs past **1000** and plateaus (observed: `Goroutines=1446`), with memory slightly decreasing over time — indicative of leaked
+On Argo CD **v3.3.7** (helm chart `argo-cd` 9.5.2), the `application-controller` StatefulSet silently stops processing its reconcile queue while the pod remains `Running` with healthy probes. The internal `Goroutines` counter (visible in the 10-minute stats log line) climbs past **1000** and plateaus (observed: `Goroutines=1446`), with memory slightly decreasing over time — indicative of leaked / parked goroutines rather than active work. Only `kubectl rollout restart statefulset/argocd-application-controller` recovers it. The same pattern recurs within 10–60 minutes after each recovery.
 
 ### To reproduce
 
@@ -208,3 +208,13 @@ Ask Claude: _"please submit this issue using `gh issue create`"_ — will be don
 1. Link the new issue number back to this repo by adding a mention in `cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md` § Follow-up investigation tasks.
 2. Subscribe to the issue for updates.
 3. If maintainers ask for additional data (timing correlation, specific pprof profiles), the infrastructure is ready via the `pprof` endpoint enabled in `values/dev-server.yaml`.
+
+<br/>
+
+## Reference — 2026-04-23 submission history
+
+- **Issue number:** [#27516](https://github.com/argoproj/argo-cd/issues/27516)
+- **Title:** application-controller reconcile queue silently halts with goroutines climbing to 1000+ after settings reload on v3.3.7
+- **Submitted:** 2026-04-23 KST
+- **Labels:** `bug`, `triage/pending`
+- **Status:** Awaiting triage right after submission. Upstream responses to this issue continue to accumulate in the incident doc.

@@ -215,7 +215,7 @@ CHART_DIR="$(cd ...)"
 - **CONFIG block** = marker 1 ~ marker 3 (all inclusive)
 - **body** = everything after marker 3
 
-An awk counter tracks markers to find precise boundaries.
+`scripts/python/upgrade_sync/extract.py` matches markers via regex to find precise boundaries.
 
 <br/>
 
@@ -347,7 +347,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 
 #### 7. [ansible-github-release.py](templates/ansible-github-release.py) — Ansible-deployed (non-Helm) component + GitHub Releases tracking (Python)
 
-- **Language**: Python (Phase 4
+- **Language**: Python (Phase 4 / MR-K7 .sh → .py flip). Body lives in `scripts/python/upgrade_core/ansible_github_release.py`; the canonical is a thin wrapper.
 
 - **Use**: Components **deployed via Ansible**, not Helm, where the version lives in a single YAML file (e.g. `group_vars/all.yml`) and the upstream source is a GitHub Releases feed. No `Chart.yaml` / `helmfile.yaml`.
 - **Flow**: 5 steps (current → fetch latest from GitHub → diff preview + major-bump warning → backup → update VERSION_FILE)
@@ -469,7 +469,7 @@ Each template uses the same upstream lookup logic its `upgrade.py` already relie
 
 | Template | Current version | Latest version |
 |---|---|---|
-| `external-standard`
+| `external-standard` / `external-with-image-tag` | `Chart.yaml` → `version` | `helm search repo <HELM_CHART>` (top entry) |
 | `local-with-templates` (helm mode) | `Chart.yaml` → `version` | `helm search repo <HELM_CHART>` (top entry) |
 | `local-with-templates` (git mode, `CHART_GIT_REPO` set) | `Chart.yaml` → `version` | Highest semver tag from `git ls-remote --tags` |
 | `local-cr-version` | `<VALUES_FILE>` → `<VERSION_KEY>` | `VERSION_SOURCE` feed (e.g. elastic-artifacts), respecting `MAJOR_PIN` |
@@ -901,9 +901,9 @@ When the existing 3 canonicals don't cover a new pattern.
 
 ### Example scenarios
 
-- **multi-release**: helmfile deploys multiple releases of the same chart in different namespaces and each needs separate version tracking → `external-multi-release.sh`
-- **CRD compatibility check**: charts that need CRD compatibility checks before upgrade → `external-with-crd-check.sh`
-- **bare local chart**: `local-with-templates` minus the custom template management → `local-bare.sh`
+- **multi-release**: helmfile deploys multiple releases of the same chart in different namespaces and each needs separate version tracking → `external-multi-release.py`
+- **CRD compatibility check**: charts that need CRD compatibility checks before upgrade → `external-with-crd-check.py`
+- **bare local chart**: `local-with-templates` minus the custom template management → `local-bare.py`
 
 ### Procedure
 
@@ -1130,7 +1130,7 @@ Probably forgot to add a branch to `detect_template()`. See [Adding a new canoni
 
 ## Compatibility
 
-- **Python 3.10+**: sync.py
+- **Python 3.10+**: sync.py / check-versions.py / manage-backups.py / `templates/*.py` / consumer `upgrade.py` all run on the helmfile-tools image's Python 3.12, Homebrew Mac (3.13+), and Linux distro Python 3.10+. No 3.11+ syntax (no `match`-only constructs, no `tomllib`-only paths, no `ExceptionGroup`). ✅
 - **stdlib only**: no third-party dependency on this layer (see `docs/python-script-conventions.md` for the formal dep-introduction procedure if it ever changes). ✅
 - **Wrapper `*.sh` portability** (`scripts/python/run.sh`, `scripts/setup-tools.sh`): ✅
   - `#!/usr/bin/env bash` shebang selects the first bash in `$PATH` — Homebrew bash 5.x on macOS, `/bin/bash` 5.x on most Linux. Works on bare macOS bash 3.2 too (wrappers avoid bash 4+ features).

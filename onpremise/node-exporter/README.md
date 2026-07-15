@@ -29,10 +29,21 @@ node-exporter/
 │   ├── uninstall.yml                    # Uninstall playbook
 │   └── templates/
 │       └── node_exporter.service.j2     # systemd unit template
+├── docs/
+│   ├── troubleshooting.md               # Troubleshooting guide
+│   └── troubleshooting-en.md
 ├── upgrade.py                           # Version-bump helper (managed by upgrade-sync)
 ├── README.md
 └── README-en.md
 ```
+
+<br/>
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Troubleshooting](docs/troubleshooting.md) | Resolving issues during Ansible deployment (Python version compatibility, port 9100 in use, SSH connection failure, Python interpreter warning) |
 
 <br/>
 
@@ -70,7 +81,7 @@ pip install ansible
 
 ```bash
 # Test SSH connection
-ssh -i ~/.ssh/id_rsa_example example@192.168.1.10
+ssh -i ~/.ssh/id_rsa_example example@192.0.2.10
 
 # Test Ansible connectivity
 cd ansible
@@ -85,10 +96,10 @@ Edit `ansible/inventory.ini`:
 
 ```ini
 [physical_servers]
-server5 ansible_host=192.168.1.30
+server5 ansible_host=192.0.2.30
 
 [virtual_machines]
-vm1 ansible_host=192.168.1.100
+vm1 ansible_host=192.0.2.100
 ```
 
 <br/>
@@ -159,7 +170,7 @@ ansible-playbook -i inventory.ini upgrade.yml --check
 Previous binary is backed up to `/usr/local/bin/node_exporter.bak`.
 
 ```bash
-ssh example@192.168.1.10
+ssh example@192.0.2.10
 sudo systemctl stop node_exporter
 sudo mv /usr/local/bin/node_exporter.bak /usr/local/bin/node_exporter
 sudo systemctl start node_exporter
@@ -179,7 +190,7 @@ Check latest version: [GitHub Releases](https://github.com/prometheus/node_expor
 
 ```bash
 # Check metrics endpoint
-curl http://192.168.1.10:9100/metrics | head
+curl http://192.0.2.10:9100/metrics | head
 
 # Check service status (on server)
 systemctl status node_exporter
@@ -201,8 +212,8 @@ prometheus:
       - job_name: "physical-servers"
         static_configs:
           - targets:
-              - "192.168.1.10:9100"
-              - "192.168.1.12:9100"
+              - "192.0.2.10:9100"
+              - "192.0.2.12:9100"
 ```
 
 Both `inventory.ini` and `dev.yaml` must be updated when adding new servers.

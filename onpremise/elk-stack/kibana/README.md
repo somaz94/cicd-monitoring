@@ -4,6 +4,8 @@ Manages an ECK-backed Kibana CR deployed via Helmfile. **The chart templates are
 
 Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace lets ECK auto-inject the connection settings (hosts, credentials, CA certificate).
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/kibana.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Prerequisites
@@ -60,7 +62,7 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | [HA Rolling Upgrade Verification](../elasticsearch/docs/ha-rolling-verification.md) | Zero-downtime rolling verification summary (ES + Kibana shared) |
 | [Dashboards (Saved Objects management)](dashboards/README.md) | Lens/Dashboard kept as NDJSON. `apply.sh` (repo→Kibana), `export.sh` (Kibana→repo) bidirectional sync |
 | [Dashboards Saved Objects workflow](docs/dashboards-saved-objects.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
-| [User Metrics Catalog](docs/user-metrics-catalog.md) | 10-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard`
+| [User Metrics Catalog](docs/user-metrics-catalog.md) | 12-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard` / `qa-pm-retention-dashboard`) — NU KPI ×4 (incl. Total) / DAU·WAU·MAU KPI ×3 / NU·DAU Trend / Retention Curve / Daily Cohort Table / Chapter Distribution. Includes small-sample caveat |
 | [pm-retention-dashboard — Prod templating guide](docs/pm-retention-dashboard-template.md) | Structure / data sources / template parameters / qa-example-project-game validation / automation strategy / prod migration recipe |
 | [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `apply.sh --space-id` mechanics, extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
 

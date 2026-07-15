@@ -1,6 +1,6 @@
 # Kibana Dashboards — Timezone Toggle (Space Split)
 
-Operational guide for presenting the same Kibana dashboards in both KST and CST(UTC+8) views, toggled by a single click on the top-left Space switcher. Bootstrap
+Operational guide for presenting the same Kibana dashboards in both KST and CST(UTC+8) views, toggled by a single click on the top-left Space switcher. Bootstrap / apply commands live in the [dashboards/README-en.md](../dashboards/README.md) "Per-Space timezone toggle" section — this document focuses on *mechanics, extensibility, and verification*.
 
 <br/>
 
@@ -47,7 +47,7 @@ URL after the switch
 | **DEV** | [/app/dashboards#/view/dev-pm-retention-dashboard](http://kibana.example.com/app/dashboards#/view/dev-pm-retention-dashboard?_g=(filters:!())) | [/s/cst/app/dashboards#/view/678a6e59-…](http://kibana.example.com/s/cst/app/dashboards#/view/678a6e59-8539-4781-8c7e-c2ddb72a1239?_g=(filters:!())) |
 | **QA** | [/app/dashboards#/view/qa-pm-retention-dashboard](http://kibana.example.com/app/dashboards#/view/qa-pm-retention-dashboard?_g=(filters:!())) | [/s/cst/app/dashboards#/view/d485f325-…](http://kibana.example.com/s/cst/app/dashboards#/view/d485f325-8222-45f3-b46d-3bef735da280?_g=(filters:!())) |
 
-> The CST dashboard UUIDs change whenever the cluster is rebuilt
+> The CST dashboard UUIDs change whenever the cluster is rebuilt / re-bootstrapped. Prefer pointing users at the **Space switcher → CST → Dashboards** path rather than pinning these UUID URLs in external docs/tickets.
 
 <br/>
 
@@ -110,7 +110,7 @@ cd observability/logging/kibana/dashboards
 
 ## 4. Model — single NDJSON, import into both Spaces
 
-In Kibana 9.x the `dashboard`
+In Kibana 9.x the `dashboard` / `lens` / `visualization` saved object types are **single-namespace**. That is, the same saved-object id cannot live in two Spaces — an ES-index-level constraint. Converting them to multi-namespace requires a Kibana plugin and is not feasible at the operator level (`POST /api/spaces/_update_objects_spaces` returns `"dashboard doesn't support multiple namespaces"`).
 
 So:
 

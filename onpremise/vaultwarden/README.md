@@ -14,6 +14,17 @@ Bitwarden-compatible password management server written in Rust
 
 <br/>
 
+## Guide Documents
+
+| Document | Description |
+|----------|-------------|
+| [Client Setup](docs/client-setup.md) | Chrome Extension, app setup |
+| [Account Management](docs/account-management.md) | User/org/permission management |
+| [Backup/Restore](docs/backup-restore.md) | Backup strategy and restore guide |
+| [TLS Setup](docs/tls-setup.md) | Self-signed certificate management |
+
+<br/>
+
 ## Chart Info
 
 | Item | Value |
@@ -112,17 +123,6 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     cert-manager.io/cluster-issuer: "cloudflare-issuer"
 ```
-
-<br/>
-
-## Guide Documents
-
-| Document | Description |
-|----------|-------------|
-| [Client Setup](docs/client-setup.md) | Chrome Extension, app setup |
-| [Account Management](docs/account-management.md) | User/org/permission management |
-| [Backup/Restore](docs/backup-restore.md) | Backup strategy and restore guide |
-| [TLS Setup](docs/tls-setup.md) | Self-signed certificate management |
 
 <br/>
 

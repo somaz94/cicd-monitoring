@@ -13,7 +13,7 @@ Managed as JSON files in `dashboards/` directory.
 | `mysql-dashboard.json` | MySQL (Connections, QPS, InnoDB, Slow Query) |
 | `redis-dashboard.json` | Redis (Memory, Commands, Keys, Hit Rate) |
 | `fluentbit-fluentd-dashboard.json` | Fluent Bit + Fluentd logging pipeline |
-| `nginx-gateway-dashboard.json` | NGINX Gateway Fabric — control-plane (reconcile loop, work queue, NGF event batch, resources) + data-plane (request rate, connection state, accept/handle rate, agent CPU
+| `nginx-gateway-dashboard.json` | NGINX Gateway Fabric — control-plane (reconcile loop, work queue, NGF event batch, resources) + data-plane (request rate, connection state, accept/handle rate, agent CPU / memory / network throughput; derived from the nginx-agent OTEL native export — no latency histograms or status-code labels) |
 | `argocd-dashboard.json` | ArgoCD (App sync, Git requests, Cluster status) |
 | `harbor-dashboard.json` | Harbor (Projects, Storage, HTTP requests) |
 | `control-plane-health-dashboard.json` | Control Plane Health — etcd / apiserver latency + GitLab Runner CI correlation (incident analysis; surfaced from the 2026-05-08 incident) |
@@ -109,8 +109,24 @@ Each dashboard has a unique `uid`. Re-importing with `overwrite: true` updates e
 
 ## Dashboard Backup/Export
 
+Export a dashboard you edited in Grafana to JSON and store it in Git:
+
 ```bash
+# Find the dashboard UID (visible in the URL: /d/<UID>/...)
+# Or list everything via the API:
+curl -s http://grafana.example.com/api/search \
+  -u admin:<password> | python3 -m json.tool
+
 # Export specific dashboard by UID
 curl -s http://grafana.example.com/api/dashboards/uid/<UID> \
   -u admin:<password> | python3 -m json.tool > dashboards/<filename>.json
 ```
+
+<br/>
+
+## Apply After Editing
+
+1. Edit the dashboard in the Grafana UI
+2. Copy **Settings** → **JSON Model**
+3. Save it to `dashboards/<filename>.json`
+4. Git commit

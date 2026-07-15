@@ -10,7 +10,7 @@
 #
 # Required CONFIG keys (per-chart):
 #   SCRIPT_NAME / HELM_REPO_NAME / HELM_REPO_URL / HELM_CHART
-#   CHANGELOG_URL
+#   CHANGELOG_URL / CHART_TYPE                — same as external-standard
 #   GITHUB_REPO                               — "owner/repo" for Releases API
 #   GITHUB_TAG_PREFIX                         — prefix stripped from tag
 #                                              (default "v"; "" for bare;

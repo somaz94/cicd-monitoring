@@ -4,6 +4,8 @@ Manages an ECK-backed Elasticsearch CR deployed via Helmfile. **The chart templa
 
 The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secret resources.
 
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/elasticsearch.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+
 <br/>
 
 ## Prerequisites
@@ -39,6 +41,7 @@ elasticsearch/
 ├── docs/
 │   ├── upgrade-rollback.md     # Upgrade/rollback guide (Korean, shared with Kibana)
 │   └── upgrade-rollback-en.md  # English mirror
+├── index-retention/            # Log-index document retention CronJob (README + manifests/cronjob.yaml)
 ├── README.md
 └── README-en.md
 ```
@@ -53,9 +56,10 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 |------|------|
 | [Upgrade / Rollback Guide](docs/upgrade-rollback.md) | Stack version bump, OCI chart pin bump, webhook-bypass rollback, incident playbooks. Shared with Kibana |
 | [HA Rolling Upgrade Verification](docs/ha-rolling-verification.md) | Zero-downtime rolling verification summary on HA topology (chart 0.1.1 / Stack 9.3.3) |
-| [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit
-| [Elasticsearch role creation](docs/create-elastic-role.md) | Operations guide for `scripts/create-elastic-role.sh`: idempotent PUT to /_security/role/<name>. Defaults compose a read-only role; flags switch to read-write / Kibana-only / index-restricted variants |
-| [Kibana / ES user creation](docs/create-kibana-readonly-user.md) | Operations guide for `scripts/create-kibana-readonly-user.sh`: PUT a user mapped to an existing role + verify authentication. Aborts in step 0 when the role is missing |
+| [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit / fluentd cleanup → transform start. Arbitrary env prefix (qa/dev/stg/...) |
+| [Log-index retention CronJob](index-retention/README.md) | Guide for the `es-index-retention` CronJob: daily 04:00 KST deletion of over-retention docs from the raw log indices (the cohort `/users/create` anchor is kept via a `must_not` guard). In-cluster automation counterpart of the manual `scripts/delete_old_indices.sh` |
+
+> Role / user management (`create-elastic-role.sh` / `create-kibana-readonly-user.sh`) is cluster-agnostic and moved to the shared [`scripts/elasticsearch/`](../../../scripts/elasticsearch); see its [`docs/`](../../../scripts/elasticsearch/docs) for the guides.
 
 <br/>
 
