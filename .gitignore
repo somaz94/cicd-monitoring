@@ -38,3 +38,9 @@ config/local_settings.py
 /dist
 /build
 
+# Ignore Helm dependency build artifacts. The upstream repo gitignores these at
+# its root, but the mirror is synced per-component so that root rule never
+# arrives. Both are re-creatable with `helm dep update`.
+Chart.lock
+**/charts/*.tgz
+
