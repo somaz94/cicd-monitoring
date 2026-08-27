@@ -56,10 +56,10 @@ Create a values file for each runner (e.g., `values/build.yaml`, `values/deploy.
 gitlabUrl: "https://your-gitlab-instance.com"
 
 ## New runner registration token (recommended)
-runnerToken: "your-runner-token"
+runnerToken: "<GITLAB_RUNNER_TOKEN>"
 
 ## Or legacy registration token (deprecated)
-# runnerRegistrationToken: "your-registration-token"
+# runnerRegistrationToken: "<GITLAB_RUNNER_TOKEN>"
 
 runners:
   tags: "build-image"

@@ -30,7 +30,7 @@ gitlabUrl: http://gitlab.example.com/
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
 ## ref: (we don't have docs for that yet, but we want to use an existing token)
 ##
-runnerToken: "glrt-xxxxxxxxxxxx"
+runnerToken: "<GITLAB_RUNNER_TOKEN>"
 
 ## Configure the maximum number of concurrent jobs
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
