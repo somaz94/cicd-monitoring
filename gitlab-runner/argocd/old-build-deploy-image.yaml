@@ -1,5 +1,6 @@
 # Per-release ArgoCD metadata for the gitlab-runner LEGACY runner (helmfile release: old-build-deploy-image).
-# Pinned to chart 0.70.3 (older executor config) — distinct version from build/deploy (0.90.0).
+# Pinned to an older chart (older executor config) — deliberately behind build/deploy; compare the
+# chart.version field in this file against the one in build-image.yaml / deploy-image.yaml.
 # Consumed by the infra-applicationset git-files generator -> Application infra-old-build-deploy-image.
 # autoSync:false = enroll MANUAL; verify adopt-diff (zero recreate) then flip to true.
 component: gitlab-runner

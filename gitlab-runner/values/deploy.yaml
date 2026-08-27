@@ -126,6 +126,12 @@ runners:
   # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
   config: |
     [[runners]]
+      # New-job requests this manager acquires concurrently from GitLab. Default 1
+      # serializes pickups; raised to 3 so a burst does not trip request-concurrency
+      # rejection. Kept below `concurrent: 5` (request_concurrency must not exceed the
+      # run capacity). Must sit above the [runners.kubernetes] sub-table header
+      # (TOML binds keys to the last-opened table).
+      request_concurrency = 3
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"

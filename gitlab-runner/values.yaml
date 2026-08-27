@@ -62,6 +62,31 @@ readinessProbe: {}
 #   successThreshold: 1
 #   failureThreshold: 3
 
+## Configure an optional startupProbe.
+##
+## Useful when the runner does work at boot (e.g. a deeper health check that
+## dispatches a synthetic job) that should complete before the pod accepts
+## traffic. While the startupProbe is running, kubelet does not run the
+## liveness or readiness probes, so during a rolling update the new pod
+## stays NotReady — and the old pod isn't terminated — until startupProbe
+## passes. Specify the full Kubernetes probe spec.
+##
+## The example below uses the built-in `/health/ready` endpoint available
+## since GitLab Runner 19.2, which gates readiness on the boot-time canary
+## (opt in per runner via `[runners.experimental.boot_verify]` in the runner
+## configuration; experimental). It is served by the
+## metrics/debug server, so `metrics.enabled` must be set to `true` and the
+## probe port must match `metrics.port`. You can also point the probe at any
+## endpoint you provide yourself.
+##
+# startupProbe:
+#   httpGet:
+#     path: /health/ready
+#     port: 9252
+#   periodSeconds: 10
+#   failureThreshold: 30
+startupProbe: {}
+
 ## How many runner pods to launch.
 ##
 # replicas: 1
@@ -818,6 +843,13 @@ podLabels: {}
   # owner.team: <my_cool_team>
   # owner.team: "{{ .Values.team }}"
   # tags.{{ .Values.tag }}/env: "{{ .Values.environment }}"
+
+## PodDisruptionBudget for the runner manager Deployment. Only meaningful
+## with multiple manager replicas.
+## ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+##
+# podDisruptionBudget: {}
+#   maxUnavailable: 1
 
 ## HPA support for custom metrics:
 ## This section enables runners to autoscale based on defined custom metrics.
