@@ -2,24 +2,13 @@
 
 Operational utilities for the Harbor registry, organized per tool in sub-directories.
 
-Korean: [README.md](./README.md)
-
 <br/>
 
 ## Layout
 
-```
-cicd/harbor-helm/scripts/
-├── image-cleanup/        # Bulk old-image cleanup + project stats
-│   ├── harbor-image-cleanup.sh / harbor-image-cleanup-en.sh
-│   ├── stats-help.sh / stats-help-en.sh
-│   ├── modules/          # Feature modules (KR/EN)
-│   ├── backup/           # Original single-file script (legacy)
-│   └── README.md / README-en.md
-└── admin/                # Users / project members / OIDC group management
-    ├── harbor-admin.sh
-    └── README.md / README-en.md
-```
+One sub-directory per tool, each with its own README — `image-cleanup/` handles bulk old-image cleanup and project stats, `admin/` handles users, project members, and OIDC group management.
+
+The `image-cleanup/` entry scripts source their feature modules from `modules/`. `admin/` has no modules: a single entry script covers everything.
 
 <br/>
 
@@ -55,10 +44,10 @@ Details: [`admin/README-en.md`](./admin/README.md)
 
 ## Naming Convention
 
-- `<name>.sh` — Korean UI (default)
-- `<name>-en.sh` — English UI
+- `<name>.sh` / `<name>-en.sh` — two parallel variants, kept only under `image-cleanup/`
+- `admin/harbor-admin.sh` is a single script with no variant
 
-Both variants share identical logic; only user-facing messages/help text differ.
+The two variants are separated by lineage, not by language — neither emits Korean. They differ in which module set the entry script sources and in message wording. See [`image-cleanup/README-en.md`](./image-cleanup/README.md).
 
 <br/>
 

@@ -31,44 +31,15 @@ The JSON ships **verbatim** (`.Files.Get`). Not using Helm's `tpl` is the import
 - **`kube-prometheus-stack` (wave_4)** — provides Grafana and its sidecar. It is this component's only consumer.
 - **The `monitoring` namespace** — already in use by kube-prometheus-stack, hence `createNamespace: false`.
 
-The dashboards reference their datasource by fixed uid, so no wiring is needed. All 11 use the single `prometheus` uid, which kube-prometheus-stack already provisions.
+The dashboards resolve their datasource themselves, so no wiring is needed. Most pin the `prometheus` uid that kube-prometheus-stack already provisions; the rest select it through a `$datasource` template variable.
 
 <br/>
 
-## Directory Structure
+## Layout
 
-```
-grafana-dashboards/
-├── Chart.yaml                              # pure-local, no dependencies, no upstream
-├── values.yaml                             # dashboards.enabled: false (off by default)
-├── values/dev.yaml                         # dashboards.enabled: true
-├── dashboards/                             # 11 custom dashboard JSONs (one ConfigMap per file)
-│   ├── argocd-dashboard.json
-│   ├── cilium-dashboard.json
-│   ├── control-plane-health-dashboard.json
-│   ├── elasticsearch-dashboard.json
-│   ├── fluentbit-fluentd-dashboard.json
-│   ├── gitlab-runner-dashboard.json
-│   ├── harbor-dashboard.json
-│   ├── metallb-dashboard.json
-│   ├── mysql-dashboard.json
-│   ├── nginx-gateway-dashboard.json
-│   ├── redis-dashboard.json
-│   └── _deprecated/                        # retired dashboards (outside the glob)
-│       └── ingress-nginx-dashboard.json
-├── templates/
-│   ├── _helpers.tpl
-│   └── configmap-dashboards.yaml           # one ConfigMap per file (no tpl)
-├── scripts/
-│   └── import-dashboards.sh                # helper tool (dev/rollback only — not the delivery path)
-├── docs/
-│   ├── dashboards.md                       # dashboard guide (KO)
-│   └── dashboards-en.md                    # dashboard guide (EN)
-├── argocd-local/
-│   └── grafana-dashboards.yaml             # ArgoCD metadata (wave_4)
-├── README.md
-└── README-en.md
-```
+The dashboard JSON lives directly under `dashboards/`; retired ones move to `dashboards/_deprecated/`, which the glob does not reach. For the set currently shipped, read `dashboards/`.
+
+`templates/configmap-dashboards.yaml` does the rendering (one ConfigMap per file), and the switch is `dashboards.enabled` — off in `values.yaml`, turned on by `values/dev.yaml`. The marker file under `argocd-local/` enrolls the chart in the on-prem appset, and `scripts/import-dashboards.sh` is a dev/rollback helper rather than the delivery path.
 
 <br/>
 
@@ -109,14 +80,14 @@ The on-prem `infra-local-applicationset` picks up `argocd-local/*.yaml` and gene
 
 > The AWS counterpart generates an App with the same name (`infra-grafana-dashboards`), but on a **different cluster**, and the two appsets read different marker dirs (`argocd-local/` vs `argocd-local-aws/`), so they never collide. `fluent-bit` already ships this same shape.
 
-**Current state: 11 dashboards migrated, flipped to `autoSync: true` (2026-07-20).** The flip followed a hand-verified first sync. As measured at migration time (2026-07-16):
+**Current state: migration complete, flipped to `autoSync: true` (2026-07-20).** The flip followed a hand-verified first sync. Measured at migration time (2026-07-16) across every dashboard then in the repo:
 
-- All 11 exist in Grafana as manually-imported copies (`provisioned=False`, folder `General`).
-- **Live ↔ repo drift is zero** — all 11 match exactly after normalisation, confirming a sync cannot overwrite a UI edit.
-- `helm template` renders 11 ConfigMaps labelled `grafana_dashboard=1`, and all 11 uids are unique.
+- All of them existed in Grafana as manually-imported copies (`provisioned=False`, folder `General`).
+- **Live ↔ repo drift was zero** — every one matched exactly after normalisation, confirming a sync could not overwrite a UI edit.
+- `helm template` rendered one ConfigMap per dashboard labelled `grafana_dashboard=1`, and every uid was unique.
 
 ```bash
-# Confirm the ConfigMaps exist (11)
+# Confirm the ConfigMaps exist (one per dashboard file)
 kubectl -n monitoring get cm -l grafana_dashboard=1
 
 # Sidecar pickup logs

@@ -8,10 +8,6 @@ fi
 set -euo pipefail
 IFS=$'\n\t'
 
-# UTF-8 encoding
-export LANG=ko_KR.UTF-8
-export LC_ALL=ko_KR.UTF-8
-
 # Modular Harbor image cleanup script
 # -------------------------
 # Main script that loads all modules and runs the cleanup process

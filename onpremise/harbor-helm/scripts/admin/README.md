@@ -3,18 +3,11 @@
 CLI script for managing Harbor users, project members, and OIDC group mappings.
 Uses the Harbor v2.0 REST API, tailored for the example.com self-signed HTTPS setup.
 
-Korean version: [README.md](./README.md)
-
 <br/>
 
 ## Directory Layout
 
-```
-cicd/harbor-helm/scripts/admin/
-├── harbor-admin.sh          # Harbor Admin Helper
-├── README.md
-└── README-en.md             # This file
-```
+This directory holds just `harbor-admin.sh` — users, project members, OIDC, and GC are all subcommands of that one script. Its only external dependency in-repo is the shared `scripts/lib/colors.sh`, sourced for coloured output.
 
 Dependencies: `curl`, `python3` (stdlib only)
 

@@ -2,10 +2,10 @@
 
 Covers the custom and imported dashboards of the on-prem Grafana (<http://grafana.example.com>).
 
-The 11 custom dashboards are rendered by this component (`grafana-dashboards`) as one ConfigMap per
-file, and the kube-prometheus-stack Grafana sidecar **provisions** them into Grafana. The only way to
-change a dashboard is therefore **edit the JSON → commit → ArgoCD sync**. A provisioned dashboard is
-`provisioned=True` in Grafana, which **disables the UI Save button**.
+Every custom dashboard under `dashboards/` is rendered by this component (`grafana-dashboards`) as
+one ConfigMap per file, and the kube-prometheus-stack Grafana sidecar **provisions** them into
+Grafana. The only way to change a dashboard is therefore **edit the JSON → commit → ArgoCD sync**. A
+provisioned dashboard is `provisioned=True` in Grafana, which **disables the UI Save button**.
 
 <br/>
 
@@ -22,8 +22,8 @@ edit dashboards/<file>.json
 
 - **`autoSync: true`** (`argocd-local/grafana-dashboards.yaml`, flipped 2026-07-20). A commit to master
   lands without a manual sync — the appset attaches `automated{prune, selfHeal}`.
-- **Grafana's UI Save is blocked.** All 11 are provisioned dashboards, so committing this JSON is the
-  only edit path. (`selfHeal` reconciles the ConfigMap against the repo — it does not revert a
+- **Grafana's UI Save is blocked.** They are all provisioned dashboards, so committing this JSON is
+  the only edit path. (`selfHeal` reconciles the ConfigMap against the repo — it does not revert a
   dashboard inside Grafana. Provisioning itself is what blocks UI edits.)
 - Keep the uid — bookmarked URLs and the provisioner's update key both depend on it. Changing a uid
   leaves the old dashboard in place and adds a new one alongside it.
@@ -33,7 +33,7 @@ edit dashboards/<file>.json
 
 ## Custom dashboards
 
-Managed as JSON files under `dashboards/`. All 11 are provisioned.
+Managed as JSON files under `dashboards/`. Every JSON directly under it is provisioned.
 
 | File | Covers |
 |------|--------|
@@ -44,13 +44,14 @@ Managed as JSON files under `dashboards/`. All 11 are provisioned.
 | `fluentbit-fluentd-dashboard.json` | Fluent Bit + Fluentd logging pipeline |
 | `gitlab-runner-dashboard.json` | GitLab Runner (manager up, running jobs, job start rate, error levels, concurrency) |
 | `harbor-dashboard.json` | Harbor (projects, storage, HTTP requests) |
+| `macos-node-dashboard.json` | macOS nodes (external targets) — CPU / load / memory / disk / network from node-exporter |
 | `metallb-dashboard.json` | MetalLB (speaker/controller, BGP·L2 announcements, address pool usage) |
 | `mysql-dashboard.json` | MySQL (connections, QPS, InnoDB, slow queries) |
 | `nginx-gateway-dashboard.json` | NGINX Gateway Fabric — control plane (reconcile, work queue, NGF event batch, resources) + data plane (request rate, connection state, accept/handle rate, agent CPU/memory/network throughput; based on nginx-agent OTEL native export, so no latency histogram or status-code labels) |
 | `redis-dashboard.json` | Redis (memory, commands, keys, hit rate) |
 
-All 11 reference a single datasource, the `prometheus` uid — already provisioned by
-kube-prometheus-stack, so no wiring is needed.
+Most pin the `prometheus` uid that kube-prometheus-stack already provisions; the rest select it
+through a `$datasource` template variable. Either way no wiring is needed.
 
 > Only JSON files directly under `dashboards/` are shipped (the template globs
 > `Files.Glob "dashboards/*.json"`). Subdirectories such as `dashboards/_deprecated/` are excluded
@@ -78,6 +79,7 @@ as the uid is kept there are no duplicates.
 | MetalLB | `metallb` | `instance` |
 | MySQL Overview | `mysql-overview` | `job`, `instance` |
 | NGINX Gateway Fabric | `nginx-gateway-fabric` | `namespace`, `pod`, `controller` |
+| Node Exporter / MacOS (external targets) | `macos-node-external` | `datasource`, `job`, `instance` |
 | Redis Overview | `redis-overview` | `job`, `instance` |
 | (deprecated) Ingress-Nginx | `ingress-nginx-controller` | file: `dashboards/_deprecated/ingress-nginx-dashboard.json` |
 
@@ -117,7 +119,7 @@ helm template grafana-dashboards . -f values/dev.yaml -n monitoring   # check th
 ### Verifying
 
 ```bash
-# Confirm the ConfigMaps exist (11)
+# Confirm the ConfigMaps exist (one per dashboard file)
 kubectl -n monitoring get cm -l grafana_dashboard=1
 
 # Sidecar pickup logs
@@ -133,8 +135,8 @@ kubectl -n monitoring logs deploy/kube-prometheus-stack-grafana \
 ## import-dashboards.sh — a reduced role
 
 `scripts/import-dashboards.sh` bulk-POSTs `dashboards/*.json` into the Grafana HTTP API. Moving it
-into this component left its `DASHBOARDS_DIR` default (`$CHART_DIR/dashboards`) pointing at the same
-11 JSONs, but **it is not the delivery path.**
+into this component left its `DASHBOARDS_DIR` default (`$CHART_DIR/dashboards`) pointing at those
+same JSONs, but **it is not the delivery path.**
 
 > **A provisioned dashboard rejects Grafana API writes.** Pushing an already-provisioned dashboard
 > with `--all` will fail. Do not use this script for routine changes — the GitOps flow above is the
@@ -205,8 +207,8 @@ The AWS prod guide [`../../grafana-dashboards-aws/docs/dashboards-en.md`](../../
 is the sibling that proved this design first. The two components carry different dashboard sets —
 each holds only what has a real scrape target on its own cluster.
 
-- On-prem only: `cilium` / `control-plane-health` / `harbor` / `metallb` / `mysql` / `nginx-gateway` / `redis`
-- AWS only: `karpenter` / `alb-request-health` / `aws-load-balancer-controller` / `external-dns` / `external-secrets` / `argo-rollouts` / `argocd-applications` / `example-app-game-operations` / `opentelemetry-apm-tracing`
+- Most are specific to one cluster — compare the two `dashboards/` directories directly to see what
+  each side carries.
 - Filenames present on both sides: `argocd` / `elasticsearch` / `fluentbit-fluentd` / `gitlab-runner`
 
 What those four overlapping filenames actually are (measured 2026-07-16):

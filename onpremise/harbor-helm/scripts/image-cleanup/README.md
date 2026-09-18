@@ -8,41 +8,15 @@ A collection of scripts for cleaning up old images from a Harbor registry.
 
 <br/>
 
-### Original Script
-- `backup/harbor-image-cleanup.sh`: Original single-file script (1338 lines)
+### Two parallel sets
 
-### Modularized Scripts
+There are two entry scripts, `harbor-image-cleanup.sh` and `harbor-image-cleanup-en.sh`, and the statistics helper is paired the same way as `stats-help.sh` / `stats-help-en.sh`. The feature modules under `modules/` come in the same two sets.
 
-Naming convention: `<name>.sh` is Korean (default), `<name>-en.sh` is the English variant. Same pattern as README files.
-
-#### Korean Version (default)
-- `harbor-image-cleanup.sh`: Korean main execution script
-- `modules/`: Korean functionality modules
-
-#### English Version
-- `harbor-image-cleanup-en.sh`: English main execution script
-- `modules/*-en.sh`: English functionality modules
+The two sets are separated by lineage, not by language. Neither one emits Korean; they differ in which module set the entry script sources (`modules/*.sh` versus `modules/*-en.sh`) and in message wording and capitalisation. For how far apart the two sets actually are right now, `diff` is the answer.
 
 ```bash
-cicd/harbor-helm/scripts/image-cleanup/
-├── harbor-image-cleanup.sh                 # Modularized main script (Korean, default)
-├── harbor-image-cleanup-en.sh              # Modularized main script (English)
-├── stats-help.sh                           # Statistics help script (Korean, default)
-├── stats-help-en.sh                        # Statistics help script (English)
-├── modules/
-│   ├── harbor-config.sh                    # Configuration management (Korean)
-│   ├── harbor-config-en.sh                 # Configuration management (English)
-│   ├── harbor-utils.sh                     # Utility functions (Korean)
-│   ├── harbor-utils-en.sh                  # Utility functions (English)
-│   ├── harbor-repository.sh                # Repository management (Korean)
-│   ├── harbor-repository-en.sh             # Repository management (English)
-│   ├── harbor-image.sh                     # Image management (Korean)
-│   ├── harbor-image-en.sh                  # Image management (English)
-│   ├── harbor-project-stats.sh             # Project statistics (Korean)
-│   └── harbor-project-stats-en.sh          # Project statistics (English)
-├── backup/
-│   └── harbor-image-cleanup.sh             # Original single-file script (1338 lines, legacy)
-└── README.md
+diff harbor-image-cleanup.sh harbor-image-cleanup-en.sh
+diff modules/harbor-utils.sh modules/harbor-utils-en.sh
 ```
 
 <br/>
@@ -82,32 +56,15 @@ cicd/harbor-helm/scripts/image-cleanup/
 
 ### Basic Usage
 ```bash
-# Run Korean modularized script (default)
+# Either entry script takes the same options
 ./harbor-image-cleanup.sh [options]
-
-# Run English modularized script
 ./harbor-image-cleanup-en.sh [options]
-
-# Run original single-file script (legacy, in backup/)
-./backup/harbor-image-cleanup.sh [options]
 ```
 
 <br/>
 
 ### Options
 
-#### English Version
-- `-h, --help`: Show this help message and exit
-- `-d, --debug`: Enable debug mode
-- `--dry-run`: Don't actually delete images, just print what would be deleted
-- `--auto-confirm`: Skip confirmation and automatically delete images
-- `-k, --keep N`: Keep the newest N images (default: 100)
-- `-p, --project NAME`: Harbor project name (default: example-project)
-- `-r, --repo NAME`: Repository name. Can be specified multiple times. Use 'all' to process all repositories
-- `-b, --batch-size N`: Number of images to delete in parallel (default: 10)
-- `--stats PROJECT`: Show artifact counts by repository for a specific project
-
-#### Korean Version
 - `-h, --help`: Show this help message and exit
 - `-d, --debug`: Enable debug mode
 - `--dry-run`: Don't actually delete images, just print what would be deleted
@@ -122,25 +79,6 @@ cicd/harbor-helm/scripts/image-cleanup/
 
 ### Usage Examples
 
-#### English Version
-```bash
-# Dry run test
-./harbor-image-cleanup-en.sh --dry-run -k 50 -p myproject -r myrepo
-
-# Clean specific repositories
-./harbor-image-cleanup-en.sh -p myproject -r repo1 -r repo2 -k 20 --auto-confirm
-
-# Clean all repositories in project
-./harbor-image-cleanup-en.sh -p myproject -r all -k 50
-
-# Show project statistics
-./harbor-image-cleanup-en.sh --stats example-project
-
-# Show statistics help
-./stats-help-en.sh
-```
-
-#### Korean Version
 ```bash
 # Dry run test
 ./harbor-image-cleanup.sh --dry-run -k 50 -p myproject -r myrepo
@@ -158,6 +96,8 @@ cicd/harbor-helm/scripts/image-cleanup/
 ./stats-help.sh
 ```
 
+The `-en.sh` variant takes the same options and the same arguments.
+
 <br/>
 
 ## Project Statistics Feature
@@ -174,20 +114,14 @@ A statistics feature has been added to view artifact counts per repository in a 
 
 #### Statistics via Main Script
 ```bash
-# English version
-./harbor-image-cleanup-en.sh --stats <project-name>
-
-# Korean version
 ./harbor-image-cleanup.sh --stats <project-name>
+./harbor-image-cleanup-en.sh --stats <project-name>
 ```
 
 #### Standalone Statistics Help Script
 ```bash
-# English version help
-./stats-help-en.sh
-
-# Korean version help
 ./stats-help.sh
+./stats-help-en.sh
 ```
 
 ### Output Example
@@ -215,12 +149,11 @@ Average Artifacts per Repository: 78
 
 ## Benefits of Modularization
 
-1. **Improved Readability**: Splitting a 1338-line single file into functional modules makes it easier to understand
+1. **Improved Readability**: Splitting the single-file predecessor into functional modules makes it easier to read
 2. **Maintainability**: Easier to modify or extend specific features
 3. **Reusability**: Individual modules can be used in other scripts
 4. **Testability**: Each module can be independently tested
 5. **Better Collaboration**: Multiple developers can work on different modules simultaneously
-6. **Multi-language Support**: Easy management of English and Korean versions
 
 <br/>
 
@@ -229,20 +162,6 @@ Average Artifacts per Repository: 78
 Before running the scripts, you must grant execution permissions:
 
 ```bash
-# Korean version (default)
-chmod +x harbor-image-cleanup.sh
-chmod +x stats-help.sh
-chmod +x modules/harbor-*.sh
-
-# English version
-chmod +x harbor-image-cleanup-en.sh
-chmod +x stats-help-en.sh
-chmod +x modules/harbor-*-en.sh
-
-# Original script (legacy)
-chmod +x backup/harbor-image-cleanup.sh
-
-# Set all permissions at once (convenient)
 chmod +x *.sh modules/*.sh
 ```
 
@@ -259,16 +178,8 @@ chmod +x *.sh modules/*.sh
 
 ## Configuration
 
-Default configuration values can be modified in the corresponding config module:
+Default configuration values are edited in the config module the entry script sources — `modules/harbor-config.sh` and `modules/harbor-config-en.sh` carry the same keys.
 
-### Korean Version (default): `modules/harbor-config.sh`
-- `DEFAULT_HARBOR_URL`: Harbor server URL
-- `DEFAULT_HARBOR_USER`: Harbor username
-- `DEFAULT_HARBOR_PASS`: Harbor password
-- `DEFAULT_PROJECT_NAME`: Default project name
-- `DEFAULT_IMAGES_TO_KEEP`: Default number of images to keep
-
-### English Version: `modules/harbor-config-en.sh`
 - `DEFAULT_HARBOR_URL`: Harbor server URL
 - `DEFAULT_HARBOR_USER`: Harbor username
 - `DEFAULT_HARBOR_PASS`: Harbor password
@@ -277,8 +188,6 @@ Default configuration values can be modified in the corresponding config module:
 
 <br/>
 
-## Selection Guide
+## Which one to run
 
-- **Original Script**: When you want to maintain the existing approach
-- **English Modularized Script**: For international environments, leveraging the benefits of modularization
-- **Korean Modularized Script**: For Korean environments, leveraging the benefits of modularization
+Both sets do the same job, so either is fine — but stay with the one you pick: the wording differs, which makes logs and screenshots awkward to compare. When wiring one into automation, do not mix an entry script with the other module set; each entry script sources only its own.
