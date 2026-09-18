@@ -4,7 +4,7 @@
 # arguments replaces the user definition (incl. password).
 #
 # Scope split: role creation lives in a sibling script,
-#   ./create-elastic-role.sh --role-name <name> [permission flags]
+#   ./create-elastic-role.sh --context <ctx> --role-name <name> [permission flags]
 # Run that first when the role does not yet exist. This script aborts in step 0
 # with a clear message when the target role is missing.
 #
@@ -22,6 +22,17 @@
 #   - Or --password-env VAR_NAME (avoids process-list leakage)
 #   - Last resort: --password STR (visible in ps/history — discouraged)
 #   - When none is given, the script prompts via `read -s` (no echo).
+#
+# bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE anything
+# else. This is NOT cosmetic — `USERNAME` is a zsh special parameter bound to the
+# process owner, so under zsh the `USERNAME="$1"` below is silently ignored and
+# `-u viewer` would PUT /_security/user/<operator> instead, creating or
+# overwriting the wrong account (silently, since --yes hides the plan). The same
+# re-exec also avoids zsh's 1-based arrays in the sibling create-elastic-role.sh.
+# Matches the guard already used by observability/logging/*/scripts/bootstrap-*.sh.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -45,13 +56,24 @@ CONFIRM_PROMPT=1
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") -u NAME [-p STR | --password-stdin | --password-env VAR] [options]
+Usage: $(basename "$0") --context CTX -u NAME
+                        [-p STR | --password-stdin | --password-env VAR] [options]
 
 Creates (or updates) a Kibana / Elasticsearch user mapped to an existing role.
 The role itself must already exist — create it first with create-elastic-role.sh
 (or any equivalent PUT to /_security/role/<name>).
 
 Required:
+  --context CTX               kube-context to run every kubectl call against.
+                              No default and no fallback to the current context —
+                              the on-prem and AWS clusters have identically named
+                              logging pods, so an implicit context silently targets
+                              the wrong one and would create this user in the wrong
+                              cluster. The name is a LOCAL kubeconfig alias with
+                              no fixed value — list yours with
+                              \`kubectl config get-contexts -o name\`, and confirm
+                              the cluster= line in the printed plan (that is the
+                              stable id, not the alias).
   -u, --username NAME         Elasticsearch / Kibana username to create.
 
 Password (exactly one expected; prompt is used if none given):
@@ -69,6 +91,7 @@ Options:
   -h | --help                 Show this help and exit.
 
 Env overrides (rarely needed):
+  KUBE_CONTEXT=${KUBE_CONTEXT}
   NAMESPACE_ES=${NAMESPACE_ES}
   ES_POD=${ES_POD}  ES_CONTAINER=${ES_CONTAINER}
   ES_SVC=${ES_SVC}  ES_PORT=${ES_PORT}  ES_SCHEME=${ES_SCHEME}
@@ -76,13 +99,13 @@ Env overrides (rarely needed):
 
 Examples:
   # interactive prompt (recommended)
-  $(basename "$0") -u viewer
+  $(basename "$0") --context <ctx> -u viewer
 
   # from stdin (CI / wrapping)
-  echo "\$NEW_PASSWORD" | $(basename "$0") -u viewer --password-stdin --yes
+  echo "\$NEW_PASSWORD" | $(basename "$0") --context <ctx> -u viewer --password-stdin --yes
 
   # attach to a different role created by create-elastic-role.sh
-  $(basename "$0") -u pm-viewer --role-name pm_viewer
+  $(basename "$0") --context <ctx> -u pm-viewer --role-name pm_viewer
 EOF
 }
 
@@ -90,6 +113,10 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     -u|--username)
       shift; [ $# -gt 0 ] || { err "--username requires NAME"; exit 2; }
       USERNAME="$1"
@@ -122,6 +149,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Hard-fail unless a real kube-context was named — enforced for --dry-run too.
+require_kube_context
 
 if [ -z "$USERNAME" ]; then
   err "-u / --username is required"
@@ -202,6 +232,10 @@ EOF
 print_plan() {
   log ""
   log "Kibana / Elasticsearch user plan"
+  # Print the resolved cluster, not just the context name — a context can be renamed
+  # or repointed, so the cluster is what actually identifies the target. This line is
+  # the operator's last chance to catch a wrong-cluster run.
+  log "  kube context:  ${KUBE_CONTEXT}  (cluster=$(kube_context_cluster))"
   log "  ES pod:        ${NAMESPACE_ES}/${ES_POD} (container=${ES_CONTAINER})"
   log "  role:          ${ROLE_NAME}   (must already exist — created by create-elastic-role.sh)"
   log "  username:      ${USERNAME}"
@@ -240,7 +274,7 @@ preflight_role_exists() {
       ;;
     404)
       err "role '${ROLE_NAME}' not found — create it first:"
-      err "    ./create-elastic-role.sh --role-name '${ROLE_NAME}' [permission flags] --yes"
+      err "    ./create-elastic-role.sh --context '${KUBE_CONTEXT}' --role-name '${ROLE_NAME}' [permission flags] --yes"
       exit 1
       ;;
     *)
@@ -302,9 +336,9 @@ print_next_steps() {
   log "      - Discover / Dashboard / Visualize: visible (read-only role)"
   log "      - Dev Tools / Stack Management: NOT visible (intentional)"
   log "  • Rotate the password periodically:"
-  log "      ./$(basename "$0") -u '${USERNAME}' --password-stdin"
+  log "      ./$(basename "$0") --context '${KUBE_CONTEXT}' -u '${USERNAME}' --password-stdin"
   log "  • Disable the account when no longer needed:"
-  log "      kubectl -n ${NAMESPACE_ES} exec -i ${ES_POD} -c ${ES_CONTAINER} -- \\"
+  log "      kubectl --context ${KUBE_CONTEXT} -n ${NAMESPACE_ES} exec ${ES_POD} -c ${ES_CONTAINER} -- \\"
   log "        curl -sk -u ${ES_USER}:\$ADMIN_PASS -X PUT '${ES_URL}/_security/user/${USERNAME}/_disable'"
 }
 

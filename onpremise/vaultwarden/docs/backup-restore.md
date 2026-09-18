@@ -47,6 +47,9 @@ kubectl logs job/manual-backup -n vaultwarden
 # List available backups
 ./scripts/restore.sh
 
+# Preview the restore plan without executing (recommended first step)
+./scripts/restore.sh --dry-run latest
+
 # Restore from specific date
 ./scripts/restore.sh 20260408
 
@@ -69,14 +72,23 @@ The script automatically:
 kubectl scale statefulset vaultwarden --replicas=0 -n vaultwarden
 
 # 2. Run restore pod
-kubectl run restore --rm -it --image=busybox -n vaultwarden \
+#
+# A bare `cp` is not enough; two more things are required.
+#   - Verify the backup with `PRAGMA integrity_check` *before* overwriting. Once
+#     the live database is gone, discovering that the backup is damaged leaves
+#     nothing to fall back to.
+#   - Delete `/data/db.sqlite3-wal` and `-shm` *after* the copy. Left in place,
+#     SQLite sees a salt mismatch and silently discards that WAL, so the restore
+#     "succeeds" while whatever the WAL held disappears.
+# That is also why the image is alpine (which can install sqlite3) and not busybox.
+kubectl run restore --rm -it --image=alpine:3.21 -n vaultwarden \
   --overrides='{
     "spec": {
       "containers": [{
         "name": "restore",
-        "image": "busybox",
+        "image": "alpine:3.21",
         "command": ["sh", "-c",
-          "cp /backup/db-20260408.sqlite3 /data/db.sqlite3 && echo Done"],
+          "set -e; apk add --no-cache sqlite >/dev/null; R=$(sqlite3 /backup/db-20260408.sqlite3 \"PRAGMA integrity_check;\"); case $R in ok) ;; *) echo \"ERROR: $R\"; exit 1 ;; esac; cp /backup/db-20260408.sqlite3 /data/db.sqlite3; rm -f /data/db.sqlite3-wal /data/db.sqlite3-shm; echo Done"],
         "volumeMounts": [
           {"name": "data", "mountPath": "/data"},
           {"name": "backup", "mountPath": "/backup"}

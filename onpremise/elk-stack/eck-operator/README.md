@@ -14,10 +14,14 @@ ECK Operator is the official operator from Elastic that lets you run Elasticsear
 eck-operator/
 ├── .helmignore
 ├── Chart.yaml                  # upstream chart metadata (maintained by upgrade.py)
-├── helmfile.yaml               # Helmfile release definition
+├── argocd/
+│   └── eck-operator.yaml       # ArgoCD marker — `chart.version` is the chart pin SSOT
+├── values.yaml                 # upstream default values (auto-managed by upgrade.py — do not hand-edit)
 ├── values/
 │   └── dev.yaml               # custom values (managedNamespaces, etc.)
 ├── upgrade.py                  # external-standard version-tracking script
+├── backup/
+│   └── helmfile.yaml           # retired (was the helmfile deploy path)
 ├── README.md
 └── README-en.md
 ```
@@ -98,8 +102,8 @@ kubectl -n elastic-system logs -l control-plane=elastic-operator -f
 # Dry-run
 ./upgrade.py --dry-run
 
-# Upgrade to a specific version
-./upgrade.py --version 3.3.2
+# Upgrade to a specific version (the current pin is `chart.version` in argocd/eck-operator.yaml)
+./upgrade.py --version <X.Y.Z>
 
 # Rollback
 ./upgrade.py --rollback

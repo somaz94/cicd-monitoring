@@ -15,11 +15,20 @@ CONFIG = {
     "CHANGELOG_URL":  "https://gitlab.com/gitlab-org/charts/gitlab-runner/-/blob/main/CHANGELOG.md",
     "CHART_TYPE":     "local",  # "local" or "external"
     # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
-    # Track the two active runner releases only; old-build-deploy-image stays
-    # pinned (intentionally excluded from auto-upgrade).
+    # All three runner releases track the same chart. old-build-deploy-image was
+    # excluded while it sat on chart 0.70.3, because diffing a 0.70.x values file
+    # against a current chart produced nothing but noise. It was brought up to
+    # 0.91.0 on 2026-08-31, so that exclusion no longer has a reason to exist.
+    #
+    # Note what including it implies: this release serves gitlab-old, whose image
+    # tag is pinned by hand to the gitlab-old server version, while the chart now
+    # follows gitlab-main. Every bump here widens that gap until the 21-hop path
+    # brings the server up to 19.x -- so review this release's diff rather than
+    # waving it through. See scripts/gitlab/old-upgrade/UPGRADE-PATH.md.
     "ARGOCD_PIN_FILES": [
         "argocd/build-image.yaml",
         "argocd/deploy-image.yaml",
+        "argocd/old-build-deploy-image.yaml",
     ],
 }
 # ============================================================

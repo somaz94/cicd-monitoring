@@ -143,11 +143,15 @@ sudo ETCDCTL_API=3 etcdctl endpoint status \
   --write-out=table
 ```
 
-If there is a large gap between `DB SIZE` and `IN USE`, defrag is needed. Running defrag weekly via cron is recommended.
+If there is a large gap between `DB SIZE` and `IN USE`, defrag is needed.
+
+> 🔴 **The periodic run is already automated** — the CronJob in `bootstrap/cluster-maintenance/etcd-defrag/` runs defrag on a schedule (`schedule` in its `manifests/cronjob.yaml`). Use the command above only to inspect the current state or to run defrag once outside that schedule; wiring up a separate cron by hand duplicates it.
 
 <br/>
 
-## helmfile CRD Error on First Install
+## helmfile CRD Error on First Install (historical — helmfile era)
+
+> 🔴 **This scenario is no longer reproducible.** kube-prometheus-stack was migrated to ArgoCD pull management and has no `helmfile.yaml` (its release metadata is `argocd/kube-prometheus-stack.yaml`), and the CRDs are installed by the earlier `observability/monitoring/prometheus-operator-crds/` component rather than by this release (this chart runs with `crds.enabled=false`). The section below is preserved as a record of the helmfile era.
 
 ### Symptoms
 

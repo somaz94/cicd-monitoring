@@ -7,7 +7,7 @@
   "uid": "control-plane-health",
   "title": "Control Plane Health (etcd + apiserver + CI correlation)",
   "tags": ["kubernetes", "control-plane", "etcd", "apiserver", "incident"],
-  "timezone": "Asia/Seoul",
+  "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",

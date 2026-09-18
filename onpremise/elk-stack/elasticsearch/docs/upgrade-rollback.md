@@ -10,6 +10,21 @@ Both ES and Kibana use the `external-oci-cr-version` canonical template, so this
 
 <br/>
 
+> 🔴 **Read this first — the rollback procedure below predates the ArgoCD migration.**
+>
+> ES / Kibana / eck-operator are now **ArgoCD pull-managed** and have no `helmfile.yaml`. The version SSOT is `argocd/<release>.yaml`, and all three Applications run `autoSync: true` with selfHeal. That breaks the assumptions below:
+>
+> - `helm rollback` / `helmfile apply` → **selfHeal reverts it immediately.** The cluster keeps following git master.
+> - `./upgrade.py --rollback` → rewrites local files only and pushes nothing, so **the cluster never sees it.**
+>
+> **The only real rollback path is git**: land a revert commit on master and ArgoCD applies it. But **an ES downgrade is still blocked by the admission webhook**, so the webhook-release steps below (Step 1/7, 2/7, 5/7) are still needed manually, *alongside* the revert commit.
+>
+> Kibana is additionally **effectively one-way**: starting 9.5.x migrates its saved objects, and reverting to an older version afterwards can make it refuse to boot. Export **both** Spaces (`default` and `cst`) before upgrading — an export without a Space prefix only covers `default`.
+>
+> (Confirmed during the 2026-08-13 tier3 cycle. The body below is preserved from the helmfile era.)
+
+<br/>
+
 ## Table of contents
 
 1. [Background: 2026-04-16 incident](#background-2026-04-16-incident)
@@ -116,6 +131,8 @@ Entering `y` proceeds with 9.3.3. Entering `n` aborts and prints the `--version 
 
 ### Upgrade abort scenarios
 
+`upgrade.py` aborts or asks for confirmation in the following cases (the image-not-published case is covered in the section above):
+
 **Step 2 — cluster health abnormal**
 ```
 [Step 2/7] Pre-flight cluster health check...
@@ -125,23 +142,6 @@ Entering `y` proceeds with 9.3.3. Entering `n` aborts and prints the `--version 
   Proceed anyway? [y/N]:
 ```
 Likely a prior upgrade hasn't finished. Watch `kubectl -n logging get elasticsearch -w` until Ready.
-
-**Step 4 — image not published yet**
-```
-[Step 4/7] Verifying container image...
-  Checking: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
-
-  WARNING: Container image not found in registry.
-
-  Searching for the newest GA version with a published image...
-    9.4.0: not found
-    9.3.3: available
-
-  Latest available (with published image): 9.3.3
-
-  Use 9.3.3 instead of 9.4.0? [y/N]:
-```
-`y` to proceed with 9.3.3. `n` aborts with the suggested `--version 9.3.3` command.
 
 **Step 5 — dependency CR constraint** (Kibana only)
 ```
@@ -173,7 +173,7 @@ Proceeding with `y` without a snapshot leaves no recovery option on failure.
 ```
 
 ```
-UPDATE   local-with-templates      0.56.0   0.57.2           observability/logging/_optional/fluent-bit-aws/upgrade.py
+UPDATE   local-with-templates      0.56.0   0.57.2           observability/logging/fluent-bit-aws/upgrade.py
 NO_IMG   external-oci-cr-version     9.0.0    9.4.0 (→9.3.3)   observability/logging/elasticsearch/upgrade.py
          -> 9.4.0 image missing; latest available: 9.3.3 (use --version 9.3.3)
 ```

@@ -11,10 +11,12 @@
 # BackendTLSPolicy). The ECK operator owns the real StatefulSet 'elasticsearch-es-default' and the
 # data PVC 'elasticsearch-data-elasticsearch-es-default-0' (30Gi) — those are NOT in the helm release,
 # so ArgoCD never touches them. Adoption only annotates the chart resources; the ES CR spec must render
-# IDENTICAL (same chart 0.1.9 + values) so the operator does not roll the ES pod. Verify in adopt-diff.
+# IDENTICAL (the chart.version pinned below, unchanged, plus the same values) so the operator does not roll the ES pod. Verify in adopt-diff.
 #
 # OCI repoURL is no-scheme (ArgoCD appends chart name); matches the ghost/unity pattern. This file is
-# the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+# the chart-version SSOT for the migrated component. Note the DEFAULT `upgrade.py` run tracks the
+# STACK version only and reports this pin as "bump manually if needed" -- `upgrade.py --upgrade-chart`
+# is what rewrites chart.version here.
 component: elasticsearch                        # -> app-name label on the generated App
 releaseName: elasticsearch                      # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
 namespace: logging                              # already helmfile-managed; do not contest ownership
@@ -22,7 +24,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: ghcr.io/somaz94/charts               # registered OCI repo (no scheme) -> ArgoCD appends chart name
   name: elasticsearch-eck
-  version: "0.1.12"
+  version: "0.3.1"
 valueFile: observability/logging/elasticsearch/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
 createNamespace: false                          # 'logging' already exists
 autoSync: true                                  # adopt-diff verified (CR cpu 1000m==1 normalized by operator, zero ES roll; Secret/HTTPRoute tracking-id only) -> auto-sync (prune+selfHeal) on

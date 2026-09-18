@@ -244,7 +244,7 @@ Reverting the endpoint to GitLab flips the OIDC `sub` back to GitLab basis:
 | Symptom | Cause / Fix |
 | --- | --- |
 | `failed to get token` on OIDC click | `oidc_verify_cert` does not match endpoint scheme (https→true / http→false), or Keycloak `harbor` client's Valid Redirect URI does not match `https://harbor.example.com/c/oidc/callback` |
-| Login succeeds but no Harbor user created | User is not in `oidc_group_filter` (`server`). Check the Keycloak group mapping (`server-group-map` IdP mapper) |
+| Login succeeds but no Harbor user created | User is not in `oidc_group_filter` (`server`). **Check GitLab `server` group membership first** — the `server-group-map` IdP mapper only places users into `/server` when GitLab's `groups_direct` claim contains `server` (before 2026-07-30 it granted `/server` unconditionally). If they are a member and it still fails, inspect the mapper |
 | Groups claim is empty | On the Keycloak `harbor` client, ensure the group mapper has `Add to ID token` / `Add to userinfo` ON |
 | Harbor returns `invalid_state` after Keycloak | Pod clock skew (NTP) or cookie domain issue. Check `kubectl -n harbor logs deploy/harbor-core` |
 | `admin` cannot log in | Admin uses DB login even in OIDC mode. Verify password |

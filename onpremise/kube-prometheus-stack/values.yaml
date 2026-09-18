@@ -38,7 +38,9 @@ crds:
   ## This feature is in preview, off by default and may change in the future.
   upgradeJob:
     enabled: false
-    forceConflicts: false
+    ## Force apply the CRDs, taking ownership from the manager that installed them (e.g. helm).
+    ## Required for the job to actually upgrade CRDs whose schema/version changed.
+    forceConflicts: true
     image:
       busybox:
         registry: docker.io
@@ -2542,6 +2544,35 @@ kubeScheduler:
     ## https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#servicemonitor
     targetLabels: []
 
+    resource:
+    ## Enable scraping /metrics/resource from kube-scheduler
+    ## https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/#kube-scheduler-metrics
+      enabled: false
+
+      ## Scrape interval. If not set, the Prometheus default scrape interval is used.
+      ##
+      interval: ""
+
+      ## MetricRelabelConfigs to apply to samples after scraping, but before ingestion.
+      ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#relabelconfig
+      ##
+      metricRelabelings: []
+      # - action: keep
+      #   regex: 'kube_(daemonset|deployment|pod|namespace|node|statefulset).+'
+      #   sourceLabels: [__name__]
+
+      ## RelabelConfigs to apply to samples before scraping
+      ## ref: https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#relabelconfig
+      ##
+      relabelings: []
+      # - sourceLabels: [__meta_kubernetes_pod_node_name]
+      #   separator: ;
+      #   regex: ^(.*)$
+      #   targetLabel: nodename
+      #   replacement: $1
+      #   action: replace
+
+
 ## Component scraping kube proxy
 ##
 kubeProxy:
@@ -3098,7 +3129,7 @@ prometheusOperator:
       image:
         registry: ghcr.io
         repository: jkroepke/kube-webhook-certgen
-        tag: 1.8.4
+        tag: 1.8.5
         sha: ""
         pullPolicy: IfNotPresent
       resources: {}
@@ -3540,7 +3571,7 @@ prometheusOperator:
   thanosImage:
     registry: quay.io
     repository: thanos/thanos
-    tag: v0.42.0
+    tag: v0.42.4
     sha: ""
 
   ## Set a Label Selector to filter watched prometheus and prometheusAgent
@@ -4313,7 +4344,7 @@ prometheus:
     image:
       registry: quay.io
       repository: prometheus/prometheus
-      tag: v3.13.1-distroless
+      tag: v3.13.2-distroless
       sha: ""
       pullPolicy: IfNotPresent
 
@@ -5507,7 +5538,7 @@ thanosRuler:
     image:
       registry: quay.io
       repository: thanos/thanos
-      tag: v0.42.0
+      tag: v0.42.4
       sha: ""
 
     ## Namespaces to be selected for PrometheusRules discovery.

@@ -1,12 +1,14 @@
 # Upstream Issue Template — argoproj/argo-cd
 
+> 🗄️ **Archived — do not reuse this for a new report.** It was used to file [#27516](https://github.com/argoproj/argo-cd/issues/27516) on 2026-04-23; the bug was fixed in v3.3.8 (chart 9.5.4), applied to the dev cluster on 2026-04-24. The "goroutine leak" diagnosis and the pprof `6060` procedure below are **the hypotheses at filing time**. The [incident report](ghost-alarm-incident-2026-04-23.md) later corrected them under "Diagnosis correction" — the root cause is a silent work-queue halt, 1446 goroutines is this cluster's normal baseline, and nothing listens on 6060.
+
 <br/>
 
 ## Purpose
 
 Template for filing a new bug report at <https://github.com/argoproj/argo-cd/issues/new/choose> (**Bug Report**) for the **application-controller goroutine leak + silent reconcile freeze** observed on Argo CD v3.3.7. This file is English-only by design (the upstream project is English).
 
-See the detailed Korean analysis in [ghost-alarm-incident-2026-04-23.md](ghost-alarm-incident-2026-04-23.md).
+See the detailed analysis in [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23.md).
 
 <br/>
 
@@ -28,7 +30,8 @@ Fill out as many as possible before submitting. The more concrete data, the fast
 ```bash
 # 1) Verify stuck with the helper
 ./cicd/argo-cd/scripts/notify-rule-change.sh status
-# Expected: Goroutines > 1000, reconciledAt of all apps > 15 min
+# Expected: completed reconciles in last 10m = 0 (STUCK), reconciledAt of all apps > 15 min
+#           (Goroutines is informational — 1446 is this cluster's normal baseline)
 
 # 2) Open pprof port-forward
 kubectl port-forward -n argocd argocd-application-controller-0 6060:6060 &

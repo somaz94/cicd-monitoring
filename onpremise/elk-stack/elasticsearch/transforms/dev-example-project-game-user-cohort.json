@@ -75,6 +75,27 @@
           "reduce_script": "Set out = new TreeSet(); for (def s : states) { out.addAll(s); } return new ArrayList(out);"
         }
       },
+      "active_days_count_cst": {
+        "cardinality": {
+          "script": {
+            "source": "doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString()",
+            "params": {
+              "tz": "Asia/Shanghai"
+            }
+          }
+        }
+      },
+      "active_dates_cst": {
+        "scripted_metric": {
+          "params": {
+            "tz": "Asia/Shanghai"
+          },
+          "init_script": "state.dates = new HashSet();",
+          "map_script": "state.dates.add(doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString());",
+          "combine_script": "return state.dates;",
+          "reduce_script": "Set out = new TreeSet(); for (def s : states) { out.addAll(s); } return new ArrayList(out);"
+        }
+      },
       "max_cleared_chapter": {
         "max": {
           "field": "lastClearedChapter"

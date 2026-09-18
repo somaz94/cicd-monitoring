@@ -353,7 +353,6 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "style": "dark",
   "tags": ["mysql", "database", "prometheus", "exporter"],
   "templating": {
     "list": [

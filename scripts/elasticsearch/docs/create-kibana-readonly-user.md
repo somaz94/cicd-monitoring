@@ -24,7 +24,7 @@ This script does not create roles. Step 0 aborts cleanly when the role is missin
 
 ```
 ✗ role 'read_only_role' not found — create it first:
-    ./create-elastic-role.sh --role-name 'read_only_role' [permission flags] --yes
+    ./create-elastic-role.sh --context onprem-dev --role-name 'read_only_role' [permission flags] --yes
 ```
 
 Create the role first via [create-elastic-role-en.md](create-elastic-role.md) and then attach a user with this script.
@@ -35,26 +35,26 @@ Create the role first via [create-elastic-role-en.md](create-elastic-role.md) an
 
 ```bash
 # Show help
-./create-kibana-readonly-user.sh -h
+./create-kibana-readonly-user.sh --context onprem-dev -h
 
 # Interactive prompt (safest — password lands nowhere)
-./create-kibana-readonly-user.sh -u viewer
+./create-kibana-readonly-user.sh --context onprem-dev -u viewer
 
 # Stdin (CI / wrapper)
-echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u viewer --password-stdin --yes
+echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh --context onprem-dev -u viewer --password-stdin --yes
 
 # Env var (avoids process-list leak)
-NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --yes
+NEW_PW='...' ./create-kibana-readonly-user.sh --context onprem-dev -u viewer --password-env NEW_PW --yes
 
 # Direct flag (discouraged — leaks via ps / history)
-./create-kibana-readonly-user.sh -u viewer -p 'StrongPassword123!' --yes
+./create-kibana-readonly-user.sh --context onprem-dev -u viewer -p 'StrongPassword123!' --yes
 
 # Attach to a different role (must exist first)
-./create-elastic-role.sh --role-name pm_viewer --indices 'example-project-*' --yes
-./create-kibana-readonly-user.sh -u pm-viewer --role-name pm_viewer
+./create-elastic-role.sh --context onprem-dev --role-name pm_viewer --indices 'example-project-*' --yes
+./create-kibana-readonly-user.sh --context onprem-dev -u pm-viewer --role-name pm_viewer
 
 # Validate the call flow without PUT
-NEW_PW='...' ./create-kibana-readonly-user.sh -u viewer --password-env NEW_PW --dry-run --yes
+NEW_PW='...' ./create-kibana-readonly-user.sh --context onprem-dev -u viewer --password-env NEW_PW --dry-run --yes
 ```
 
 <br/>
@@ -112,7 +112,7 @@ Operator's responsibility:
 ### Password rotation
 
 ```bash
-echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh -u <username> --password-stdin --yes
+echo "$NEW_PASSWORD" | ./create-kibana-readonly-user.sh --context onprem-dev -u <username> --password-stdin --yes
 ```
 
 For an existing user, the PUT overwrites the password (and the role). Right after rotation, the old password may still authenticate for a few seconds (ES-cached tokens).

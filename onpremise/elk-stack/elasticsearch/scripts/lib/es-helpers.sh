@@ -16,6 +16,19 @@
 [[ -n "${__SCRIPTS_LIB_ES_HELPERS_LOADED:-}" ]] && return 0
 __SCRIPTS_LIB_ES_HELPERS_LOADED=1
 
+# Mandatory --context gate, shared with the repo-root ES lib so there is exactly
+# one definition of KUBE_CONTEXT / require_kube_context / kctl / kube_context_cluster
+# / kube_context_prescan. Every kubectl call below goes through `kctl`.
+KUBE_CONTEXT_HINT="${KUBE_CONTEXT_HINT:-logging/elasticsearch-es-http}"
+__ES_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [[ ! -f "${__ES_HELPERS_DIR}/../../../../../scripts/lib/kube-context.sh" ]]; then
+  echo "ERROR: es-helpers.sh cannot find scripts/lib/kube-context.sh (looked from ${__ES_HELPERS_DIR})" >&2
+  exit 2
+fi
+# shellcheck source=../../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${__ES_HELPERS_DIR}/../../../../../scripts/lib/kube-context.sh"
+
 # es_curl USER PASS <curl_args...>
 #   Invoke curl with the standard option set (`-s -k -u USER:PASS`)
 #   prepended; remaining args are forwarded to curl verbatim.
@@ -70,7 +83,7 @@ es_fetch_password_from_k8s() {
   fi
 
   local val
-  val=$(kubectl -n "${ns}" get secret "${secret}" \
+  val=$(kctl -n "${ns}" get secret "${secret}" \
     -o jsonpath="{.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null)
 
   if [[ -z "${val}" ]]; then
@@ -92,13 +105,17 @@ es_pf_cleanup() {
     __ES_PF_PID=""
   fi
 }
+# Install the trap at lib top level, NOT inside es_ensure_port_forward: zsh scopes
+# a trap installed inside a function to that function, so it would fire the moment
+# the port-forward became ready and tear the tunnel down before any call used it.
+# Safe to arm eagerly — es_pf_cleanup is a no-op while __ES_PF_PID is empty.
+trap es_pf_cleanup EXIT INT TERM
 
 # es_ensure_port_forward
 #   When the ES endpoint is localhost (the default for these scripts), open a
 #   background `kubectl port-forward` to the in-cluster ES service and tear it
-#   down automatically on script exit. Honors the CURRENT kubectl context — switch
-#   context to target a different cluster (on-prem vs AWS). No-op when the target
-#   is not localhost, a tunnel is already up, or ES_PF=off.
+#   down automatically on script exit. Targets KUBE_CONTEXT — require_kube_context
+#   must already have run. No-op when the target is not localhost or ES_PF=off.
 #
 #   Env overrides:
 #     ES_PF       auto (default) | off
@@ -119,10 +136,24 @@ es_ensure_port_forward() {
   local svc="${ES_PF_SVC:-elasticsearch-es-http}"
   local port="${ES_PF_PORT:-9200}"
 
-  # Reuse an existing tunnel / already-reachable endpoint (curl returns 0 even on
-  # 401, which still proves the connection works).
+  # A pre-existing listener on the port is NOT reusable. This used to `return 0`
+  # on the theory that a reachable endpoint proves the tunnel works — but it only
+  # proves *something* answers. A stale port-forward left over from an earlier run
+  # against the other cluster answers exactly the same way, so every call below
+  # would hit that cluster while the banner shows the requested --context. That is
+  # strictly worse than the original bug: the operator now has a context line
+  # telling them the target is correct.
+  #
+  # There is no way to attribute a socket we did not open, so fail closed. ES_PF=off
+  # remains the escape hatch for an operator who is deliberately managing the tunnel.
   if curl -sk -o /dev/null --max-time 2 "https://localhost:${port}" 2>/dev/null; then
-    return 0
+    echo "ERROR: localhost:${port} is already in use, and this script cannot tell which" >&2
+    echo "       cluster that tunnel reaches. A stale port-forward to the other cluster" >&2
+    echo "       would silently redirect every call below while the banner still shows" >&2
+    echo "       --context ${KUBE_CONTEXT}." >&2
+    echo "  Fix: close the existing tunnel (e.g. pkill -f 'port-forward.*${svc}'), or set" >&2
+    echo "       ES_PF=off if you are managing it yourself and know it points at ${KUBE_CONTEXT}." >&2
+    return 1
   fi
 
   if ! command -v kubectl >/dev/null 2>&1; then
@@ -130,10 +161,9 @@ es_ensure_port_forward() {
     return 1
   fi
 
-  echo "▸ Starting port-forward: $(kubectl config current-context) → svc/${svc}:${port} (ns ${ns})" >&2
-  kubectl -n "${ns}" port-forward "svc/${svc}" "${port}:${port}" >/dev/null 2>&1 &
+  echo "▸ Starting port-forward: ${KUBE_CONTEXT} (cluster=$(kube_context_cluster)) → svc/${svc}:${port} (ns ${ns})" >&2
+  kctl -n "${ns}" port-forward "svc/${svc}" "${port}:${port}" >/dev/null 2>&1 &
   __ES_PF_PID=$!
-  trap es_pf_cleanup EXIT INT TERM
 
   local i
   for ((i = 0; i < 30; i++)); do
@@ -141,7 +171,7 @@ es_ensure_port_forward() {
       return 0
     fi
     if ! kill -0 "${__ES_PF_PID}" 2>/dev/null; then
-      echo "ERROR: port-forward exited early (check kubectl context / namespace / service)" >&2
+      echo "ERROR: port-forward exited early (check --context ${KUBE_CONTEXT} / namespace / service)" >&2
       __ES_PF_PID=""
       return 1
     fi

@@ -23,6 +23,8 @@ Avoidance approaches that were tried and **do not work**:
 
 Therefore, this playbook targets **"minimize impact and keep it predictable"** rather than "eliminate it".
 
+🔴 **Adding a channel is a redelivery too.** The recipient is part of the state key (`…:slack:#<channel>`), so adding one subscription makes every app matching the new selector fire once per trigger — but **into the new channel only**. The existing channels' keys are already recorded, so they stay quiet. And `scripts/notify-rule-change.sh` hardcodes `SLACK_CHANNEL="#argocd-alarm"`, so its pre/post notices never reach the new channel — announce there by hand.
+
 <br/>
 
 ## Correction: annotation precompute IS possible (verified 2026-07-15)
@@ -38,13 +40,32 @@ Real examples (extracted from `.metadata.annotations.notified.notifications.argo
 ```
 [harbor.example.com/example-project/game:0b43ca6d]:on-deployed:[0].BNdKn1I8xAYb7NkSpHE-fRPOFkA:slack:#argocd-alarm
 <nil>:on-deployed:[0].BNdKn1I8xAYb7NkSpHE-fRPOFkA:slack:#infra-argocd-alarm
+<nil>:on-deployed:[0].BNdKn1I8xAYb7NkSpHE-fRPOFkA:slack:#ignite-argocd-alarm
 ```
 
 Why precompute works:
 
-1. **The condition hash derives from the `when` clause only — it is unaffected by `oncePer` / `description` changes.** The same `BNdKn1I8xAYb7NkSpHE-fRPOFkA` was observed both before and after switching `oncePer` from `finishedAt` to `summary.images`. So you never need to compute it — **just read it from the existing annotation.**
-2. **Identical `when` clauses produce identical hashes across clusters.** The same hash was confirmed on both onprem-dev and example-app-prod.
-3. **The `oncePer` value is Go's `%v` formatting, which is reproducible externally.** With images → `[img1 img2]` (space-separated; ArgoCD already sorts them); without images → **`<nil>`**, not `[]`.
+1. **The condition hash derives from the `when` clause only — it is unaffected by `oncePer` / `description` / `send` changes.** The same `BNdKn1I8xAYb7NkSpHE-fRPOFkA` was observed both before and after switching `oncePer` from `finishedAt` to `summary.images`. So **for a change that leaves `when` alone, you never need to compute the hash — just read it from the existing annotation.**
+
+   Conversely, **once you change `when` by even one character, the hash in the existing annotation is useless** — it belongs to the old condition. Compute it with the formula in 2 instead.
+2. **hash = sha1 of the `when` string, base64url-encoded, padding stripped.** The input is the YAML block scalar (`when: |`) exactly as parsed, **including the single trailing newline** (clip style retains exactly one). Drop that newline and you get a completely different hash.
+
+   ```python
+   import hashlib, base64
+
+   def cond_hash(when: str) -> str:   # when = the parsed `when` string (trailing \n included)
+       return base64.urlsafe_b64encode(hashlib.sha1(when.encode()).digest()).decode().rstrip('=')
+   ```
+
+   If you are unsure about reconstructing the string by hand, cross-check its length with `yq` (note `trigger.on-deployed` is itself a string holding YAML, so it needs a two-step parse):
+
+   ```bash
+   yq '.notifications.triggers."trigger.on-deployed"' values/dev-notifications.yaml | yq '.[0].when | length'
+   ```
+
+   Verified 2026-07-15: feeding the old 3-line `when` reproduces the live annotation's `BNdKn1I8xAYb7NkSpHE-fRPOFkA` exactly. The settle-buffer `when` then yielded `136-W9WUYMSMnUPvuHReikReO8A`, and after apply that same value was observed in the annotation of **every** app (32 on dev / 27 on prod), confirming the formula.
+3. **Identical `when` clauses produce identical hashes across clusters.** The same hash was confirmed on both onprem-dev and example-app-prod.
+4. **The `oncePer` value is Go's `%v` formatting, which is reproducible externally.** With images → `[img1 img2]` (space-separated; ArgoCD already sorts them); without images → **`<nil>`**, not `[]`.
 
 That makes a **zero-burst deployment procedure** viable:
 
@@ -53,7 +74,7 @@ That makes a **zero-burst deployment procedure** viable:
 - [ ] 3. `helmfile apply`.
 - [ ] 4. Scale the controller back to 1 → the key already exists on evaluation → `already sent` → **zero notifications**.
 
-Caveat: the procedure is fiddly, and a wrong key simply means that one application delivers once as usual (no workload impact). When the application count is small or the window is quiet, **accepting the burst per the "Minimizing impact" principles below is simpler and safer.** The 2026-07-15 `oncePer` change (25 on dev / 27 on prod) was handled by accepting the burst.
+Caveat: the procedure is fiddly, and a wrong key simply means that one application delivers once as usual (no workload impact). When the application count is small or the window is quiet, **accepting the burst per the "Minimizing impact" principles below is simpler and safer.** Both 2026-07-15 changes were handled by accepting the burst — switching `oncePer` to `summary.images` (25 on dev / 27 on prod), and the same-day `when` change that added the `on-deployed` settle buffer (32 on dev / 27 on prod).
 
 <br/>
 

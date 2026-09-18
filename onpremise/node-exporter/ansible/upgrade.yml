@@ -24,7 +24,7 @@
     # 0. Pre-checks
     # ------------------------------------------------------------------
     - name: Check if port {{ node_exporter_port }} is already in use
-      shell: ss -tlnp | grep ':{{ node_exporter_port }} ' || true
+      shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check
       changed_when: false
 
@@ -43,11 +43,25 @@
         name: node_exporter
       register: service_status
       failed_when: false
+      when: ansible_facts.system != 'Darwin'
 
+    - name: Verify node_exporter LaunchDaemon is loaded before upgrade
+      command: "launchctl print system/{{ node_exporter_launchd_label }}"
+      register: launchd_status
+      changed_when: false
+      failed_when: false
+      when: ansible_facts.system == 'Darwin'
+
+    # Jinja `and` short-circuits, so the systemd fact is only dereferenced on
+    # the branch where the systemd task actually ran.
     - name: Warn if service is not running
       debug:
         msg: "WARNING: node_exporter is not currently running on {{ inventory_hostname }}. Proceeding with upgrade anyway."
-      when: service_status.status.ActiveState | default('inactive') != 'active'
+      when: >-
+        (ansible_facts.system != 'Darwin'
+         and service_status.status.ActiveState | default('inactive') != 'active')
+        or (ansible_facts.system == 'Darwin'
+            and launchd_status.rc | default(1) != 0)
 
     # ------------------------------------------------------------------
     # 1. Check current version
@@ -76,6 +90,14 @@
         src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
         dest: /tmp
         remote_src: true
+      when: ansible_facts.system != 'Darwin'
+
+    # See playbook.yml: macOS bsdtar is rejected by the unarchive module.
+    - name: Extract node_exporter (bsdtar)
+      command: "tar -xzf /tmp/node_exporter-{{ node_exporter_version }}.tar.gz -C /tmp"
+      args:
+        creates: "/tmp/{{ node_exporter_dist }}/node_exporter"
+      when: ansible_facts.system == 'Darwin'
 
     # ------------------------------------------------------------------
     # 3. Backup, replace, verify (with auto-rollback on failure)
@@ -94,13 +116,21 @@
           systemd:
             name: node_exporter
             state: stopped
+          when: ansible_facts.system != 'Darwin'
+
+        - name: Unload node_exporter LaunchDaemon
+          command: "launchctl bootout system/{{ node_exporter_launchd_label }}"
+          register: launchd_bootout
+          changed_when: launchd_bootout.rc == 0
+          failed_when: false
+          when: ansible_facts.system == 'Darwin'
 
         - name: Install new binary
           copy:
-            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+            src: "/tmp/{{ node_exporter_dist }}/node_exporter"
             dest: "{{ node_exporter_bin }}"
-            owner: node_exporter
-            group: node_exporter
+            owner: "{{ node_exporter_run_user }}"
+            group: "{{ node_exporter_run_group }}"
             mode: "0755"
             remote_src: true
 
@@ -109,6 +139,13 @@
             name: node_exporter
             state: started
             daemon_reload: true
+          when: ansible_facts.system != 'Darwin'
+
+        - name: Load node_exporter LaunchDaemon
+          command: "launchctl bootstrap system {{ node_exporter_launchd_plist }}"
+          register: launchd_bootstrap
+          changed_when: launchd_bootstrap.rc == 0
+          when: ansible_facts.system == 'Darwin'
 
         - name: Wait for node_exporter to respond
           uri:
@@ -126,8 +163,8 @@
             src: "{{ node_exporter_bin }}.bak"
             dest: "{{ node_exporter_bin }}"
             remote_src: true
-            owner: node_exporter
-            group: node_exporter
+            owner: "{{ node_exporter_run_user }}"
+            group: "{{ node_exporter_run_group }}"
             mode: "0755"
           when: current_version.rc == 0
 
@@ -136,6 +173,20 @@
             name: node_exporter
             state: restarted
             daemon_reload: true
+          when: ansible_facts.system != 'Darwin'
+
+        # The block unloads the daemon before swapping the binary, so by the time
+        # the rescue runs there is no loaded job to kickstart — it has to be
+        # bootstrapped back. The leading bootout covers the case where the
+        # failure happened after a successful re-load.
+        - name: "[ROLLBACK] Restarting node_exporter LaunchDaemon with previous version"
+          shell: |
+            launchctl bootout system/{{ node_exporter_launchd_label }} 2>/dev/null || true
+            launchctl bootstrap system {{ node_exporter_launchd_plist }}
+          register: launchd_rollback
+          changed_when: launchd_rollback.rc == 0
+          failed_when: false
+          when: ansible_facts.system == 'Darwin'
 
         - name: "[ROLLBACK] Upgrade failed"
           fail:
@@ -165,4 +216,4 @@
         state: absent
       loop:
         - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
-        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+        - "/tmp/{{ node_exporter_dist }}"

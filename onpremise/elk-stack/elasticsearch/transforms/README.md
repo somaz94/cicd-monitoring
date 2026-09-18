@@ -2,31 +2,21 @@
 
 Stores definitions of **continuous pivot transforms** that materialize analytics-friendly indices on top of raw log indices like `dev-example-project-game`. Once registered, ES incrementally updates these indices automatically.
 
-Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices (`dev-pm-retention-dashboard` / `qa-pm-retention-dashboard`). For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects-en.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects.md#two-flavours-of-applysh-dont-confuse-them).
+Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices. The dashboard list lives in that directory's `manifest.txt`. For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects-en.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects.md#two-flavours-of-applysh-dont-confuse-them).
 
 <br/>
 
 ## Directory layout
 
-```
-transforms/
-├── apply.sh                                       # JSON → ES Transform job (PUT + start)
-├── export.sh                                      # ES Transform → JSON (reverse of apply)
-├── dev-example-project-game-user-cohort.json             # Per-user atomic-facts pivot
-├── dev-example-project-game-user-cohort.mapping.json     # Explicit mapping for the dest index
-├── qa-example-project-game-user-cohort.json
-├── qa-example-project-game-user-cohort.mapping.json
-├── README.md
-└── README-en.md
-```
-
 `apply.sh` discovers every `*.json` in the directory (excluding `*.mapping.json`) → uses the filename (without extension) as the transform id → if a sibling `*.mapping.json` exists and the dest index is absent, PUT the mapping first → then PUT the transform + start.
 
 <br/>
 
-## Current transform: `dev-example-project-game-user-cohort`
+## Transform definitions — shared shape
 
-Pivots the `dev-example-project-game` index on `data.userId` and emits the cohort-analytics index `dev-example-project-game-user-cohort`. The destination index is queried directly by the Retention Curve / Daily Cohort Retention panels of [dev-pm-retention-dashboard](../../kibana/dashboards/dev-pm-retention-dashboard.ndjson). QA follows the same pattern: `qa-example-project-game-user-cohort.json` + [qa-pm-retention-dashboard](../../kibana/dashboards/qa-pm-retention-dashboard.ndjson).
+Each `<env>-example-project-game` index is pivoted on `data.userId` into the cohort-analytics index `<env>-example-project-game-user-cohort`. That destination index is queried directly by the Retention Curve / Daily Cohort Retention panels of the matching retention dashboard.
+
+**The `*.json` files in this directory are the SSOT for the environment list** (excluding `*.mapping.json`) — read the directory instead of a list here. Each definition has exactly one matching dashboard under [`../../kibana/dashboards/`](../../kibana/dashboards/), and `manifest.txt` in that directory is the SSOT for those.
 
 | Field | Meaning | Computation |
 |---|---|---|
@@ -34,24 +24,28 @@ Pivots the `dev-example-project-game` index on `data.userId` and emits the cohor
 | `first_seen` | First signup time | scripted_metric — earliest `@timestamp` of a `/users/create` event for the user. `null` if the user never signed up |
 | `last_seen` | Most recent activity time | `max(@timestamp)` |
 | `total_events` | Total event count | `value_count(@timestamp)` |
-| `active_days_count` | Distinct active days | `cardinality(toLocalDate(@timestamp))` |
-| `active_dates` | List of active dates (`YYYY-MM-DD` strings) | scripted_metric — distinct set of `toLocalDate(@timestamp)`. **Dest mapping MUST pin as `keyword`** (if inferred as date the dashboard's retention runtime fields fall back to `String == ZonedDateTime` and emit 0 for every horizon) |
+| `active_days_count` | Distinct active days (KST) | `cardinality(toLocalDate(@timestamp))` — `params.tz = Asia/Seoul` |
+| `active_dates` | List of active dates (`YYYY-MM-DD` strings, KST) | scripted_metric — distinct set of `toLocalDate(@timestamp)`. **Dest mapping MUST pin as `keyword`** (if inferred as date the dashboard's retention runtime fields fall back to `String == ZonedDateTime` and emit 0 for every horizon) |
+| `active_days_count_cst` | Distinct active days (CST) | Same as above but `params.tz = Asia/Shanghai` |
+| `active_dates_cst` | List of active dates (`YYYY-MM-DD` strings, CST) | The Asia/Shanghai twin of `active_dates`. **Also MUST be `keyword`** — same reason |
 | `max_cleared_chapter` | Highest chapter cleared | `max(lastClearedChapter)` — runtime field that parses `lastClearedChapter` integer from the `/adventures/clear` responseBody |
+
+> **Why bake two zones**: a cohort day boundary is **frozen the moment it is written to the index as a date string** — it cannot be re-bucketed at query time. A Kibana Space's `dateFormat:tz` only re-renders timestamps. So serving both a KST and a CST view requires the **transform to precompute both zones**. The `default` Space reads `active_dates`; the `cst` Space reads `active_dates_cst` ([kibana/docs/timezone-toggle-en.md §5](../../kibana/docs/timezone-toggle.md)).
 
 > Retention itself (D-1 … D-30 returning flags) is **NOT computed by the transform**. The transform only freezes the two atomic facts above (`active_dates` + `first_seen`); the **Kibana data view runtime fields `d1_live..d30_live`** compute retention at visualization time by checking whether `first_seen + N day` appears in `active_dates`. See [kibana/docs/pm-retention-dashboard-template-en.md](../../kibana/docs/pm-retention-dashboard-template.md) for the full split.
 
 Runtime configuration:
-- `frequency: 5m` — sync check every 5 minutes
-- `sync.time.field: @timestamp`, `delay: 60s` — 1-minute safety margin against out-of-order docs
+- `frequency` — how often the sync check runs; the `frequency` key in each `<id>.json` is authoritative.
+- `sync.time.field: @timestamp` + `sync.time.delay` — safety margin against out-of-order docs; the `sync.time.delay` key in each `<id>.json` holds the actual window.
 - continuous mode — only the touched user rows are updated incrementally when new events arrive
 
 Key rules of the signup anchor:
 - **Anchor**: `first_seen` is not `min(@timestamp)` but the **first occurrence per user of `params.path` (`/users/create`)**.
 - **Null handling**: a user with no signup event ever yields `first_seen = null` → the data view runtime fields `d{N}_live` early-return → ES `avg()` automatically skips them → Retention Curve / Daily Table divisor naturally reduces to "signed-up users only".
-- **Timezone**: `params.tz = "Asia/Seoul"` sets the day-boundary. To change, update the transform's `active_dates.scripted_metric.params.tz` together with every `d{N}_live` runtime field's `ZoneId.of(...)` on the cohort data view. Full procedure in [kibana/docs/timezone-toggle-en.md](../../kibana/docs/timezone-toggle.md).
+- **Timezone**: one agg pair is baked **per zone** — `active_dates` / `active_days_count` use `params.tz = "Asia/Seoul"`, `active_dates_cst` / `active_days_count_cst` use `"Asia/Shanghai"`. **Do not "switch" a zone by editing an existing `params.tz`** — that silently breaks retention for whichever Space reads it. Adding a zone means **adding** an agg pair plus a data-view variant that reads it. Full procedure in [kibana/docs/timezone-toggle-en.md §5](../../kibana/docs/timezone-toggle.md).
 - **Adding a horizon** (e.g. D-60): add a single `d60_live` runtime field on the cohort data view (the transform stays untouched). Also extend the Retention Curve Vega's N range to match.
 
-Load: per-user partial updates are very light. ~200 active users × 1 pivot every 5 minutes = tens of KB of traffic per hour.
+Load: per-user partial updates are very light.
 
 <br/>
 
@@ -65,25 +59,7 @@ Place a sibling **`<id>.mapping.json`** next to each transform definition (`<id>
 - Dest index **absent** → PUT mapping → PUT transform + start.
 - Dest index **present** → skip mapping PUT (ES does not allow live property-type changes). To actually replace the mapping use the workflow: `scripts/restart-transform.sh <id> --stop-only` → `DELETE /<dest-index>` → `apply.sh --file <id>.json --replace`.
 
-**File shape** (identical across dev / qa / prod — the same template applies):
-
-```json
-{
-  "settings": { "number_of_shards": 1, "number_of_replicas": 1 },
-  "mappings": {
-    "_meta": { "managed_by": "...", "purpose": "..." },
-    "properties": {
-      "user_id":             { "type": "keyword" },
-      "first_seen":          { "type": "date" },
-      "last_seen":           { "type": "date" },
-      "active_dates":        { "type": "keyword" },
-      "active_days_count":   { "type": "long" },
-      "total_events":        { "type": "long" },
-      "max_cleared_chapter": { "type": "float" }
-    }
-  }
-}
-```
+**File shape** (environment-independent — every environment uses the same template): the canonical example is [`dev-example-project-game-user-cohort.mapping.json`](dev-example-project-game-user-cohort.mapping.json). The actual `settings` / `mappings.properties` content lives in that file as the SSOT and is not copied here.
 
 <br/>
 
@@ -93,14 +69,16 @@ Place a sibling **`<id>.mapping.json`** next to each transform definition (`<id>
 
 ```bash
 cd observability/logging/elasticsearch/transforms
-./apply.sh                          # PUT + start every *.json (skip if already present)
-./apply.sh --file dev-example-project-game-user-cohort.json   # target a specific definition
-./apply.sh --preview-only           # just call _preview (no PUT, validation only)
-./apply.sh --replace                # stop + delete + re-PUT (use after definition changes)
-./apply.sh --no-start               # register only, do not start
-./apply.sh --dry-run                # print intended calls only
+./apply.sh --context onprem-dev                          # PUT + start every *.json (skip if already present)
+./apply.sh --context onprem-dev --file dev-example-project-game-user-cohort.json   # target a specific definition
+./apply.sh --context onprem-dev --preview-only           # just call _preview (no PUT, validation only)
+./apply.sh --context onprem-dev --replace                # stop + delete + re-PUT (use after definition changes)
+./apply.sh --context onprem-dev --no-start               # register only, do not start
+./apply.sh --context onprem-dev --dry-run                # print intended calls only
 ./apply.sh -h                       # full help
 ```
+
+<br/>
 
 ### 2) Status check
 
@@ -120,6 +98,8 @@ kubectl -n logging exec elasticsearch-es-default-0 -- \
   curl -sk -u "elastic:$PASS" "https://localhost:9200/_cat/indices/dev-example-project-game-user-cohort?v"
 ```
 
+<br/>
+
 ### 3) Stop / restart / delete
 
 `scripts/restart-transform.sh` wraps stop + `_reset` + start in a single call. `_reset` clears the in-memory checkpoint and stats so the next start replays the full source index — the canonical workflow after a dest-index mapping swap or a transform definition change.
@@ -128,24 +108,26 @@ kubectl -n logging exec elasticsearch-es-default-0 -- \
 cd observability/logging/elasticsearch/scripts
 
 # Stop + _reset + start (interactive prompt — type 'restart <id>')
-./restart-transform.sh dev-example-project-game-user-cohort
+./restart-transform.sh --context onprem-dev dev-example-project-game-user-cohort
 
 # Stop only (first step of the DELETE dest + apply.sh --replace workflow)
-./restart-transform.sh dev-example-project-game-user-cohort --stop-only -y
+./restart-transform.sh --context onprem-dev dev-example-project-game-user-cohort --stop-only -y
 
 # Dry-run to inspect the planned calls
-./restart-transform.sh dev-example-project-game-user-cohort --dry-run -y
+./restart-transform.sh --context onprem-dev dev-example-project-game-user-cohort --dry-run -y
 ```
 
 Low-level curl pattern (legacy, pre-script):
 
 ```bash
 # Full delete (the destination index must be DELETE'd separately to disappear)
-./apply.sh --replace --no-start    # stop+delete then PUT (no start)
+./apply.sh --context onprem-dev --replace --no-start    # stop+delete then PUT (no start)
 kubectl -n logging exec elasticsearch-es-default-0 -- \
   curl -sk -u "elastic:$PASS" -X DELETE \
     "https://localhost:9200/_transform/dev-example-project-game-user-cohort?force=true"
 ```
+
+<br/>
 
 ### 4) Re-applying after a definition edit
 
@@ -156,13 +138,15 @@ Transform definitions are immutable once registered — to edit, follow this flo
 vi dev-example-project-game-user-cohort.json
 
 # 2) Validate via preview
-./apply.sh --preview-only
+./apply.sh --context onprem-dev --preview-only
 
 # 3) Re-register with --replace (stop + delete + PUT + start)
-./apply.sh --replace
+./apply.sh --context onprem-dev --replace
 ```
 
 `--replace` discards the existing transform's checkpoint. Data already in the destination index (`dev-example-project-game-user-cohort`) stays in place; the transform re-traverses source from the start and overwrites.
+
+<br/>
 
 ### 4a) Changing the dest-index mapping
 
@@ -172,7 +156,7 @@ ES does not allow live property-type changes, so to swap the mapping the dest in
 cd observability/logging/elasticsearch/scripts
 
 # 1) Stop the transform only (start happens later)
-./restart-transform.sh dev-example-project-game-user-cohort --stop-only
+./restart-transform.sh --context onprem-dev dev-example-project-game-user-cohort --stop-only
 
 # 2) DELETE the dest index — no data loss (the transform rebuilds it from the source index)
 PASS=$(kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
@@ -184,15 +168,17 @@ kubectl -n logging exec elasticsearch-es-default-0 -- \
 
 # 4) apply.sh PUTs the mapping first, then re-PUTs the transform + starts it
 cd ../transforms
-./apply.sh --file dev-example-project-game-user-cohort.json --replace
+./apply.sh --context onprem-dev --file dev-example-project-game-user-cohort.json --replace
 ```
+
+<br/>
 
 ### 5) Pull cluster state back to repo (reverse sync)
 
 ```bash
-./export.sh                         # re-pull every *.json present here
-./export.sh --id dev-example-project-game-user-cohort   # specific id
-./export.sh --dry-run               # print only
+./export.sh --context onprem-dev                         # re-pull every *.json present here
+./export.sh --context onprem-dev --id dev-example-project-game-user-cohort   # specific id
+./export.sh --context onprem-dev --dry-run               # print only
 ```
 
 The exporter strips runtime metadata (create_time, version, etc.) and keeps only user-supplied fields.
@@ -227,11 +213,11 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 
 ## Design choices
 
-- **`params.tz` indirection**: every day-boundary calculation uses `scripted_metric` / `script` `params.tz` (default `Asia/Seoul`). To change timezone, edit the `params.tz` values and run `./apply.sh --replace` — no code changes elsewhere. Full timezone-change procedure in [kibana/docs/pm-retention-dashboard-template-en.md "Timezone change procedure"](../../kibana/docs/pm-retention-dashboard-template.md#timezone-change-procedure).
+- **`params.tz` indirection + one agg pair per zone**: every day-boundary calculation reads `params.tz` from its `scripted_metric` / `script`, so adding a zone never touches the painless body — clone the agg and change only `params.tz` (`active_dates` and `active_dates_cst` are **byte-identical** apart from that value). **Caution: do not "switch" a zone by editing an existing agg's `params.tz`** — the Space reading it breaks silently. Add the new zone instead. Adding an agg is a pivot change, so it needs a full reprocess via `./apply.sh --replace`, and the dest mapping needs its `keyword` / `long` fields PUT additively **first** (if the index already exists, `apply.sh` skips the mapping PUT, dynamic mapping mis-infers `date`, and every retention field emits 0).
 - **D-N retention horizons**: computed at query time by the cohort data view runtime fields `d1_live..d30_live` (from `active_dates` + `first_seen`, with a maturity guard excluding not-yet-due horizons), not the transform. D-1 … D-30 are defined today; to add D-60 / D-90, add one runtime field on the cohort data view — the transform is untouched.
 - **Signup-anchored cohort**: D-N counts only users with a `/users/create` event (anchored via `params.path`). Users without a signup event return `null`, so ES `avg()` excludes them automatically.
 - **Source query filter**: only docs with `data.userId` are considered (`source.query.filter.exists`). Prevents transform failures on records that lack the field.
-- **Frequency 5m**: matches the live cluster (was `1h` historically). Tighten further only when finer granularity is needed; widen if cluster load becomes an issue.
+- **Frequency**: tightened from the historical `1h` (the current value lives in each `<id>.json`'s `frequency` key). Tighten further only when finer granularity is needed; widen if cluster load becomes an issue.
 
 <br/>
 
@@ -243,7 +229,7 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 | state `failed` | Check `_stats` for `node` / `reason`. Common case: conflicting mapping in the dest index — `DELETE dev-example-project-game-user-cohort` then `--replace`. |
 | Dest index stays empty | Either `sync.time.field` (`@timestamp`) is missing/typed differently in source, or `delay` is too long for anything to be visible yet. |
 | Edited the JSON but no effect | Transforms are immutable — use `./apply.sh --replace`. |
-| Backfill is slow | Increase `settings.max_page_search_size` (default 500). Watch cluster load. |
+| Backfill is slow | Increase `settings.max_page_search_size` (the current value lives in each `<id>.json`). Watch cluster load. |
 | Fewer rows than expected | `source.query` filter is too strict. Verify via `--preview-only` and relax the query. |
 | `null_pointer_exception` in reduce_script | `combine_script` returned an empty list and `reduce_script` doesn't handle it. Add `if (states.isEmpty()) return 0L;`. |
 | **Retention metrics all render as 0** (flat Curve, all-zero Daily Table) | `active_dates` in the dest mapping was inferred as `date`. Check: `GET /<env>-example-project-game-user-cohort/_mapping` → `active_dates.type == "date"` is the hit. Fix: `restart-transform.sh <id> --stop-only` → `DELETE /<dest-index>` → `apply.sh --file <id>.json --replace` (the sibling `.mapping.json` is PUT automatically). |

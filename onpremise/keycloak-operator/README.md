@@ -49,8 +49,8 @@ Operator + CR are kept in separate helmfiles (G14). Operator lives here; the CR 
 
 - **Install namespace**: `keycloak-system`
 - **CRDs**: shipped with the chart (`crds.install: true`, `crds.keep: true` so CRDs survive chart uninstall)
-- **Watch scope**: `JOSDK_WATCH_ALL` — reconciles `Keycloak` / `KeycloakRealmImport` CRs in every namespace (the real Keycloak instance lives in the `keycloak` namespace)
-- **Image source**: `quay.io/keycloak/keycloak-operator:26.6.1` (chart default, anonymous pull allowed)
+- **Watch scope**: only the namespaces listed in `watchNamespaces` (`values/dev.yaml`) — not a cluster-wide watch. The list names the `keycloak` namespace where the real Keycloak instance lives, plus the operator's own namespace
+- **Image source**: `quay.io/keycloak/keycloak-operator` (chart default = `appVersion` in `Chart.yaml`, anonymous pull allowed)
 
 <br/>
 

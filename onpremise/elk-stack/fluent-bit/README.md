@@ -1,6 +1,8 @@
 # Fluent Bit Helm Chart
 
-Manages the [Fluent Bit](https://fluentbit.io/) DaemonSet for Kubernetes log collection using Helmfile.
+Manages the [Fluent Bit](https://fluentbit.io/) DaemonSet for Kubernetes log collection.
+
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The deploy marker is `argocd-local/fluent-bit.yaml` with `autoSync: true` (prune + selfHeal), so a push to master is what reaches the cluster. Because the chart is vendored locally the marker carries only `chartPath`: the chart-version SSOT is the in-repo `Chart.yaml`, bumped by `upgrade.py` via the `local-with-templates` template — this is NOT the argocd-pin pattern. See the "ArgoCD-migrated components" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
 
 <br/>
 
@@ -8,8 +10,9 @@ Manages the [Fluent Bit](https://fluentbit.io/) DaemonSet for Kubernetes log col
 
 ```
 fluent-bit/
-├── Chart.yaml          # Local chart definition
-├── helmfile.yaml       # Helmfile release definition (uses local chart)
+├── Chart.yaml          # Local chart definition — chart-version SSOT (bumped by upgrade.py)
+├── argocd-local/
+│   └── fluent-bit.yaml # ArgoCD marker (vendored chart → `chartPath`-based, no chart.* fields)
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml       # Custom values (manually managed)
@@ -17,9 +20,10 @@ fluent-bit/
 ├── ci/                 # CI test values (synced with upstream)
 ├── dashboards/         # Grafana dashboards (synced with upstream)
 ├── upgrade.py          # Version upgrade script
-├── backup/             # Auto-backup during upgrades
+├── backup/             # Auto-backup during upgrades (holds the retired helmfile.yaml)
 ├── docs/               # Topic-specific guides (Korean + English mirror)
-└── README.md
+├── README.md
+└── README-en.md
 ```
 
 > **Note:** This chart uses the local chart (`chart: .`) approach, managing templates/ directly.
@@ -48,6 +52,8 @@ fluent-bit/
 
 ## Quick Start
 
+> 🔴 **The live deploy path is ArgoCD auto-sync** (`argocd-local/fluent-bit.yaml`). The `helmfile` commands below are **retired, reference-only** — `helmfile.yaml` lives in `backup/`. Pushing to master is what reaches the cluster.
+
 ```bash
 # Validate configuration
 helmfile lint
@@ -75,8 +81,8 @@ Use `upgrade.py` to perform version upgrades.
 # Preview changes only (no file modifications)
 ./upgrade.py --dry-run
 
-# Upgrade to a specific version
-./upgrade.py --version 0.57.0
+# Upgrade to a specific version (the current chart version is `version` in Chart.yaml)
+./upgrade.py --version <X.Y.Z>
 
 # Exclude specific values files from comparison
 ./upgrade.py --exclude old-release,test
@@ -108,6 +114,8 @@ Do not set `image.tag` in `values/dev.yaml`. The chart default renders the tag f
 ```
 
 ### Deploy After Upgrade
+
+> Retired, reference-only. In practice you commit + push the bump and ArgoCD auto-syncs it (only the pod-status command below still applies as-is).
 
 ```bash
 # Review changes
@@ -153,7 +161,9 @@ config:
 
 <br/>
 
-## Helmfile Commands Reference
+## Helmfile Commands Reference (retired, reference-only)
+
+> `helmfile.yaml` was retired to `backup/`. The commands below are kept as a reference to the helmfile era.
 
 ```bash
 helmfile lint           # Validate configuration

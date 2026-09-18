@@ -291,8 +291,9 @@ serviceAccount:
 # Backup Strategy:
 #   - CronJob runs daily at KST 03:00 (UTC 18:00)
 #   - Date-stamped files: db-YYYYMMDD.sqlite3, rsa_key-YYYYMMDD.pem
+#   - `sqlite3 VACUUM INTO` (NOT cp) + PRAGMA integrity_check at write time
 #   - Retention: 30 days (older backups auto-deleted)
-#   - Data PVC mounted as readOnly, Backup PVC as readWrite
+#   - Both PVCs mounted readWrite — a WAL database cannot be opened read-only
 #
 # Restore: ./scripts/restore.sh [YYYYMMDD|latest]
 # =============================================================================
@@ -380,7 +381,8 @@ extraObjects:
               restartPolicy: OnFailure
               containers:
                 - name: backup
-                  image: busybox:latest
+                  # alpine (not busybox) because the backup needs the sqlite3 CLI.
+                  image: alpine:3.21
                   command: ["sh", "-c"]
                   args:
                     - |
@@ -388,17 +390,56 @@ extraObjects:
                       DATE=$(date +%Y%m%d)
                       BACKUP_DIR="/backup-data"
                       RETENTION_DAYS=30
+                      DEST="$BACKUP_DIR/db-${DATE}.sqlite3"
+                      TMP="${DEST}.tmp"
 
                       echo "[$(date)] Starting backup..."
 
-                      # Date-stamped backup
-                      cp /data/db.sqlite3 "$BACKUP_DIR/db-${DATE}.sqlite3"
+                      # sqlite3 is not in the base image. The package is tiny and this
+                      # namespace has no egress NetworkPolicy. If the fetch fails the Job
+                      # fails loudly, which VaultwardenBackupStale/Missing then surfaces —
+                      # strictly better than the silent wrong backup this replaced.
+                      apk add --no-cache sqlite >/dev/null
+
+                      # A plain `cp` of the main DB is NOT a backup here.
+                      #
+                      # vaultwarden runs SQLite in WAL mode, so committed transactions sit in
+                      # db.sqlite3-wal until a checkpoint folds them into db.sqlite3. The WAL
+                      # stays far below the 1000-page auto-checkpoint threshold, so that
+                      # checkpoint effectively never happens: on 2026-08-10 the main DB had
+                      # not changed since 2026-07-13 while the WAL was 8 days newer, and all
+                      # 32 retained backups were byte-identical to that same 2026-07-13
+                      # snapshot. Every backup silently captured nothing.
+                      #
+                      # VACUUM INTO takes a read transaction and writes a consistent,
+                      # self-contained copy that already includes the WAL contents.
+                      #
+                      # This is also why /data is now mounted read-write: opening a WAL
+                      # database requires the -shm shared-memory index, which cannot be
+                      # created or locked on a read-only mount. The command only reads.
+                      rm -f "$TMP"
+                      sqlite3 /data/db.sqlite3 "VACUUM INTO '$TMP'"
+
+                      # Verify at write time. Without this a damaged backup is discovered at
+                      # restore time — the one moment it can no longer be fixed.
+                      RESULT=$(sqlite3 "$TMP" "PRAGMA integrity_check;")
+                      if [ "$RESULT" != "ok" ]; then
+                        echo "[$(date)] ERROR: integrity_check failed: $RESULT"
+                        rm -f "$TMP"
+                        exit 1
+                      fi
+
+                      # Rename last, so a partial or failed write never appears under the
+                      # dated name that restore.sh picks up.
+                      mv "$TMP" "$DEST"
                       cp /data/rsa_key.pem "$BACKUP_DIR/rsa_key-${DATE}.pem" 2>/dev/null || true
-                      echo "[$(date)] Backup created: db-${DATE}.sqlite3"
+                      echo "[$(date)] Backup created and verified: db-${DATE}.sqlite3 ($(wc -c < "$DEST") bytes)"
 
                       # Retention: delete backups older than N days
                       DELETED=$(find "$BACKUP_DIR" -name "db-*.sqlite3" -mtime +${RETENTION_DAYS} -delete -print | wc -l)
                       find "$BACKUP_DIR" -name "rsa_key-*.pem" -mtime +${RETENTION_DAYS} -delete
+                      # Sweep stale temp files from an interrupted run.
+                      find "$BACKUP_DIR" -name "db-*.sqlite3.tmp" -mtime +1 -delete
                       echo "[$(date)] Retention: deleted ${DELETED} backups older than ${RETENTION_DAYS} days"
 
                       # List current backups
@@ -410,7 +451,9 @@ extraObjects:
                   volumeMounts:
                     - name: data
                       mountPath: /data
-                      readOnly: true
+                      # Read-write is required: a WAL database cannot be opened without
+                      # write access to its -shm index. See the VACUUM INTO note above.
+                      readOnly: false
                     - name: backup
                       mountPath: /backup-data
               volumes:

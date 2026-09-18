@@ -1,0 +1,14 @@
+---
+# =============================================================================
+# Node Exporter - build machine (macOS) overrides
+#
+# group_vars/<group>.yml outranks group_vars/all.yml, which an inline
+# [group:vars] block in inventory.ini does NOT — inventory-file group vars lose
+# to group_vars/ files, so the run-user override has to live here.
+# =============================================================================
+
+# macOS cannot create the dedicated nologin account the Linux hosts use, so the
+# exporter runs as an existing unprivileged login. Everything it collects on
+# darwin (filesystem, cpu, memory, netdev) reads sysctl and IOKit — no root
+# needed at runtime.
+node_exporter_run_user: "example"

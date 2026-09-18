@@ -29,9 +29,11 @@ Cohort-index fields:
 | `first_seen` / `last_seen` | date | First / last activity timestamp |
 | `total_events` | long | Total events per user |
 | `active_days_count` | long | Distinct active days in KST |
-| `active_dates` | keyword array | List of active KST dates (`YYYY-MM-DD`). The source data for D-N retention |
+| `active_dates` | keyword array | List of active KST dates (`YYYY-MM-DD`). The source data for D-N retention (`default` Space) |
+| `active_days_count_cst` | long | Distinct active days in CST (`Asia/Shanghai`) |
+| `active_dates_cst` | keyword array | List of active CST dates. The twin of `active_dates`, and the retention source for the `cst` Space |
 | `max_cleared_chapter` | long | Highest chapter the user has cleared |
-| `d1_live` … `d30_live` | runtime long (0/1) or null | Not in index mapping — a Kibana data view runtime field. 1 if `first_seen` + N appears in `active_dates`, 0 if not. A maturity guard emits nothing for horizons that have not yet elapsed (excluded from avg, not 0). The transform does not compute retention; these runtime fields compute it at query time |
+| `d1_live` … `d30_live` | runtime long (0/1) or null | Not in index mapping — a Kibana data view runtime field. 1 if `first_seen` + N appears in the active-dates list, 0 if not. A maturity guard emits nothing for horizons that have not yet elapsed (excluded from avg, not 0). The transform does not compute retention; these runtime fields compute it at query time. **The source differs per Space** — `default` reads `active_dates`, `cst` reads `active_dates_cst` (the field names are identical on both sides) |
 | `cohort_date` | runtime keyword | Not in index mapping — a Kibana data view runtime field. Emits `first_seen` as a KST date string → row-grouping key for the Daily Cohort Retention table |
 
 <br/>
@@ -178,7 +180,7 @@ Operational meaning: the user distribution of content progress. Reveals which ch
 - **Data-sparsity signal**: cohorts with NU between 1 and 5 show retention as 0% or 100% — do not generalize.
 - **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README.md#data-view-management-policy).
 - **DAU vs DAU Trend mismatch**: caused by the KQL filter. If health-check traffic frequency varies over time, the ratio between the two will drift.
-- **Timezone**: Curve / Table cohort-day boundaries follow `params.tz = Asia/Seoul` (in the transform). Independent of viewer browser timezone.
+- **Timezone**: Curve / Table cohort-day boundaries are **precomputed** by the transform, so they are independent of the viewer's browser timezone. **They split per Space** — `default` uses `params.tz = Asia/Seoul` (`active_dates`), `cst` uses `Asia/Shanghai` (`active_dates_cst`). A Space's `dateFormat:tz` does not change them ([timezone-toggle-en.md §5](timezone-toggle.md)).
 - **`/users/create` as anchor**: for other services / games with a different signup endpoint, update the NU KPI's `term` filter **and** the transform's `params.path` together — otherwise NU and Retention anchor desynchronize. Full migration recipe in [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
 
 <br/>
@@ -190,6 +192,6 @@ Operational meaning: the user distribution of content progress. Reveals which ch
 | Retention horizon extension (e.g. D-60) | add one `dN_live` runtime field on the cohort data view (the transform stays untouched — it only produces atomic facts), `dev-pm-retention-curve` Vega `aggs` + `points` N-range, `dev-pm-retention-daily-table` Lens columns |
 | Signup endpoint change | NU KPI ×3 `term` filter, transform `params.path` (the anchor for `active_dates`), README / catalog text |
 | New panel (e.g. PU, ARPU) | `dev-pm-retention-dashboard.ndjson` lens/visualization + dashboard refs/grid, this catalog table |
-| Timezone change | every `params.tz` in the transform, cohort data view's `cohort_date` runtime field script |
+| Timezone **addition** | add an `active_dates_<zone>` / `active_days_count_<zone>` agg pair to the transform (do NOT edit an existing `params.tz` — that breaks the Space reading it) + an additive dest-mapping PUT + a data view / dashboard variant that reads those fields |
 
 This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README-en.md](../dashboards/README.md) + [transforms/README-en.md](../../elasticsearch/transforms/README.md).

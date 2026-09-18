@@ -16,34 +16,34 @@ PostgreSQL is captured via pg_dump; the realm via `kc.sh export`.
 ```bash
 TS=$(date +%Y%m%d_%H%M%S)
 kubectl -n keycloak exec deploy/keycloak-postgresql -- \
-  pg_dump -U keycloak -d keycloak --clean --if-exists -Fc \
-  > backup/${TS}-keycloak-pgdump.dump
+  pg_dump -U keycloak -d keycloak --clean --if-exists -Fp \
+  > backup/${TS}-keycloak-pgdump.sql
 
-ls -lh backup/${TS}-keycloak-pgdump.dump
+ls -lh backup/${TS}-keycloak-pgdump.sql
 ```
 
-> Use `-Fc` (custom format) — compressed + parallel restore via `pg_restore --jobs N`. For plain SQL use `-Fp`.
+> 🔴 Plain SQL (`-Fp`) is required. `scripts/restore.sh` has no `pg_restore` path and no format detection — it always `kubectl cp`s the dump into the pod and pipes it through `psql -v ON_ERROR_STOP=1 --single-transaction`. A dump taken with `-Fc` (custom format) cannot be restored by the only restore tool in this repo.
 
-### Automatic (chart's backup CronJob — optional)
+### Automatic (chart's backup CronJob — enabled)
 
-Enable the postgresql chart's CronJob:
+Configured in `values/dev-postgresql.yaml` under `backup:` — daily at KST 03:00, 30-day retention, on its own 20Gi PVC.
 
-```yaml
-# Add to values/dev-postgresql.yaml
-backup:
-  enabled: true
-  schedule: "0 18 * * *"          # KST 03:00 = UTC 18:00
-  retentionDays: 30
-  persistence:
-    enabled: true
-    storageClass: nfs-client-server
-    size: 20Gi
+Live since 2026-08-04. It was documented as "optional" before that, which meant the daily dump did not exist while `scripts/restore.sh latest` claimed to read one — the recovery path looked available but could not run.
+
+What it produces:
+- CronJob `keycloak-postgresql-backup`, daily at KST 03:00
+- Dumps on a **separate PVC** `keycloak-postgresql-backup` (mounted at `/backup-data` in the CronJob pod), named `postgres-<db>-<date>.sql`
+- 30-day retention, auto-pruned by the same job
+
+🔴 The dumps are **not** inside the database pod, and nothing mounts that PVC between runs. That is why `restore.sh latest` starts a short-lived helper pod to read it — see the restore section.
+
+Check it is alive:
+```bash
+kubectl -n keycloak get cronjob keycloak-postgresql-backup
+kubectl -n keycloak get job -l app.kubernetes.io/name=postgresql   # retained run history
 ```
 
-After `helmfile apply`:
-- CronJob `keycloak-postgresql-backup` runs daily at KST 03:00
-- Backups stored in a separate PVC `keycloak-postgresql-backup`
-- 30-day retention auto-cleanup
+How many successful Jobs are retained is set by `backup.successfulJobsHistoryLimit` in `values/dev-postgresql.yaml`. That is only the visible run record — dump retention is a separate knob (`backup.retentionDays`).
 
 Manual trigger:
 ```bash
@@ -66,21 +66,28 @@ kubectl -n keycloak rollout status sts/keycloak --timeout=60s
 ### From an external dump file
 
 ```bash
-./scripts/restore.sh backup/20260428_030000-keycloak-pgdump.dump
+./scripts/restore.sh backup/20260428_030000-keycloak-pgdump.sql
 ```
 
 The script:
 1. Copies the dump into the postgres Pod
-2. Runs `pg_restore --clean --if-exists` (for custom format) or `psql` (for plain SQL)
+2. Runs `psql -v ON_ERROR_STOP=1 --single-transaction` (plain SQL only — there is no `pg_restore` path)
 3. Tells you to scale Keycloak back to 1
 
-### From an in-pod CronJob backup
+> 🔴 `ON_ERROR_STOP=1` must not be dropped. psql defaults to **continue-on-error and still exits 0**, so without the flag a restore in which every statement failed still ends with "Restore complete." For the IdP the whole platform federates through, **a restore that lies about succeeding is worse than one that fails** — it is only discovered when nobody can log in. `--single-transaction` goes with it because the dump is taken with `--clean --if-exists` and therefore drops and recreates objects: breaking off midway without a transaction leaves the realm in neither the old nor the new state. On error the restore rolls back, the script exits 1, and Keycloak stays scaled down.
+
+### From the latest CronJob backup
 
 ```bash
+./scripts/restore.sh --dry-run latest   # inspect first
 ./scripts/restore.sh latest
 ```
 
-> Requires `backup.enabled: true` so the backup PVC is mounted in the cluster.
+`latest` resolves the newest dump on the backup PVC. Since nothing mounts that PVC between CronJob runs, the script starts a short-lived helper pod (`pg-restore-fetch-<pid>`, busybox, read-only mount), copies the dump out, deletes the helper, then proceeds exactly like the external-file path.
+
+Env overrides: `NAMESPACE`, `POD`, `BACKUP_PVC`, `DB_NAME`, `DB_USER`.
+
+> The postgres pod name is resolved by label (`app.kubernetes.io/name=postgresql`), not hard-coded. The chart renders a **Deployment**, so the name carries a ReplicaSet hash — an earlier default of `keycloak-postgresql-0` assumed a StatefulSet and never matched.
 
 ### Post-restore
 
@@ -127,7 +134,7 @@ Whole cluster is gone, recover on a fresh cluster:
    ```
 2. Wait for PostgreSQL Pod Ready (`kubectl -n keycloak rollout status deploy/keycloak-postgresql`)
 3. Scale Keycloak instances to 0 (pre-flight, above)
-4. `pg_restore` the latest backup
+4. Apply the latest backup with `scripts/restore.sh`
 5. Scale Keycloak back to 1
 6. Realm settings are inside the DB — no separate import needed. Verify client redirect URIs still align with the GitLab application configuration
 

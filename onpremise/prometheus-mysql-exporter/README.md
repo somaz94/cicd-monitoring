@@ -21,11 +21,14 @@ Exports MySQL instance (example-project-db) metrics to Prometheus.
 ```
 prometheus-mysql-exporter/
 ├── Chart.yaml
-├── helmfile.yaml
+├── argocd/
+│   └── example-project-mysql-exporter.yaml  # ArgoCD release metadata (chart version SSOT)
+├── values.yaml                 # Upstream defaults (auto-managed by upgrade.py)
 ├── values/
 │   └── dev-example-project.yaml       # ExampleProject DB connection info, ServiceMonitor settings
-│   # └── projectb.yaml     # Add new project values file here
+│   # └── dev-projectb.yaml # Add new project values file here
 ├── upgrade.py
+
 ├── backup/
 └── README.md
 ```
@@ -47,13 +50,15 @@ FLUSH PRIVILEGES;
 
 ## Installation
 
-```bash
-# First install (CRDs not yet present)
-helmfile sync
+ArgoCD pull-managed. The chart version SSOT is `chart.version` in `argocd/example-project-mysql-exporter.yaml`, and `./upgrade.py` updates that file (there is no helmfile).
 
-# Subsequent updates
-helmfile apply
+```bash
+./upgrade.py --dry-run     # check for a newer chart
+./upgrade.py               # bump the pin, re-sync Chart.yaml / values.yaml
 ```
+
+Commit the pin and push to master; ArgoCD syncs that revision.
+
 
 <br/>
 
@@ -69,9 +74,10 @@ helmfile apply
 
 To monitor MySQL for a new project:
 
-1. Create a new values file in `values/` (e.g., `projectb.yaml`)
-2. Add a new release entry in `helmfile.yaml`
-3. Run `helmfile apply`
+1. Create `values/dev-<project>.yaml` (e.g., `values/dev-projectb.yaml`)
+2. Add one release marker file under `argocd/` — set `releaseName` / `chart` / `valueFile` to the new values file (use the existing `argocd/example-project-mysql-exporter.yaml` as the shape reference)
+3. Commit and push to master; the ApplicationSet generates an `infra-<releaseName>` App
+
 
 <br/>
 

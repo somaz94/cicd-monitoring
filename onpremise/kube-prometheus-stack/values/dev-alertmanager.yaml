@@ -157,33 +157,71 @@ alertmanager:
           - api_url: "https://hooks.slack.com/services/<TEAM>/<CHANNEL>/<TOKEN>"
             channel: "#infra-alerts"
             send_resolved: true
-            color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}{{ else }}good{{ end }}'
-            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.cluster }}] [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [{{ .CommonLabels.cluster }}] [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+            # Three severities, three looks. Before this, `info` fell into the
+            # else-branch and was indistinguishable from `warning` in both the
+            # colour bar and the title emoji.
+            color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "info" }}#439FE0{{ else }}warning{{ end }}{{ else }}good{{ end }}'
+            title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else if eq .CommonLabels.severity "info" }}:large_blue_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.cluster }}] [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [{{ .CommonLabels.cluster }}] [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
+            # Layout is three blocks separated by blank lines: WHERE (labels),
+            # WHAT (summary, description, runbook), then the Prometheus link.
+            # When several alerts group into one notification a rule divides
+            # them — without it the blocks run together and it is easy to
+            # misread one alert's instance as another's.
+            #
+            # `{{ if $i }}` emits the divider only between alerts, never before
+            # the first or after the last.
+            #
+            # At most 10 alerts are rendered. `group_by` carries `namespace`,
+            # but node-level alerts have no namespace label, so a single disk
+            # event collapses every node into one notification — DiskSpace*
+            # spans dozens of instance x mountpoint series on its own.
+            # Alertmanager truncates `title` at 1024 runes but sends `text`
+            # whole, so past Slack's ~8000-character attachment limit Slack cuts
+            # mid-alert with nothing to say it did. Ten whole alerts plus a
+            # count of the rest can be read; a message that stops in the
+            # middle of one cannot.
+            #
+            # `.Labels.env` never renders on the AWS clusters — that label is
+            # attached by the on-prem additionalScrapeConfigs and exists
+            # nowhere else. The branch is kept so all three cluster files stay
+            # byte-identical, which C4 of `make lint-governance` enforces.
+            # The leading blank line is load-bearing: Slack renders `title` and
+            # `text` as one run, so without it the first field lands on the
+            # title line ("... [INFO] AlertNameNamespace: foo").
             text: |-
-              {{ range .Alerts -}}
-              {{- if .Labels.namespace }}
-              *Namespace:* `{{ .Labels.namespace }}`
-              {{- end -}}
-              {{- if .Labels.pod }}
-              *Pod:* `{{ .Labels.pod }}`
-              {{- end -}}
-              {{- if .Labels.container }}
-              *Container:* `{{ .Labels.container }}`
-              {{- end -}}
-              {{- if .Labels.instance }}
-              *Instance:* `{{ .Labels.instance }}`
-              {{- end -}}
-              {{- if .Labels.env }}
-              *Env:* `{{ .Labels.env }}`
-              {{- end -}}
-              {{- if .Labels.group }}
-              *Group:* `{{ .Labels.group }}`
-              {{- end }}
-              *Severity:* `{{ .Labels.severity }}`
-              *Description:* {{ .Annotations.description }}
+
+
+              {{ $total := len .Alerts }}{{ $shown := .Alerts }}{{ if gt $total 10 }}{{ $shown = slice .Alerts 0 10 }}{{ end }}{{ range $i, $a := $shown }}
+              {{- if $i }}
+              ──────────────────────────────
+              {{ end }}
+              {{- if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`
+              {{ end }}
+              {{- if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`
+              {{ end }}
+              {{- if .Labels.container }}*Container:* `{{ .Labels.container }}`
+              {{ end }}
+              {{- if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`
+              {{ end }}
+              {{- if .Labels.env }}*Env:* `{{ .Labels.env }}`
+              {{ end }}
+              {{- if .Labels.group }}*Group:* `{{ .Labels.group }}`
+              {{ end }}
+              {{- if .Labels.severity }}*Severity:* `{{ .Labels.severity }}`
+              {{ end }}
+              {{- if .Annotations.summary }}
+              *Summary:* {{ .Annotations.summary }}
+              {{ end }}
+              {{- if .Annotations.description }}*Description:* {{ .Annotations.description }}
+              {{ end }}
+              {{- if .Annotations.runbook_url }}*Runbook:* <{{ .Annotations.runbook_url }}|runbook>
+              {{ end }}
               {{- if .GeneratorURL }}
               *Source:* <{{ .GeneratorURL }}|Prometheus>
-              {{- end }}
               {{ end }}
+              {{- end }}
+              {{- if gt $total (len $shown) }}
+              _Showing {{ len $shown }} of {{ $total }} alerts in this group._
+              {{- end }}
     templates:
       - '/etc/alertmanager/config/*.tmpl'

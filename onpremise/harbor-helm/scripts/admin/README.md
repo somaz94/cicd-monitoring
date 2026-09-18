@@ -85,6 +85,34 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
 
 > Detailed procedure + user impact: [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../docs/oidc-setup-keycloak.md), [Phase 4 migration](../../../keycloak/docs/harbor-migration.md)
 
+### Garbage collection
+
+| Command | Description |
+| --- | --- |
+| `gc-status` | GC schedule + recent runs (space freed / blob / manifest counts) |
+| `gc-schedule [opts]` | Set the GC schedule (supports `--dry-run` / `-y`) |
+
+`gc-schedule` options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--cron` | `0 0 20 * * 6` | 6 fields (`sec min hour dom mon dow`). **Harbor core runs in UTC** → Sat 20:00 UTC = Sun 05:00 KST |
+| `--delete-untagged` | `true` | Also delete untagged manifests |
+| `--workers` | `1` | Number of GC workers |
+
+```bash
+# Check current state
+./harbor-admin.sh gc-status
+
+# Apply the default schedule (Sun 05:00 KST) — dry-run first
+./harbor-admin.sh gc-schedule --dry-run
+./harbor-admin.sh gc-schedule
+```
+
+> Background + capacity analysis: [`cicd/harbor-helm/docs/garbage-collection-en.md`](../../docs/garbage-collection.md)
+
+<br/>
+
 ### Diagnostics
 
 | Command | Description |
@@ -113,7 +141,7 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
 # 1) List current users
 ./harbor-admin.sh users
 
-# 2) Promote somaz to sysadmin (user must have logged in via OIDC at least once)
+# 2) Promote admin to sysadmin (user must have logged in via OIDC at least once)
 ./harbor-admin.sh promote admin@example.com
 
 # 3) Map GitLab 'server' group to 'library' project as developer

@@ -10,23 +10,32 @@
 #   applications=[ kibana-.kibana priv=[read] resources=[*] ]
 # Override any of these via the flags below.
 #
-# Examples:
+# Examples (--context is REQUIRED, including for --dry-run):
 #   # default — read_only_role over all indices
-#   ./create-elastic-role.sh --yes
+#   ./create-elastic-role.sh --context <ctx> --yes
 #
 #   # restrict to a specific index family
-#   ./create-elastic-role.sh --role-name pm_viewer \
+#   ./create-elastic-role.sh --context <ctx> --role-name pm_viewer \
 #     --indices 'example-project-*,dev-example-project-game*' --yes
 #
 #   # writer role for dev pipelines
-#   ./create-elastic-role.sh --role-name dev_writer \
+#   ./create-elastic-role.sh --context <ctx> --role-name dev_writer \
 #     --indices 'dev-*' \
 #     --index-privileges 'read,write,create,create_index,view_index_metadata' \
 #     --kibana-privileges all --yes
 #
 #   # Kibana-only role (no ES indices privileges)
-#   ./create-elastic-role.sh --role-name kibana_only \
+#   ./create-elastic-role.sh --context <ctx> --role-name kibana_only \
 #     --indices '' --kibana-privileges read --yes
+#
+# bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE enabling
+# shell options. build_role_payload indexes `sections` from 0, and zsh arrays are
+# 1-based, so under zsh the payload builder aborts with "sections[i]: parameter not
+# set" (fail-closed, but the script never completes). Matches the guard already used
+# by observability/logging/*/scripts/bootstrap-*.sh.
+if [ -n "${ZSH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
@@ -50,13 +59,27 @@ CONFIRM_PROMPT=1
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--role-name NAME] [permission flags] [--dry-run] [--yes]
+Usage: $(basename "$0") --context CTX [--role-name NAME] [permission flags]
+                        [--dry-run] [--yes]
 
 Creates (or updates) an Elasticsearch role via the Security API. All defaults
 compose a safe read-only role — override individual flags to build different
 role flavors (read-write, custom, Kibana-only, etc).
 
 Options:
+  --context CTX                   REQUIRED. kube-context to run every kubectl
+                                  call against. No default and no fallback to the
+                                  current context — the on-prem and AWS clusters
+                                  have identically named logging pods, so an
+                                  implicit context silently targets the wrong one
+                                  and would write this role into the wrong
+                                  cluster's Security API. The name is a LOCAL
+                                  kubeconfig alias with no fixed value — list
+                                  yours with
+                                  \`kubectl config get-contexts -o name\`, and
+                                  confirm the cluster= line in the printed plan
+                                  (that is the stable id, not the alias).
+
   --role-name NAME                Role name to PUT. Default: ${ROLE_NAME}.
 
   --cluster PRIV[,PRIV...]        Cluster privileges. Default: ${CLUSTER_PRIVS}.
@@ -87,6 +110,7 @@ Options:
   -h | --help                     Show this help and exit.
 
 Env overrides (rarely needed):
+  KUBE_CONTEXT=${KUBE_CONTEXT}
   NAMESPACE_ES=${NAMESPACE_ES}
   ES_POD=${ES_POD}  ES_CONTAINER=${ES_CONTAINER}
   ES_SVC=${ES_SVC}  ES_PORT=${ES_PORT}  ES_SCHEME=${ES_SCHEME}
@@ -98,6 +122,10 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --role-name)
       shift; [ $# -gt 0 ] || { err "--role-name requires NAME"; exit 2; }
       ROLE_NAME="$1"
@@ -133,6 +161,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Hard-fail unless a real kube-context was named — enforced for --dry-run too.
+require_kube_context
 
 if ! [[ "$ROLE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]]; then
   err "invalid role name '$ROLE_NAME' — must match ^[A-Za-z_][A-Za-z0-9_.-]*\$"
@@ -199,6 +230,10 @@ build_role_payload() {
 print_plan() {
   log ""
   log "Elasticsearch role plan"
+  # Print the resolved cluster, not just the context name — a context can be renamed
+  # or repointed, so the cluster is what actually identifies the target. This line is
+  # the operator's last chance to catch a wrong-cluster run.
+  log "  kube context:        ${KUBE_CONTEXT}  (cluster=$(kube_context_cluster))"
   log "  ES pod:              ${NAMESPACE_ES}/${ES_POD} (container=${ES_CONTAINER})"
   log "  role:                ${ROLE_NAME}"
   log "  cluster:             ${CLUSTER_PRIVS:-(omitted)}"
@@ -254,7 +289,7 @@ main() {
   put_role
   log ""
   log "Next: attach this role to a user (existing or new):"
-  log "  ./create-kibana-readonly-user.sh -u <username> --role-name '${ROLE_NAME}'"
+  log "  ./create-kibana-readonly-user.sh --context '${KUBE_CONTEXT}' -u <username> --role-name '${ROLE_NAME}'"
   log ""
   ok "Done."
 }

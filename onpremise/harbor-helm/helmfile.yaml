@@ -1,7 +1,7 @@
 # Deploy Harbor (private container registry) via helmfile, consuming upstream harbor/harbor chart.
 # Namespace creation handled by `createNamespace: true` on the release (G11 — no duplicate presync hook).
 # Lifecycle hooks: postsync apply Gateway-API raw manifests; preuninstall clean up HTTPRoutes.
-# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+# Chart version pinned. Bump via ./upgrade.py after verifying the new release.
 
 repositories:
   - name: harbor
@@ -21,7 +21,7 @@ releases:
     namespace: harbor
     createNamespace: true
     chart: harbor/harbor
-    version: 1.19.1
+    version: 1.19.2
     values:
       - values/dev.yaml
 

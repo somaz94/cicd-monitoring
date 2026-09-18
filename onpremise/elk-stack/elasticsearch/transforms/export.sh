@@ -9,6 +9,12 @@ set -euo pipefail
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
 TRANSFORMS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Target kube-context. REQUIRED — no default, no fallback to the current context.
+# The on-prem and AWS clusters both expose logging/elasticsearch-es-default-0, so
+# a bare kubectl succeeds against whichever context is current and would export
+# the OTHER cluster's transform definitions over the repo JSON. See the
+# 2026-08-03 incident noted in observability/logging/kibana-aws/dashboards/apply.sh.
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 NAMESPACE="${NAMESPACE:-logging}"
 ES_POD="${ES_POD:-elasticsearch-es-default-0}"
 ES_CONTAINER="${ES_CONTAINER:-elasticsearch}"
@@ -30,7 +36,7 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--id ID]... [--dry-run]
+Usage: $(basename "$0") --context CTX [--id ID]... [--dry-run]
 
 Exports ES Transform definitions from the cluster as JSON files in this directory.
 By default, every existing "<id>.json" file → re-pulled from ES (and overwritten).
@@ -50,6 +56,10 @@ DRY_RUN=0
 ARG_IDS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --id)
       shift; [ $# -gt 0 ] || { err "--id requires ID"; exit 2; }
       ARG_IDS+=("$1")
@@ -78,7 +88,17 @@ if [ ${#IDS[@]} -eq 0 ]; then
   exit 0
 fi
 
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run, same rationale as transforms/apply.sh.
+KUBE_CONTEXT_HINT="${NAMESPACE}/${ES_POD}"
+_KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
+require_kube_context
+
 log "ES Transforms export"
+log "  context=${KUBE_CONTEXT}  cluster=$(kube_context_cluster)"
 log "  namespace=$NAMESPACE  pod=$ES_POD  dry-run=$DRY_RUN"
 log "  targets (${#IDS[@]}):"
 for id in "${IDS[@]}"; do log "    - $id"; done
@@ -88,7 +108,7 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
-PASS=$(kubectl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
+PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
 [ -z "$PASS" ] && { err "Failed to read elastic password"; exit 1; }
 
 ES_URL="${ES_SCHEME}://${ES_SVC}:${ES_PORT}"
@@ -97,7 +117,7 @@ FAIL=0
 for id in "${IDS[@]}"; do
   log ""
   log "→ GET ${ES_URL}/_transform/${id}"
-  resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  resp=$(kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" "${ES_URL}/_transform/${id}")
 
   # Detect not-found

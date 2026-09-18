@@ -1,4 +1,25 @@
 # yaml-language-server: $schema=
+#
+# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
+# it across every values file and each top-level key becomes its own PrometheusRule CR --
+# the file boundary has no effect at runtime, it exists so a 76K file stops being one
+# reviewable unit.
+#
+#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
+#                            control-plane)
+#   dev-alerts-network.yaml  metallb, blackbox
+#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
+#                            elasticsearch, redis, mysql
+#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
+#
+# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
+# key in two files does not combine the two rule lists -- the later file replaces the
+# earlier one wholesale and the dropped rules disappear silently.
+#
+# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
+# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
+# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
+# **/values/*.yaml.
 # =============================================================================
 # Alert Rules — disable built-in duplicates + custom PrometheusRule definitions
 #
@@ -58,6 +79,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "High CPU usage on {{ $labels.instance }}"
               description: "CPU usage is above 85% for 5 minutes (current: {{ $value }}%)"
@@ -69,27 +91,44 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "High memory usage on {{ $labels.instance }}"
               description: "Memory usage is above 85% for 5 minutes (current: {{ $value }}%)"
 
           # Disk usage > 80% for 10 minutes (warning)
-          # Excludes tmpfs and overlay filesystems (container ephemeral storage)
+          #
+          # The selector excludes filesystems whose fullness is not actionable.
+          # tmpfs/overlay are container ephemeral storage. The rest are macOS
+          # (build machine): nullfs is a Gatekeeper AppTranslocation mirror,
+          # /Library/Developer holds simulator runtime disk images that are
+          # read-only and sized to their contents (permanently ~97% "full"),
+          # and /System/Volumes/* are APFS siblings that re-report the same
+          # container as / -- six identical series, so six identical alerts.
+          # None of these exist on Linux, where the selector is a no-op.
+          #
+          # The AWS siblings (kube-prometheus-stack-aws prod-alerts.yaml and
+          # example-app-prod-alerts.yaml) deliberately keep the short selector:
+          # they carry no additionalScrapeConfigs, so they only ever see
+          # in-cluster targets and the macOS clauses would be dead conditions.
+          # That divergence is intentional -- do not "sync" it.
           - alert: DiskSpaceRunningLow
-            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 80
+            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 80
             for: 10m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "Disk space running low on {{ $labels.instance }}"
               description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
 
           # Disk usage > 95% for 5 minutes (critical — immediate action needed)
           - alert: DiskSpaceCritical
-            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 95
+            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 95
             for: 5m
             labels:
               severity: critical
+              group: node
             annotations:
               summary: "Disk space critical on {{ $labels.instance }}"
               description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
@@ -97,10 +136,11 @@ additionalPrometheusRulesMap:
           # Filesystem inodes > 80% used for 10 minutes (warning)
           # Many small files can exhaust inodes even with free disk space
           - alert: NodeFilesystemInodesRunningLow
-            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"})) * 100 > 80
+            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 80
             for: 10m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "Filesystem inodes running low on {{ $labels.instance }}"
               description: "Inode usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
@@ -108,10 +148,11 @@ additionalPrometheusRulesMap:
           # Filesystem inodes > 95% used for 5 minutes (critical)
           # Almost no inodes left — new file creation will fail
           - alert: NodeFilesystemInodesCritical
-            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"})) * 100 > 95
+            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 95
             for: 5m
             labels:
               severity: critical
+              group: node
             annotations:
               summary: "Filesystem inodes critical on {{ $labels.instance }}"
               description: "Inode usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
@@ -123,6 +164,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "Network errors detected on {{ $labels.instance }}"
               description: "Interface {{ $labels.device }} has {{ $value }} errors/sec (RX+TX combined over 5m)"
@@ -134,6 +176,7 @@ additionalPrometheusRulesMap:
             for: 10m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "High system load on {{ $labels.instance }}"
               description: "5-minute load average is {{ $value }}x the number of CPUs"
@@ -145,9 +188,70 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: warning
+              group: node
             annotations:
               summary: "Network interface flapping on {{ $labels.instance }}"
               description: "Interface {{ $labels.device }} changed carrier state {{ $value }} times in 10 minutes"
+
+  # ---------------------------------------------------------------------------
+  # Build machine (mac-mini) — the one failure mode nothing else can see.
+  #
+  # Disk usage on this host is already covered: DiskSpaceRunningLow /
+  # DiskSpaceCritical above apply to every scraped node_exporter, and a dead
+  # exporter is covered by the chart's default TargetDown. Neither can see a
+  # missing mount, because node_exporter simply stops publishing the series.
+  # ---------------------------------------------------------------------------
+  build-machine-alerts:
+    groups:
+      - name: build-machine-alerts
+        rules:
+          # Jenkins build workspaces live on an external USB SSD at
+          # /Volumes/ExtremeSSD (~71GB of working data). The host has no fstab
+          # or autofs entry for it and relies on macOS automounting, so an
+          # unplugged or failed drive takes every build down — and today that
+          # is only discovered when a build fails.
+          #
+          # `and on() up == 1` keeps this from double-firing with TargetDown:
+          # absent() is also true when the whole exporter is gone, and one
+          # event should raise one alert.
+          - alert: BuildMachineExternalSSDMissing
+            expr: absent(node_filesystem_size_bytes{job="build-machines", mountpoint="/Volumes/ExtremeSSD"}) and on() (up{job="build-machines"} == 1)
+            for: 5m
+            labels:
+              severity: critical
+              group: build-machine
+            annotations:
+              summary: "Build machine external SSD is not mounted"
+              description: "/Volumes/ExtremeSSD stopped reporting while the exporter is still up. Jenkins build workspaces live there, so builds will fail until it is remounted."
+
+          # Memory pressure, expressed the way macOS actually behaves.
+          #
+          # HighMemoryUsage in node-alerts cannot cover this host: it reads
+          # node_memory_MemAvailable_bytes / MemTotal_bytes, and darwin
+          # node_exporter publishes neither. Porting its shape would be worse
+          # than leaving the gap -- macOS deliberately keeps free memory near
+          # zero (inactive pages are reclaimable cache), so (1 - free/total)
+          # reads 88% on this host while macOS's own memory_pressure reports
+          # 73% free. That rule would fire on an idle machine.
+          #
+          # wired + compressed is the part that genuinely cannot be reclaimed,
+          # and compressed is what grows first under real pressure because
+          # macOS compresses before it swaps. Measured at 25% idle, so 80%
+          # leaves room for a Unity build's working set.
+          #
+          # Deliberately NOT alerting on swap: this host has 8GB for Unity
+          # Android builds and swaps during normal builds, so a swap-rate rule
+          # needs a baseline taken during an actual build before it can have a
+          # threshold that is not noise.
+          - alert: BuildMachineMemoryPressure
+            expr: (node_memory_wired_bytes{job="build-machines"} + node_memory_compressed_bytes{job="build-machines"}) / node_memory_total_bytes{job="build-machines"} * 100 > 80
+            for: 15m
+            labels:
+              severity: warning
+              group: build-machine
+            annotations:
+              summary: "Memory pressure on the build machine {{ $labels.instance }}"
+              description: "Unreclaimable memory (wired + compressed) is above 80% of RAM for 15 minutes (current: {{ $value }}%). Builds may start failing or thrashing swap."
 
   # ---------------------------------------------------------------------------
   # Pod Alerts — K8s workload health
@@ -166,6 +270,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: critical
+              group: pod
             annotations:
               summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is in CrashLoopBackOff"
               description: "Container {{ $labels.container }} has been in CrashLoopBackOff for at least 5 minutes"
@@ -177,6 +282,7 @@ additionalPrometheusRulesMap:
             for: 10m
             labels:
               severity: warning
+              group: pod
             annotations:
               summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
               description: "Pod has been in not-ready state for 10 minutes"
@@ -196,6 +302,7 @@ additionalPrometheusRulesMap:
             for: 10m
             labels:
               severity: warning
+              group: cilium
             annotations:
               summary: "Cilium endpoints not ready on {{ $labels.instance }}"
               description: "{{ $value }} endpoints are in non-ready state for 10 minutes"
@@ -207,6 +314,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: warning
+              group: cilium
             annotations:
               summary: "High Cilium packet drop rate on {{ $labels.instance }}"
               description: "Cilium is dropping {{ $value }} packets/sec (reason: {{ $labels.reason }})"
@@ -218,6 +326,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: critical
+              group: cilium
             annotations:
               summary: "Cilium agent unhealthy on {{ $labels.instance }}"
               description: "Cilium agent has been reporting unhealthy status for 5 minutes"
@@ -229,6 +338,7 @@ additionalPrometheusRulesMap:
             for: 5m
             labels:
               severity: critical
+              group: cilium
             annotations:
               summary: "Cilium operator is down"
               description: "No Cilium operator process detected for 5 minutes — CRD management and IP allocation are halted"
@@ -251,219 +361,10 @@ additionalPrometheusRulesMap:
             for: 10m
             labels:
               severity: warning
+              group: cilium
             annotations:
               summary: "Cilium agent {{ $labels.pod }} CPU 5x DaemonSet average"
               description: "Single cilium-agent pod CPU is 5x the average of its DaemonSet peers for 10m — likely BPF/datapath loop while still reporting ready. Check logs for repeated warnings (e.g. 'Skipping CT garbage collection'); recovery is usually `kubectl delete pod {{ $labels.pod }} -n kube-system` so the DaemonSet recreates the pod with a clean init pass. Precedent: 2026-05-13 incident on k8s-control-01."
-
-  # ---------------------------------------------------------------------------
-  # ArgoCD Alerts — controller-level health (Option B, active)
-  #
-  # Current mode: Option B
-  #   - Only ArgoCDControllerReconcileStuck is active (root-cause alert for 2026-04-23 incident).
-  #   - App-level health alerts (Degraded/Missing/OutOfSync) remain in ArgoCD notifications
-  #     (cicd/argo-cd/values/dev-notifications.yaml, #argocd-alarm channel).
-  #
-  # Option A (optional): also move app-level health to Alertmanager.
-  #   Benefits: auto-RESOLVED alerts (send_resolved=true), silencing, inhibit rules.
-  #   To switch to A:
-  #     1) uncomment the 3 alerts below (ArgoCDAppDegraded/Missing/OutOfSync)
-  #     2) comment out the 3 triggers in cicd/argo-cd/values/dev-notifications.yaml
-  #        (on-health-degraded/missing/unknown in subscriptions)
-  #     3) uncomment the ArgoCD inhibit_rule in dev-alertmanager.yaml
-  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
-  # ---------------------------------------------------------------------------
-  argocd-alerts:
-    groups:
-      - name: argocd-alerts
-        rules:
-
-          # --- Active rules (Option B) ---
-
-          # Controller reconcile stuck — early detection of the 2026-04-23 incident pattern
-          # Normal reconcile interval is 3-10 min (timeout.reconciliation=600s); 30 min silence is abnormal
-          #
-          # The `time() - timestamp(...) < 300` clause filters out stale series from
-          # recently-deleted pods (pod restarts leave old instance IPs in Prometheus
-          # for ~5 min with counter frozen, which would otherwise cause false firing).
-          #
-          # The `{dest_server!=""}` filter excludes the near-static empty-dest_server series:
-          # argocd_app_reconcile_count carries one series per destination, and a few transient
-          # reconciles land in dest_server="" while a newly-generated Application's destination is
-          # still resolving (e.g. when an ApplicationSet first creates apps). That series then
-          # freezes (count stays tiny) but keeps being scraped (fresh) — and since this expr is
-          # evaluated per-series with no aggregation, the frozen-but-fresh empty series would trip
-          # the alert (increase==0 AND fresh) even though the real per-cluster series keeps
-          # incrementing normally. Scoping to dest_server!="" watches only real cluster reconciles.
-          - alert: ArgoCDControllerReconcileStuck
-            expr: |
-              (increase(argocd_app_reconcile_count{dest_server!=""}[30m]) == 0)
-              and ((time() - timestamp(argocd_app_reconcile_count{dest_server!=""})) < 300)
-            for: 10m
-            labels:
-              severity: critical
-              group: argocd
-            annotations:
-              summary: "ArgoCD application-controller reconcile stuck (no activity 30+ min)"
-              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue / sharding issue or v3.3.7 goroutine leak (see ghost-alarm-incident-2026-04-23.md, Post-incident follow-up section). Recover with: kubectl rollout restart statefulset/argocd-application-controller -n argocd"
-
-          # --- Option A rules (disabled by default) ---
-          # Uncomment the block below to enable Option A (move app-level health to Alertmanager)
-
-          # # App Degraded for 5 minutes
-          # - alert: ArgoCDAppDegraded
-          #   expr: argocd_app_info{health_status="Degraded"} == 1
-          #   for: 5m
-          #   labels:
-          #     severity: warning
-          #     group: argocd
-          #   annotations:
-          #     summary: "ArgoCD app {{ $labels.name }} is Degraded"
-          #     description: "Application {{ $labels.name }} (project: {{ $labels.project }}, dest: {{ $labels.dest_namespace }}) has been Degraded for 5+ minutes."
-          #
-          # # App resources Missing for 10 minutes
-          # - alert: ArgoCDAppMissing
-          #   expr: argocd_app_info{health_status="Missing"} == 1
-          #   for: 10m
-          #   labels:
-          #     severity: warning
-          #     group: argocd
-          #   annotations:
-          #     summary: "ArgoCD app {{ $labels.name }} is Missing"
-          #     description: "Application {{ $labels.name }} has Missing resources for 10+ minutes — expected resources are not present on the cluster."
-          #
-          # # App OutOfSync for 30 minutes — likely auto-sync disabled or failing
-          # - alert: ArgoCDAppOutOfSync
-          #   expr: argocd_app_info{sync_status="OutOfSync"} == 1
-          #   for: 30m
-          #   labels:
-          #     severity: warning
-          #     group: argocd
-          #   annotations:
-          #     summary: "ArgoCD app {{ $labels.name }} OutOfSync for 30+ min"
-          #     description: "Application {{ $labels.name }} has been OutOfSync for 30+ minutes. Auto-sync may be disabled or failing — investigate in ArgoCD UI."
-
-  # ---------------------------------------------------------------------------
-  # Elasticsearch Alerts — cluster health + disk (via prometheus-elasticsearch-exporter, namespace=logging)
-  # ---------------------------------------------------------------------------
-  elasticsearch-alerts:
-    groups:
-      - name: elasticsearch-alerts
-        rules:
-
-          # Cluster health RED for 5 minutes — at least one primary shard unassigned
-          # Indicates potential data unavailability; queries/ingest may fail
-          - alert: ElasticsearchClusterRed
-            expr: elasticsearch_cluster_health_status{color="red"} == 1
-            for: 5m
-            labels:
-              severity: critical
-              group: elasticsearch
-            annotations:
-              summary: "Elasticsearch cluster {{ $labels.cluster }} health is RED"
-              description: "Cluster {{ $labels.cluster }} has been in RED state for 5+ minutes — at least one primary shard is unassigned. Check `kubectl get pods -n logging` and ES _cluster/allocation/explain."
-
-          # Cluster health YELLOW for 15 minutes — replica shards unassigned (redundancy lost)
-          # 15m for suppresses transient YELLOW during rolling restart / index creation.
-          # Guarded by data_nodes > 1: in single-node deployments YELLOW is the steady state
-          # (replica shards cannot be allocated on the same node as the primary), so this
-          # alert only fires when the cluster has ≥2 data nodes — i.e., replicas SHOULD be placeable.
-          - alert: ElasticsearchClusterYellow
-            expr: |
-              elasticsearch_cluster_health_status{color="yellow"} == 1
-              and on(cluster) elasticsearch_cluster_health_number_of_data_nodes > 1
-            for: 15m
-            labels:
-              severity: warning
-              group: elasticsearch
-            annotations:
-              summary: "Elasticsearch cluster {{ $labels.cluster }} health is YELLOW"
-              description: "Cluster {{ $labels.cluster }} has been in YELLOW state for 15+ minutes — replica shards are unassigned, redundancy is reduced."
-
-          # Data path free space < 15% for 10 minutes
-          # ES low watermark defaults to 85% used (15% free); alert before allocation is blocked
-          - alert: ElasticsearchDiskLow
-            expr: (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) * 100 < 15
-            for: 10m
-            labels:
-              severity: warning
-              group: elasticsearch
-            annotations:
-              summary: "Elasticsearch disk low on {{ $labels.name }}"
-              description: "Node {{ $labels.name }} has only {{ $value }}% free space on {{ $labels.path }} — approaching ES low watermark (85% used). Shard allocation will be blocked at 85%."
-
-  # ---------------------------------------------------------------------------
-  # Redis Alerts — instance availability
-  # Covers both example-project-redis-exporter (namespace=monitoring) and valkey-redis-metrics (namespace=example-project-db-redis)
-  # ---------------------------------------------------------------------------
-  redis-alerts:
-    groups:
-      - name: redis-alerts
-        rules:
-
-          # Redis instance unreachable from exporter for 2 minutes
-          # redis_up=0 means exporter cannot PING/INFO the target — Redis down or network partition
-          - alert: RedisDown
-            expr: redis_up == 0
-            for: 2m
-            labels:
-              severity: critical
-              group: redis
-            annotations:
-              summary: "Redis instance down ({{ $labels.namespace }}/{{ $labels.service }})"
-              description: "Redis exporter reports redis_up=0 for 2+ minutes (instance: {{ $labels.instance }}, job: {{ $labels.job }}) — dependent apps may see cache/session failures."
-
-  # ---------------------------------------------------------------------------
-  # MySQL Alerts — instance availability (via example-project-mysql-exporter, namespace=monitoring)
-  # ---------------------------------------------------------------------------
-  mysql-alerts:
-    groups:
-      - name: mysql-alerts
-        rules:
-
-          # MySQL instance unreachable from exporter for 2 minutes
-          # mysql_up=0 means exporter cannot connect — DB down, credentials, or network issue
-          - alert: MySQLDown
-            expr: mysql_up == 0
-            for: 2m
-            labels:
-              severity: critical
-              group: mysql
-            annotations:
-              summary: "MySQL instance down ({{ $labels.namespace }}/{{ $labels.service }})"
-              description: "MySQL exporter reports mysql_up=0 for 2+ minutes (instance: {{ $labels.instance }}) — dependent services will fail DB operations."
-
-  # ---------------------------------------------------------------------------
-  # Harbor Alerts — per-component + aggregate health (via harbor-exporter, namespace=harbor)
-  # Components: core, database, jobservice, portal, redis, registry, registryctl, trivy
-  # ---------------------------------------------------------------------------
-  harbor-alerts:
-    groups:
-      - name: harbor-alerts
-        rules:
-
-          # Harbor component reports harbor_up=0 for 3 minutes
-          # Per-component label pinpoints which subsystem failed (e.g., registry vs jobservice)
-          - alert: HarborComponentDown
-            expr: harbor_up == 0
-            for: 3m
-            labels:
-              severity: critical
-              group: harbor
-            annotations:
-              summary: "Harbor component {{ $labels.component }} is down"
-              description: "Harbor component '{{ $labels.component }}' has been unhealthy for 3+ minutes (pod: {{ $labels.pod }}) — image push/pull for this subsystem is affected."
-
-          # Harbor aggregate /api/v2.0/health reports unhealthy for 3 minutes
-          # Fires when core health endpoint returns non-healthy — cross-check with HarborComponentDown
-          - alert: HarborOverallHealth
-            expr: harbor_health == 0
-            for: 3m
-            labels:
-              severity: critical
-              group: harbor
-            annotations:
-              summary: "Harbor overall health is unhealthy"
-              description: "Harbor /api/v2.0/health aggregate has been unhealthy for 3+ minutes — one or more components failing (check HarborComponentDown for specifics)."
 
   # ---------------------------------------------------------------------------
   # Control Plane Alerts — etcd / apiserver / CI-correlation from the 2026-05-08 incident.

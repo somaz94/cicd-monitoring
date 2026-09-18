@@ -2,7 +2,7 @@
 # (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
 # The generator emits one Application named `infra-<releaseName>`.
 #
-# Phase 3-4 target. Adopts the live helmfile release 'eck-operator' (elastic-system ns, chart 3.4.0)
+# Phase 3-4 target. Adopts the live helmfile release 'eck-operator' (elastic-system ns, at the chart.version pinned below)
 # in place. The chart manages the ECK OPERATOR (StatefulSet elastic-operator) PLUS 12 CRDs and a
 # ValidatingWebhookConfiguration. releaseName=eck-operator keeps app.kubernetes.io/instance=eck-operator,
 # so the StatefulSet selector renders identical to live -> no recreate.
@@ -22,7 +22,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: https://helm.elastic.co
   name: eck-operator
-  version: "3.4.1"
+  version: "3.5.0"
 valueFile: observability/logging/eck-operator/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
 createNamespace: false                          # 'elastic-system' already exists
 autoSync: true                                  # adopt-diff verified clean (tracking-id only; STS/12 CRD/webhook caBundle unchanged via ServerSideApply, ServiceMonitor created) -> auto-sync (prune+selfHeal) on

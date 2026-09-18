@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Prometheus Node Exporter - macOS LaunchDaemon
+  https://github.com/prometheus/node_exporter
+
+  A LaunchDaemon (not a LaunchAgent) so the exporter starts at boot without
+  requiring a console login. Runs as an unprivileged account: every collector
+  this host needs (filesystem, cpu, meminfo, netdev, diskstats) reads sysctl
+  and IOKit, none of which require root.
+
+  The Linux unit's --collector.systemd / --collector.processes are deliberately
+  absent: both are Linux-only collectors and node_exporter refuses to start if
+  they are passed on darwin.
+
+  thermal is disabled because it has no data source on Apple Silicon and logs
+  `collector failed ... no CPU power status has been recorded` on every scrape,
+  which would grow StandardOutPath without bound.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{{ node_exporter_launchd_label }}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{ node_exporter_bin }}</string>
+        <string>--no-collector.thermal</string>
+        <string>--web.listen-address=:{{ node_exporter_port | default('9100') }}</string>
+    </array>
+
+    <key>UserName</key>
+    <string>{{ node_exporter_run_user }}</string>
+
+    <!-- RunAtLoad + KeepAlive together are the launchd equivalent of
+         systemd's Restart=always. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{ node_exporter_launchd_log }}</string>
+    <key>StandardErrorPath</key>
+    <string>{{ node_exporter_launchd_log }}</string>
+</dict>
+</plist>

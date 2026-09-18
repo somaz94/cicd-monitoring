@@ -1,5 +1,6 @@
 # Keycloak-dedicated PostgreSQL on the dev (example dev) cluster.
-# Consumed by the helmfile release `keycloak-postgresql` (oci://ghcr.io/somaz94/charts/postgresql@0.1.0).
+# Consumed by the helmfile release `keycloak-postgresql` (oci://ghcr.io/somaz94/charts/postgresql;
+# the version is pinned in helmfile.yaml).
 # Service hostname: `keycloak-postgresql.keycloak.svc` — referenced from values/dev-keycloak.yaml `keycloak.db.host`.
 
 # Force the Deployment / Service / PVC name so the Keycloak CR can hard-code db.host without depending on Helm release name.
@@ -45,3 +46,31 @@ resources:
   limits:
     cpu: 500m
     memory: 1Gi
+
+# Daily pg_dump CronJob. Same 03:00 KST slot the other data components use
+# (mysql, vaultwarden, ghost), so a backup window failure shows up together.
+#
+# Why this matters more here than for the other components: Keycloak is the IdP
+# the whole platform federates through — ArgoCD, the example-hub portal and the
+# seven apps behind it. Losing the realm locks the recovery tooling out along
+# with everything else, because keycloak-ops itself sits behind that same login.
+#
+# The dump lands on a SEPARATE PVC (`keycloak-postgresql-backup`, mounted at
+# /backup-data in the CronJob pod), not inside the database PVC. scripts/restore.sh
+# reads it from there — see docs/backup-restore.md.
+backup:
+  enabled: true
+  # KST 03:00 = UTC 18:00
+  schedule: "0 18 * * *"
+  retentionDays: 30
+  # 3 matches every other backup CronJob in this cluster. Job history is only the
+  # log trail, not the backup itself — the dumps keep their own 30-day retention
+  # (retentionDays above), so a shorter Job history costs no recoverability.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  persistence:
+    enabled: true
+    storageClass: nfs-client-server
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi

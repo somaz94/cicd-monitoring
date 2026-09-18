@@ -1,8 +1,8 @@
 # GitLab Runner Installation Guide
 
-This guide describes how to install and configure GitLab Runner on Kubernetes using Helmfile.
+This guide describes how to install and configure GitLab Runner on Kubernetes. Deployment is driven by ArgoCD.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/build-image.yaml` + `argocd/deploy-image.yaml` (old-build-deploy-image stays pinned), bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/<release>.yaml`; which marker files are in scope is owned by `CONFIG.ARGOCD_PIN_FILES` in `upgrade.py`. `upgrade.py` bumps them together via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../docs/ci-upgrade.md).
 
 <br/>
 
@@ -11,7 +11,7 @@ This guide describes how to install and configure GitLab Runner on Kubernetes us
 ```
 gitlab-runner/
 ├── Chart.yaml
-├── helmfile.yaml
+├── argocd/                     # per-release ArgoCD markers (chart-version SSOT)
 ├── values.yaml
 ├── values/
 │   ├── build.yaml
@@ -30,7 +30,7 @@ gitlab-runner/
 
 - Kubernetes cluster
 - Helm 3
-- Helmfile
+- ArgoCD watching this repository (infra-applicationset)
 - GitLab instance with runner registration token
 
 <br/>
@@ -67,46 +67,31 @@ runners:
 
 <br/>
 
-### 3. Configure Helmfile
+### 3. Check the ArgoCD markers
 
-```yaml
-repositories:
-  - name: gitlab
-    url: https://charts.gitlab.io
+This component has no helmfile. Each release has one `argocd/<release>.yaml` marker file, which the infra-applicationset git-files generator reads to create the Application. A marker declares `chart.repoURL` / `chart.name` / `chart.version` / `valueFile` / `autoSync`.
 
-releases:
-  - name: build-image
-    namespace: gitlab-runner
-    chart: gitlab/gitlab-runner
-    version: 0.81.0
-    values:
-      - values/build.yaml
-
-  - name: deploy-image
-    namespace: gitlab-runner
-    chart: gitlab/gitlab-runner
-    version: 0.81.0
-    values:
-      - values/deploy.yaml
+```bash
+ls argocd/
+cat argocd/build-image.yaml
 ```
 
 <br/>
 
-### 4. Deploy with Helmfile
+### 4. Deploy with ArgoCD
 
 ```bash
-# Validate configuration
-helmfile lint
+# Bump the chart pin (the markers listed in CONFIG.ARGOCD_PIN_FILES move together)
+./upgrade.py --dry-run
+./upgrade.py
 
-# Preview changes
-helmfile diff
-
-# Deploy all runners
-helmfile apply
-
-# Deploy specific runner only
-helmfile -l name=build-image sync
+# Commit and push the marker / values changes
+git add cicd/gitlab-runner
+git commit -m "chore(gitlab-runner): bump chart"
+git push
 ```
+
+On push, infra-applicationset re-reads the markers and reconciles the Applications. A release with `autoSync: true` needs nothing further; otherwise Sync the app from the ArgoCD UI. Watch progress on the `infra-<release>` apps in the ArgoCD UI.
 
 <br/>
 
@@ -152,11 +137,11 @@ An automated upgrade script that handles version checking, backup, diff, and rol
 ./upgrade.py
 
 # Upgrade to a specific version
-./upgrade.py --version 0.82.0
+./upgrade.py --version <chart-version>
 
-# Exclude legacy values file (old-gitlab-runner.yaml targets the old chart 0.70.3)
-./upgrade.py --exclude old-gitlab-runner
-./upgrade.py --dry-run --exclude old-gitlab-runner
+# Exclude a values file from the checks (only when you need to)
+./upgrade.py --exclude <filename-substring>
+./upgrade.py --dry-run --exclude <filename-substring>
 
 # List available backups
 ./upgrade.py --list-backups
@@ -177,46 +162,40 @@ The script performs the following steps:
 6. Checks `values/*.yaml` for breaking changes (removed/new top-level keys)
 7. Backs up current files to `backup/<timestamp>/` and applies upgrade
 
-Note: The script updates all helmfile releases that match the current version. Releases pinned to a different version (e.g., `old-build-deploy-image`, chart `0.70.3`) are automatically skipped by the helmfile version substitution.
+Note: this component is ArgoCD-managed, so the version SSOT is `chart.version` in `argocd/<release>.yaml`. The files listed in `upgrade.py`'s `ARGOCD_PIN_FILES` are what gets bumped, and **all three releases are now included**.
 
-However, the Step 6 breaking-change check compares every file under `values/*.yaml`, so the legacy values file `values/old-gitlab-runner.yaml` will produce noisy false positives against the new chart's keys. Pass `--exclude` to skip it during upgrade:
+🔴 **`old-build-deploy-image` is not a retired release.** It is the **only runner gitlab-old CI has**, run by ArgoCD app `infra-old-build-deploy-image` under `autoSync: true` — **do not delete it.**
 
-```bash
-./upgrade.py --exclude old-gitlab-runner
-```
+Everything it had fallen behind on was caught up on 2026-08-31: the chart was brought in line with its sibling releases, the image raised to `alpine-v16.11.4` (tracking server 16.11.10), and the token reissued as a `glrt-` **instance runner**. That last part was mandatory: chart `0.91.0`'s entrypoint branches on the `glrt-` prefix and falls through to the registration path without it.
 
-`--exclude` patterns match as substrings against filenames, and multiple patterns can be supplied comma-separated (e.g., `--exclude old-gitlab-runner,test`). Matched files are also skipped from the backup directory copy.
+🔴 **That widened the scope from project to instance.** Only project 57 could use this runner before; now every project on gitlab-old can. A tag is a **routing label, not an authorization boundary** — anyone can put `tags: [build-deploy-image]` in their `.gitlab-ci.yml` and land here, and job pods run in the same namespace as `build-image` / `deploy-image`.
+
+That removes any reason to pass `--exclude old-gitlab-runner`. The noise it avoided came from diffing a legacy values file against a current chart's keys, and all three releases now track the same chart.
+
+**The image tag pin was dropped on 2026-09-01 as well.** All three releases now comment out `tag:` and follow the chart's `appVersion` (the effective tag is owned by `appVersion` in `Chart.yaml`), so the old runner no longer needs raising on its own. Until then the tag was hand-matched to the gitlab-old server version, but once HOP 16 put the server on 18.2.8 **keeping the pin was the wider gap of the two** — the pinned `alpine-v16.11.4` sits two majors behind, while the chart-tracked `alpine-v19.2.0` sits one major ahead. The two land on the same minor once the path reaches 19.2.5. See the "The k8s runner that has to move with the hops" section of [scripts/gitlab/old-upgrade/UPGRADE-PATH-en.md](../../scripts/gitlab/old-upgrade/UPGRADE-PATH.md).
+
+`--exclude` patterns match as substrings against filenames, and multiple patterns can be supplied comma-separated (e.g., `--exclude test,legacy`). Matched files are also skipped from the backup directory copy.
 
 <br/>
 
 ### Manual Upgrade
 
-Update the `version` field for each release in `helmfile.yaml`:
+Without `upgrade.py`, edit `chart.version` in each marker file directly:
 
 ```yaml
-releases:
-  - name: build-image
-    chart: gitlab/gitlab-runner
-    version: 0.82.0  # ← update to target version
+# argocd/build-image.yaml
+chart:
+  repoURL: https://charts.gitlab.io
+  name: gitlab-runner
+  version: "<chart-version>"   # ← update to target version
 ```
 
-```bash
-helmfile diff
-helmfile apply
-```
-
-<br/>
-
-## Helmfile Commands Reference
+The set of files must match `CONFIG.ARGOCD_PIN_FILES` in `upgrade.py`, and they move together. Commit and push, and ArgoCD applies it.
 
 ```bash
-helmfile lint                          # Check syntax
-helmfile diff                          # Show differences
-helmfile apply                         # Apply changes to all releases
-helmfile -l name=build-image sync      # Sync specific release
-helmfile -l name=old-release destroy   # Delete specific release
-helmfile destroy                       # Delete all releases
-helmfile status                        # Show status
+git add cicd/gitlab-runner/argocd
+git commit -m "chore(gitlab-runner): bump chart"
+git push
 ```
 
 <br/>
@@ -267,7 +246,8 @@ This isolation only targets build pods, so only the latter is set. The manager p
 ### Apply & verify
 
 ```bash
-helmfile -l name=build-image apply
+# Commit and push values/build.yaml; the infra-build-image app picks it up.
+# To apply immediately, Sync infra-build-image from the ArgoCD UI.
 
 # Run a CI build and watch where the spawned pod lands
 kubectl -n gitlab-runner get pod -o wide -w

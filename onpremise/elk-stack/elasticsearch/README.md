@@ -1,6 +1,6 @@
 # Elasticsearch (ECK CR, OCI chart consumer)
 
-Manages an ECK-backed Elasticsearch CR deployed via Helmfile. **The chart templates are NOT in this repo** — the release consumes the public OCI chart [`oci://ghcr.io/somaz94/charts/elasticsearch-eck`](https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck).
+Manages an ECK-backed Elasticsearch CR. **The chart templates are NOT in this repo** — the release consumes the public OCI chart [`oci://ghcr.io/somaz94/charts/elasticsearch-eck`](https://artifacthub.io/packages/helm/somaz94/elasticsearch-eck).
 
 The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secret resources.
 
@@ -13,17 +13,17 @@ The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secr
 - [eck-operator](../eck-operator/) must be installed first and include `logging` in `managedNamespaces`.
 - Permission to create the `logging` namespace.
 - An NFS StorageClass (`nfs-client`) available.
-- Helm 3.8+ (OCI chart pull support), helmfile.
+- Helm 3.8+ (OCI chart pull support) — needed for the local render in `upgrade.py --upgrade-chart`. Deployment is done by ArgoCD, so helmfile is not required.
 
 <br/>
 
 ## Apply Order
 
-Operator + CR are split into separate helmfiles (G14). This component is the CR side; the sibling [eck-operator](../eck-operator/) must be present first:
+Operator + CR are split into separate releases (G14). This component is the CR side; the sibling [eck-operator](../eck-operator/) must be present first. All three are separate ArgoCD Applications in the **same sync wave**, so ArgoCD does not enforce ordering between them (the wave is `syncWave` in each `argocd/<release>.yaml`). When bringing them up for the first time, sync them in this order:
 
-1. [eck-operator](../eck-operator/) `helmfile sync` — installs CRDs + operator first.
-2. **elasticsearch** (this component) `helmfile sync` — creates the `Elasticsearch` CR; the operator reconciles it.
-3. [kibana](../kibana/) `helmfile sync` — only after Elasticsearch reaches HEALTH=green.
+1. [eck-operator](../eck-operator/) `argocd app sync infra-eck-operator` — installs CRDs + operator first.
+2. **elasticsearch** (this component) `argocd app sync infra-elasticsearch` — creates the `Elasticsearch` CR; the operator reconciles it. Wait for HEALTH=green.
+3. [kibana](../kibana/) `argocd app sync infra-kibana` — only after Elasticsearch reaches HEALTH=green.
 4. Destroy in reverse: kibana → elasticsearch → eck-operator.
 
 **Why this order**: the CR is reconciled by the operator, so destroying the operator before the CR leaves the CR's finalizer with no controller to release it (it gets stuck) — destroy must be reverse-ordered.
@@ -34,14 +34,17 @@ Operator + CR are split into separate helmfiles (G14). This component is the CR 
 
 ```
 elasticsearch/
-├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/elasticsearch-eck, version: <pin>
+├── argocd/
+│   └── elasticsearch.yaml      # ArgoCD marker — `chart.version` is the OCI chart pin SSOT
 ├── values/
 │   └── dev.yaml               # Elasticsearch CR values (`version` = Stack version)
 ├── upgrade.py                  # external-oci-cr-version based Stack version tracker
-├── docs/
-│   ├── upgrade-rollback.md     # Upgrade/rollback guide (Korean, shared with Kibana)
-│   └── upgrade-rollback-en.md  # English mirror
+├── docs/                       # Topic guides (KO+EN pairs) — listed in the Documentation table below
+├── scripts/                    # Operations scripts — inventory & usage in scripts/README-en.md
+├── transforms/                 # user-cohort continuous pivot transforms — inventory & usage in transforms/README-en.md
 ├── index-retention/            # Log-index document retention CronJob (README + manifests/cronjob.yaml)
+├── backup/
+│   └── helmfile.yaml           # retired (was the helmfile deploy path)
 ├── README.md
 └── README-en.md
 ```
@@ -56,8 +59,11 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 |------|------|
 | [Upgrade / Rollback Guide](docs/upgrade-rollback.md) | Stack version bump, OCI chart pin bump, webhook-bypass rollback, incident playbooks. Shared with Kibana |
 | [HA Rolling Upgrade Verification](docs/ha-rolling-verification.md) | Zero-downtime rolling verification summary on HA topology (chart 0.1.1 / Stack 9.3.3) |
+| [Index replicas on a single-node cluster](docs/single-node-index-replicas.md) | Leaving replicas at the default `1` on a single node pins the cluster to `yellow` and blocks ECK rolling upgrades indefinitely. Why `0` is the correct setting there, backfilling existing indices + an index template to prevent recurrence, and managing it through GitOps |
 | [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit / fluentd cleanup → transform start. Arbitrary env prefix (qa/dev/stg/...) |
 | [Log-index retention CronJob](index-retention/README.md) | Guide for the `es-index-retention` CronJob: daily 04:00 KST deletion of over-retention docs from the raw log indices (the cohort `/users/create` anchor is kept via a `must_not` guard). In-cluster automation counterpart of the manual `scripts/delete_old_indices.sh` |
+| [scripts/README-en.md](scripts/README.md) | Operations-script inventory — index cleanup, Kibana saved-objects migration, cohort reset / transform restart. Every script requires `--context CTX` |
+| [transforms/README-en.md](transforms/README.md) | Continuous pivot transform inventory — per-env definitions + dest mappings, `apply.sh` / `export.sh` usage, and the split of duties with kibana/dashboards |
 
 > Role / user management (`create-elastic-role.sh` / `create-kibana-readonly-user.sh`) is cluster-agnostic and moved to the shared [`scripts/elasticsearch/`](../../../scripts/elasticsearch); see its [`docs/`](../../../scripts/elasticsearch/docs) for the guides.
 
@@ -70,7 +76,7 @@ After the OCI migration, **two independent version pins** live in this directory
 | Version | Where it lives | Tracks | Frequency | Who bumps | How |
 |---|---|---|---|---|---|
 | **Stack version** (Elasticsearch image) | `values/dev.yaml` `.version` | [Elastic GA releases](https://www.elastic.co/guide/en/elasticsearch/reference/current/release-notes.html) | 1–2× / month | consumer (this repo) | `./upgrade.py` |
-| **OCI chart version** (elasticsearch-eck chart) | `helmfile.yaml` `.releases[0].version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
+| **OCI chart version** (elasticsearch-eck chart) | `argocd/elasticsearch.yaml` `chart.version` | [chart releases](https://github.com/somaz94/helm-charts/releases) | ~1× / quarter | consumer (this repo) | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 The two are **independent**: you can bump Stack to 9.3.4 without touching the chart pin, or vice versa.
 
@@ -103,7 +109,7 @@ The `elasticPassword` field in `values/dev.yaml` is rendered into the `{{ .Value
 elasticPassword: "exampleAdminPassword"
 ```
 
-To rotate, edit `values/dev.yaml` and run `helmfile apply`. ECK detects the secret change and updates the `elastic` user on its next reconcile.
+To rotate, edit `values/dev.yaml` and commit it to master — autoSync applies the change (`argocd app sync infra-elasticsearch` if it has to happen now). ECK detects the secret change and updates the `elastic` user on its next reconcile.
 
 **Random password mode**: Set `elasticPassword: ""` to skip rendering the secret; ECK will then auto-generate one. Retrieve with:
 
@@ -116,18 +122,12 @@ kubectl -n logging get secret elasticsearch-es-elastic-user \
 
 ## Quick Start
 
+Deployment is done by ArgoCD. Operate the release through its Application:
+
 ```bash
-# Preview changes (helmfile auto-pulls the OCI chart)
-helmfile diff
-
-# Deploy
-helmfile sync
-
-# Update (after Stack version bump)
-helmfile apply
-
-# Uninstall
-helmfile destroy
+argocd app get  infra-elasticsearch   # status
+argocd app diff infra-elasticsearch   # preview pending changes
+argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when autoSync is off or it has to happen now
 ```
 
 <br/>
@@ -145,14 +145,19 @@ helmfile destroy
 # Dry-run (no file changes, only show the latest)
 ./upgrade.py --dry-run
 
-# Pin to a specific version
-./upgrade.py --version 9.1.2
+# Pin to a specific version (the current Stack version lives in the `version` field of values/dev.yaml)
+./upgrade.py --version <X.Y.Z>
 
 # Roll back using a previous backup (auto webhook handling)
 ./upgrade.py --rollback
 ```
 
-After the bump, run `helmfile diff` → `helmfile apply` to propagate. ECK performs a rolling StatefulSet upgrade.
+Apply the change — commit the `values/dev.yaml` edit to master and autoSync picks it up. ECK performs a rolling StatefulSet upgrade.
+
+```bash
+argocd app diff infra-elasticsearch   # review the change before it lands
+argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when it has to happen now
+```
 
 **Always verify ECK Operator compatibility first** — the installed `eck-operator` must support the target Stack version. Consult the compatibility matrix:
 - https://www.elastic.co/support/matrix
@@ -165,7 +170,7 @@ Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `versio
 
 ## OCI chart pin bump
 
-On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `version:` (the publisher's chart release tag). The `CHART_SOURCE_TYPE` / `CHART_SOURCE_REPO` / `CHART_NAME` variables in the CONFIG block activate the two sub-commands:
+On top of Stack version tracking, `upgrade.py` also tracks `chart.version` in `argocd/elasticsearch.yaml` (the publisher's chart release tag). The `CHART_SOURCE_TYPE` / `CHART_SOURCE_REPO` / `CHART_NAME` variables in the CONFIG block activate the two sub-commands:
 
 ```bash
 # Compare the current pin with the latest publisher release (read-only)
@@ -175,7 +180,7 @@ On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `ve
 # with the active values file, and shows a unified diff. No files touched.
 ./upgrade.py --upgrade-chart --dry-run
 
-# Apply: review the diff, confirm, then back up helmfile.yaml and update the pin
+# Apply: review the diff, confirm, then update chart.version in argocd/elasticsearch.yaml
 ./upgrade.py --upgrade-chart
 
 # Pin to a specific chart version
@@ -223,7 +228,7 @@ curl -k -u "elastic:${PASSWORD}" "https://elasticsearch.example.com/_cat/indices
 | Pod Pending (PVC) | Check `kubectl get sc nfs-client`, confirm NFS reachability |
 | mmap-related errors | Verify `nodeSets[*].config.node.store.allow_mmap: false` is reflected in the rendered CR |
 | Reset elastic password | Delete `elasticsearch-es-elastic-user` secret; ECK recreates it |
-| `helmfile diff` shows BackendTLSPolicy "removed" | **False alarm**. `helm-diff` is client-side and skips `lookup`; the real `helmfile apply` runs server-side so BackendTLSPolicy + CA ConfigMap render correctly. Verify with `helm upgrade --dry-run=server` |
+| A local render diff (`upgrade.py --upgrade-chart --dry-run`, etc.) does not show BackendTLSPolicy / the CA ConfigMap | **False alarm**. The chart reads the CA from ECK's `-es-http-certs-public` secret via `lookup`, and a client-side render never executes `lookup`, so it gets an empty map. The resources render correctly once the apply actually reaches the cluster — verify with `helm upgrade --dry-run=server` |
 
 <br/>
 

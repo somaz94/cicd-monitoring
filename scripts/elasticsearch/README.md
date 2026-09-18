@@ -2,7 +2,7 @@
 
 repo-root `scripts/elasticsearch/` — **cluster-agnostic** Elasticsearch Security API operations scripts, shared by both the on-prem [`observability/logging/elasticsearch`](../../onpremise/elk-stack/elasticsearch) and the AWS [`observability/logging/elasticsearch-aws`](../../observability/logging/elasticsearch-aws) component (both run the same `elasticsearch-eck` OCI chart).
 
-Behavior is driven entirely by `ES_*` env vars, so switching the target `kubectl` context and setting `ES_POD` etc. applies the same script to any ECK cluster. Scripts whose defaults encode a cluster-specific data layout (e.g. the AWS `bootstrap-ilm-template.sh`, tied to the `example-app` index layout) are NOT kept here — they stay in their owning component.
+Behavior is driven entirely by `ES_*` env vars, so pointing `--context` at the target cluster and setting `ES_POD` etc. applies the same script to any ECK cluster. Scripts whose defaults encode a cluster-specific data layout (e.g. the AWS `bootstrap-ilm-template.sh`, tied to the `example-app` index layout) are NOT kept here — they stay in their owning component.
 
 All scripts follow the [shell-script-conventions](../../docs/shell-script-conventions.md) (`bash -n` + `zsh -n` + `shellcheck` all pass).
 
@@ -30,25 +30,23 @@ All scripts follow the [shell-script-conventions](../../docs/shell-script-conven
 
 ## Quick usage (selecting the target cluster)
 
-Both scripts hit the ES pod of the **current kubectl context** via `es_call` (`kubectl exec ... curl` under the hood). Select the target cluster by switching context + setting `ES_*`.
+Both scripts hit an ES pod via `es_call` (`kubectl exec ... curl` under the hood), and the target is **the context passed with `--context <ctx>`** (the `require_kube_context` gate in [`scripts/lib/kube-context.sh`](../lib/kube-context.sh)). The current kubectl context is deliberately not used — running without `--context` exits 2. Select the target cluster with `--context` + `ES_*`.
 
 ```bash
 # on-prem (dev) cluster
-kubectl config use-context <dev-context>
 export NAMESPACE_ES=logging
 export ES_POD=elasticsearch-es-default-0
 export ES_CONTAINER=elasticsearch
 export ES_SECRET=elasticsearch-es-elastic-user
 
 # Create a read-only role (default)
-./create-elastic-role.sh --yes
+./create-elastic-role.sh --context onprem-dev --yes
 
 # Create a Kibana user mapped to an existing role (default role=read_only_role)
-./create-kibana-readonly-user.sh -u viewer
+./create-kibana-readonly-user.sh --context onprem-dev -u viewer
 
-# AWS (EKS) cluster — same scripts, just switch context
-kubectl config use-context <eks-context>
-ES_POD=<eks-es-pod> ./create-elastic-role.sh --role-name read_only_role --yes
+# AWS (EKS) cluster — same scripts, just switch --context
+ES_POD=<eks-es-pod> ./create-elastic-role.sh --context <eks-context> --role-name read_only_role --yes
 ```
 
 Each script's `-h` / `--help` provides the same quick reference.

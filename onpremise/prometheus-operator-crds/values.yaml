@@ -53,4 +53,3 @@ crds:
   thanosrulers:
     ## enabled defines if the CRD should be installed
     enabled: true
-

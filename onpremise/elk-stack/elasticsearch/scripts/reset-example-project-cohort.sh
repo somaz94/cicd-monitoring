@@ -37,6 +37,21 @@ set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
+# Mandatory --context gate. This script DELETEs the raw and cohort indices and rolls
+# the fluent-bit DaemonSet. The on-prem and AWS clusters expose identically named
+# pods AND an identically named fluent-bit DaemonSet, so a bare kubectl would happily
+# restart the other cluster's shippers. (The index names are env-prefixed and would
+# not match, but the rollout restart is name-identical and WOULD take effect.)
+# Shared definition — see the lib for the 2026-08-03 incident that motivated it.
+_RPC_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_RPC_SCRIPT_DIR}/../../../../scripts/lib/kube-context.sh"
+
+# Resolve the program name ONCE at top level — see the note in restart-transform.sh:
+# calling basename on "$0" inside a function prints the FUNCTION name under zsh.
+_SELF="$(basename "${BASH_SOURCE[0]:-$0}")"
+
 # --- defaults -----------------------------------------------------------------
 
 ENV_NAME=""
@@ -72,13 +87,19 @@ step() { log ""; log "${C_DIM}[step $1]${C_RST} $2"; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") --env NAME [options]
+Usage: ${_SELF} --context CTX --env NAME [options]
 
 Resets the ExampleProject raw + cohort indices for the chosen environment (a.k.a.
 index prefix), rolls the fluent-bit DaemonSet, waits for the raw index to
 be re-created from new logs, then re-starts the cohort transform.
 
 Required:
+  --context CTX               kube-context for every kubectl call. No default and
+                              no fallback to the current context — the on-prem and
+                              AWS clusters both expose ${NAMESPACE_ES}/${ES_POD}
+                              AND an identically named ${FB_DAEMONSET} DaemonSet,
+                              so an implicit context DELETES indices and rolls log
+                              shippers on the wrong cluster.
   --env NAME                  Environment / index prefix (e.g. qa, dev, stg, prod).
                               Resolved index / transform names:
                                 raw index   = <NAME>-example-project-game
@@ -95,6 +116,7 @@ Options:
   -h | --help                   Show this help and exit.
 
 Env overrides (rarely needed):
+  KUBE_CONTEXT=${KUBE_CONTEXT}
   NAMESPACE_ES=${NAMESPACE_ES}  NAMESPACE_FB=${NAMESPACE_FB}
   ES_POD=${ES_POD}  ES_CONTAINER=${ES_CONTAINER}
   ES_SVC=${ES_SVC}  ES_PORT=${ES_PORT}  ES_SCHEME=${ES_SCHEME}
@@ -115,6 +137,10 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --env)
       shift; [ $# -gt 0 ] || { err "--env requires NAME"; exit 2; }
       ENV_NAME="$1"
@@ -131,6 +157,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run: naming the target cluster IS the safety step here,
+# and a dry-run whose context is only supplied on the real run has verified
+# nothing about which cluster is about to lose indices.
+KUBE_CONTEXT_HINT="${NAMESPACE_ES}/${ES_POD} and the ${FB_DAEMONSET} DaemonSet this rolls"
+require_kube_context
 
 if [ -z "$ENV_NAME" ]; then
   err "--env NAME is required (e.g. qa, dev, stg, prod, ...)"
@@ -160,7 +193,7 @@ PASS=""
 
 load_es_pass() {
   if [ "$DRY_RUN" = "1" ]; then return 0; fi
-  PASS=$(kubectl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
+  PASS=$(kctl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
     -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   [ -n "$PASS" ] || { err "failed to read elastic password from secret/$ES_SECRET"; exit 1; }
 }
@@ -176,7 +209,7 @@ es_curl() {
     printf "    (dry-run) curl -X %s %s%s\n" "$method" "$ES_URL" "$path" >&2
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
+  kctl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" \
       -H 'Content-Type: application/json' \
       -X "$method" "${ES_URL}${path}" "$@"
@@ -189,7 +222,7 @@ es_status() {
     echo "000"
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
+  kctl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       -X "$method" "${ES_URL}${path}"
 }
@@ -199,6 +232,11 @@ es_status() {
 print_plan() {
   log ""
   log "ExampleProject cohort reset plan"
+  # Cluster first — everything below is scoped to it, and this is the last screen
+  # the operator sees before indices are deleted. Show the resolved cluster, not
+  # just the context name: a context can be renamed or repointed.
+  log "  kube-context:         ${KUBE_CONTEXT}"
+  log "  → cluster:            $(kube_context_cluster)"
   log "  env:                  ${ENV_NAME}"
   log "  raw index:            ${RAW_INDEX}"
   log "  cohort index:         ${COHORT_INDEX}"
@@ -290,7 +328,13 @@ delete_cohort_index() {
 recreate_cohort_index_with_mapping() {
   step 2a "Recreate cohort dest index with explicit mapping (active_dates=keyword)"
   local mapping_file
-  mapping_file="$(cd "$(dirname "$0")/../transforms" && pwd)/${TRANSFORM_ID}.mapping.json"
+  # Use the script dir resolved at the top, NOT a bare `$0`: this script has no
+  # bash re-exec guard, and under zsh `$0` inside a function is the FUNCTION NAME
+  # (FUNCTION_ARGZERO, on by default), so `dirname "$0"` yielded "." and the `cd`
+  # failed. Under `set -e` that aborted here — at step 2a, i.e. AFTER step 1 stopped
+  # the transform and step 2 already DELETEd the cohort index, leaving a half-run
+  # with the index gone and no mapping.
+  mapping_file="${_RPC_SCRIPT_DIR}/../transforms/${TRANSFORM_ID}.mapping.json"
   if [ ! -f "$mapping_file" ]; then
     warn "mapping file not found at ${mapping_file}"
     warn "  → falling back to ES dynamic mapping. data-view retention runtime fields will silently emit 0 if active_dates is inferred as date."
@@ -302,7 +346,7 @@ recreate_cohort_index_with_mapping() {
     return 0
   fi
   local resp
-  resp=$(kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  resp=$(kctl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" \
       -H 'Content-Type: application/json' \
       -X PUT "${ES_URL}/${COHORT_INDEX}" --data-binary @- < "$mapping_file")
@@ -328,12 +372,12 @@ restart_fluent_bit() {
     return 0
   fi
   if [ "$DRY_RUN" = "1" ]; then
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout restart daemonset/${FB_DAEMONSET}"
-    log "    (dry-run) kubectl -n ${NAMESPACE_FB} rollout status daemonset/${FB_DAEMONSET} --timeout=180s"
+    log "    (dry-run) kubectl --context ${KUBE_CONTEXT} -n ${NAMESPACE_FB} rollout restart daemonset/${FB_DAEMONSET}"
+    log "    (dry-run) kubectl --context ${KUBE_CONTEXT} -n ${NAMESPACE_FB} rollout status daemonset/${FB_DAEMONSET} --timeout=180s"
     return 0
   fi
-  kubectl -n "$NAMESPACE_FB" rollout restart "daemonset/${FB_DAEMONSET}"
-  kubectl -n "$NAMESPACE_FB" rollout status "daemonset/${FB_DAEMONSET}" --timeout=180s
+  kctl -n "$NAMESPACE_FB" rollout restart "daemonset/${FB_DAEMONSET}"
+  kctl -n "$NAMESPACE_FB" rollout status "daemonset/${FB_DAEMONSET}" --timeout=180s
   ok "fluent-bit DaemonSet rolled"
 }
 

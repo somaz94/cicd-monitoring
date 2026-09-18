@@ -1,6 +1,6 @@
 # kube-prometheus-stack
 
-Manages the Kubernetes cluster monitoring stack using Helmfile.
+Manages the Kubernetes cluster monitoring stack. Delivery is ArgoCD pull, and the chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`.
 
 > **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
 
@@ -21,17 +21,22 @@ Manages the Kubernetes cluster monitoring stack using Helmfile.
 ```
 kube-prometheus-stack/
 ├── Chart.yaml              # Version tracking
-├── helmfile.yaml           # Helmfile release definition
+├── argocd/
+│   └── kube-prometheus-stack.yaml  # ArgoCD release metadata (chart version SSOT)
+├── values.yaml             # Upstream defaults (auto-managed by upgrade.py)
 ├── values/
+
 │   ├── dev.yaml               # Grafana, Prometheus, node-exporter, kube-state-metrics
 │   ├── dev-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
-│   └── dev-alerts.yaml        # defaultRules.disabled + custom PrometheusRule groups
-├── dashboards/             # Custom Grafana dashboard JSON files
+│   ├── dev-alerts.yaml        # defaultRules.disabled + the cluster itself (node/pod/cilium/control-plane)
+│   ├── dev-alerts-network.yaml # metallb, blackbox
+│   ├── dev-alerts-apps.yaml   # argocd, gitlab-runner, harbor, keycloak, sealed-secrets, ES/redis/mysql
+│   └── dev-alerts-backup.yaml # every backup Stale/Missing pair
 ├── scripts/                # Operational helper scripts
-│   ├── import-dashboards.sh
-│   └── sync-etcd-client-cert.sh
+│   ├── sync-etcd-client-cert.sh  # Sync client cert Secret for etcd mTLS scrape
+│   ├── watchdog-check.sh         # External Prometheus watchdog (bastion cron)
+│   └── watchdog-rbac.yaml        # Minimal RBAC for the watchdog
 ├── docs/                   # Detailed guides
-│   ├── dashboards-en.md
 │   ├── external-watchdog-en.md
 │   ├── slack-alert-format-en.md
 │   └── troubleshooting-en.md
@@ -40,20 +45,21 @@ kube-prometheus-stack/
 └── README.md
 ```
 
+> The custom Grafana dashboard JSON files moved to the [`../grafana-dashboards/`](../grafana-dashboards/) component. This component is deployed from a remote chart and therefore cannot carry in-repo templates, so the dashboards are rendered as ConfigMaps by that local chart and picked up by the Grafana sidecar. Grafana itself, the sidecar, and the chart's own default dashboards are still owned here.
+
 <br/>
 
 ## Documentation
 
 | Topic | Document |
 |---|---|
-| Grafana dashboard layout | [docs/dashboards-en.md](docs/dashboards.md) |
 | Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format.md) |
 | Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting.md) |
 | External Prometheus watchdog (bastion cron) | [docs/external-watchdog-en.md](docs/external-watchdog.md) |
 
 Related external docs:
-- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md) (KR)
-  - The `argocd-alerts` group in `dev-alerts.yaml` and the ArgoCD inhibit rule in `dev-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
+- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23-en.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md)
+  - The `argocd-alerts` group in `dev-alerts-apps.yaml` and the ArgoCD inhibit rule in `dev-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
 
 <br/>
 
@@ -61,20 +67,22 @@ Related external docs:
 
 - Kubernetes cluster
 - Helm 3
-- Helmfile
+- ArgoCD access (delivery is ArgoCD pull)
 - StorageClass (e.g., `nfs-client`)
 
 <br/>
 
 ## Installation
 
-```bash
-# First install (CRDs not yet present)
-helmfile sync
+ArgoCD pull-managed. The chart version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`, and `./upgrade.py` updates that file (there is no helmfile).
 
-# Subsequent updates
-helmfile apply
+```bash
+./upgrade.py --dry-run     # check for a newer chart
+./upgrade.py               # bump the pin, re-sync Chart.yaml / values.yaml
 ```
+
+Commit the pin and push to master; ArgoCD syncs that revision.
+
 
 <br/>
 
@@ -94,6 +102,38 @@ helmfile apply
 - **Grafana**: `http://grafana.example.com`
 - **Prometheus**: `http://prometheus.example.com`
 - **Alertmanager**: `http://alertmanager.example.com`
+
+### Grafana login (Keycloak OIDC since 2026-07-30)
+
+Sign in with **"Sign in with Keycloak"**. Accounts originate in the Keycloak `example` realm.
+
+| Keycloak group | Grafana role | Members |
+|---|---|---|
+| `global-admin` | **GrafanaAdmin** (server admin + org Admin) | 1 |
+| `server` | **Admin** (org Admin) | 8 (GitLab `server` group members) |
+| anything else | Viewer | — |
+
+The two levels differ:
+
+- **Admin** = the **org role**. Manages dashboards, folders, datasources, alert rules and org users. That is the scope the ops team needs; Editor stops at dashboards.
+- **GrafanaAdmin** = org Admin plus the **server-admin flag (`isAdmin`)**. Only that flag reveals `Administration → Server Admin`: global users across orgs, org create/delete, server settings, LDAP, server stats, plugin install. It is withheld from the 8-member `server` group, which has no need to manage orgs or server settings.
+
+`allow_assign_grafana_admin: true` is set, so the flag **syncs on every login** — leaving `global-admin` revokes server admin at the next sign-in; it is not sticky once granted.
+
+- The role is decided from the token's `groups` claim, so a membership change only takes effect **after a re-login**.
+- Do not create users or edit roles inside Grafana — the next login reverts them to whatever `role_attribute_path` evaluates to. Adjust access via **Keycloak group membership** instead.
+- `server` → Editor only became meaningful on 2026-07-30. Before that the Keycloak IdP mapper placed **every** brokered GitLab user into `server` — background in [security/keycloak/docs/gitlab-brokering-en.md](../keycloak/docs/gitlab-brokering.md).
+
+**Break-glass (local admin)** — only for when the OIDC chain (Grafana → Keycloak → GitLab) is broken. The login form is deliberately left enabled: this component runs with ArgoCD `autoSync: true`, so a bad change reaches the cluster with no manual gate and this is then the only way back in.
+
+```bash
+kubectl -n monitoring get secret grafana-auth -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+The password and the OIDC client secret are sealed into the SealedSecret under `grafana.extraObjects` in `values/dev.yaml`. Changing a value means **resealing**, not editing — `--scope strict` binds the ciphertext to `monitoring/grafana-auth`.
+
+> ⚠️ This work moved the password **out of git; it did not rotate it.** The sealed value is the very password the cluster was already using (kept identical on purpose so git, the live cluster, and this doc agree), and it is still the **shared** password that also appears in `security/vaultwarden`, `security/keycloak`, and `bootstrap/vm`.
+> Grafana applies `admin_password` only when it first **creates** the admin user, and that user has existed since 2026-04-07, so an env change alone can never take effect. Rotating it requires `grafana-cli admin reset-admin-password <new>` inside the pod plus a reseal — decided against as of 2026-07-30.
 
 <br/>
 
@@ -177,38 +217,11 @@ Import: Grafana → **Dashboards** → **New** → **Import** → Enter ID → D
 
 > Physical server dashboard: after import, select `physical-servers` in the `job` dropdown
 
-### Import All Custom Dashboards
+### Custom Dashboards
 
-Use `scripts/import-dashboards.sh` to POST JSON files under `dashboards/` through the Grafana HTTP API. Re-runs are idempotent because dashboards with the same uid are overwritten (`overwrite: true`).
+Custom dashboards are no longer imported manually from this component. They are GitOps-provisioned by the [`../grafana-dashboards/`](../grafana-dashboards/) local chart, which renders one labelled ConfigMap per dashboard JSON for the Grafana sidecar to load automatically.
 
-```bash
-cd observability/monitoring/kube-prometheus-stack
-
-# Bulk import — password resolved from the in-cluster secret
-./scripts/import-dashboards.sh --all --from-secret
-
-# Bulk import — password via environment variable
-GRAFANA_PASSWORD=<password> ./scripts/import-dashboards.sh --all
-
-# Specific files (repeat -f)
-./scripts/import-dashboards.sh -f dashboards/mysql-dashboard.json -f dashboards/redis-dashboard.json -p <password>
-
-# Skip specific files (substring match, comma-separated)
-./scripts/import-dashboards.sh --all --except ingress-nginx,metallb --from-secret
-
-# Dry-run — list targets without POSTing
-./scripts/import-dashboards.sh --all --dry-run
-
-# Different Grafana endpoint
-./scripts/import-dashboards.sh --all -u http://grafana.example.com -U admin -p <password>
-```
-
-See `./scripts/import-dashboards.sh --help` for the full option list.
-
-> Only JSON files directly under `dashboards/` are processed — sub-directories such as `dashboards/_deprecated/` are skipped automatically.
-> `--from-secret` reads the Grafana password from a Kubernetes secret via `kubectl`. The default target is `monitoring/kube-prometheus-stack-grafana` (key `admin-password`); override with `--secret-namespace / --secret-name / --secret-key` or the `GRAFANA_SECRET_NS / GRAFANA_SECRET_NAME / GRAFANA_SECRET_KEY` environment variables. The current kubectl context must point at the target cluster.
-
-Custom dashboard details: [Dashboard Guide](docs/dashboards.md)
+Details: [Dashboard Guide](../grafana-dashboards/docs/dashboards.md)
 
 <br/>
 
@@ -237,7 +250,7 @@ cd observability/monitoring/kube-prometheus-stack
 
 See `./scripts/sync-etcd-client-cert.sh --help` for the full option list.
 
-> Prerequisite: the host running the script must be able to `ssh + sudo cat` against the target node (use the same account as kubespray's `ansible_user`). After refreshing the secret, run `kubectl -n monitoring rollout restart statefulset/prometheus-kube-prometheus-stack-prometheus` or wait for the next helmfile sync to remount the cert.
+> Prerequisite: the host running the script must be able to `ssh + sudo cat` against the target node (use the same account as kubespray's `ansible_user`). After refreshing the secret, run `kubectl -n monitoring rollout restart statefulset/prometheus-kube-prometheus-stack-prometheus` or wait for the next ArgoCD sync to remount the cert.
 
 <br/>
 

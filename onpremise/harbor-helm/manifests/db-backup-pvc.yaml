@@ -1,0 +1,42 @@
+# Destination volume for the Harbor database backup CronJob.
+#
+# This backs up the DATABASE ONLY — never the registry blob store. Measured 2026-08-05:
+# the registry PVC holds 85G of blobs across 4 projects (library / example-project / secondary-project /
+# toolchain) while a full dump of the `registry` database is 19.9MB. The blobs are
+# reproducible — every image was built by CI from a git commit, and mirrored images can be
+# re-pulled from upstream — so copying 85G nightly buys rebuild time, not recoverability.
+#
+# The database is the half that cannot be rebuilt: projects, users, robot accounts (several
+# namespaces carry a `harbor-robot-secret` that references them), replication rules, RBAC,
+# retention policies, webhooks, and the tag-to-manifest mapping. Lose it and the 85G of
+# blobs is still there but nothing knows which digest was which tag.
+#
+# storageClassName nfs-client-server matches every other backup volume in this cluster: it
+# is the class with `reclaimPolicy: Retain` and a human-readable pathPattern, so the dumps
+# land at `harbor/harbor-db-backup/` on the NAS and survive deletion of this PVC.
+#
+# ReadWriteMany rather than the RWO used by the ghost / vaultwarden / keycloak backup
+# volumes. Those are mounted by a workload pinned to one node; this CronJob carries no
+# nodeSelector, so consecutive runs can be scheduled anywhere. RWO would happen to work —
+# runs never overlap (concurrencyPolicy: Forbid) — but it would bake in an assumption
+# nothing enforces. NFS serves RWX natively.
+#
+# 10Gi against a 19.9MB dump: at the 30-day retention below that is ~600MB in steady state,
+# so this is ~16x headroom for database growth without a resize. NFS thin-provisions, so
+# the unused part costs nothing.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: harbor-db-backup
+  namespace: harbor
+  labels:
+    app.kubernetes.io/name: harbor-db-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: harbor
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-client-server
+  resources:
+    requests:
+      storage: 10Gi

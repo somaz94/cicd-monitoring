@@ -9,13 +9,62 @@
 # these, so one-off upgrades still work with:
 #   ansible-playbook -i inventory.ini upgrade.yml -e "node_exporter_version=1.12.0"
 #
-# To bump the default version, prefer `./upgrade.sh` at the component root
+# To bump the default version, prefer `./upgrade.py` at the component root
 # (auto-fetches latest from GitHub Releases and updates this file).
 # =============================================================================
 
-node_exporter_version: "1.12.0"
+node_exporter_version: "1.12.1"
 node_exporter_arch: "amd64"
 node_exporter_port: "9100"
 node_exporter_bin: "/usr/local/bin/node_exporter"
 node_exporter_service: "node_exporter"
-node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+
+# =============================================================================
+# OS abstraction
+#
+# The playbooks serve Linux servers and (since the mac-mini build host joined)
+# macOS. Every value below resolves on Linux to exactly the literal it replaced,
+# so Linux hosts see no behavioural change:
+#
+#   node_exporter_os       -> "linux"
+#   node_exporter_pkg_arch -> "amd64"   (node_exporter_arch, unchanged)
+#   node_exporter_dist     -> "node_exporter-<version>.linux-amd64"
+#   node_exporter_url      -> the same release URL as before
+#
+# Keep it that way: anything added here must fall back to the Linux literal.
+# =============================================================================
+
+node_exporter_os: "{{ 'darwin' if ansible_facts.system == 'Darwin' else 'linux' }}"
+node_exporter_pkg_arch: "{{ 'arm64' if ansible_facts.system == 'Darwin' else node_exporter_arch }}"
+node_exporter_dist: "node_exporter-{{ node_exporter_version }}.{{ node_exporter_os }}-{{ node_exporter_pkg_arch }}"
+node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/{{ node_exporter_dist }}.tar.gz"
+
+# Account the exporter runs as.
+#
+# Linux creates a dedicated `node_exporter` nologin system user. macOS has no
+# equivalent the `user` module can create portably (it needs dscl and manual UID
+# allocation), so a macOS host group overrides this with an existing
+# unprivileged login — see inventory.ini. Nothing the exporter collects on
+# darwin requires root.
+node_exporter_run_user: "node_exporter"
+node_exporter_run_group: "{{ 'staff' if ansible_facts.system == 'Darwin' else 'node_exporter' }}"
+
+# Service manager artefacts. Only the branch matching the host's OS is used.
+node_exporter_systemd_unit: "/etc/systemd/system/{{ node_exporter_service }}.service"
+node_exporter_launchd_label: "com.prometheus.node_exporter"
+node_exporter_launchd_plist: "/Library/LaunchDaemons/{{ node_exporter_launchd_label }}.plist"
+node_exporter_launchd_log: "/var/log/node_exporter.log"
+
+# Port pre-check command. `ss` is iproute2 and absent on macOS; `lsof` is the
+# darwin equivalent. The Linux branch is the original command verbatim (the
+# grep pattern is double-quoted only so the Jinja expression needs no escaping
+# — the shell matches the same literal).
+#
+# `+c 0` is load-bearing: lsof truncates the COMMAND column to 9 characters by
+# default, printing `node_expo`. The caller decides whether the port is held by
+# our own exporter with `'node_exporter' not in stdout`, so the truncated name
+# makes an already-installed host look like it has a port conflict.
+node_exporter_port_check_cmd: >-
+  {{ ('lsof -nP +c 0 -iTCP:' ~ node_exporter_port ~ ' -sTCP:LISTEN')
+     if ansible_facts.system == 'Darwin'
+     else ('ss -tlnp | grep ":' ~ node_exporter_port ~ ' "') }}

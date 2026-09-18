@@ -13,6 +13,17 @@ fi
 set -euo pipefail
 
 DASHBOARDS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Target kube-context. REQUIRED — there is deliberately no default and no
+# fallback to the current context. This repo drives two clusters (on-prem dev
+# and the AWS prod-example-app EKS) whose logging namespaces are name-for-name
+# identical: both have logging/elasticsearch-es-default-0 and a Kibana behind
+# kibana-kb-http. A bare `kubectl` therefore succeeds against whichever context
+# happens to be current, silently importing one cluster's saved objects into the
+# other. Worse, the two clusters share cohort data-view UUIDs, so such a run
+# OVERWRITES the wrong cluster's data views rather than merely adding to them.
+# Verified 2026-08-03: an AWS-targeted run landed on on-prem and clobbered three
+# example-project cohort views. Requiring the flag makes that failure impossible.
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 NAMESPACE="${NAMESPACE:-logging}"
 ES_POD="${ES_POD:-elasticsearch-es-default-0}"
 ES_CONTAINER="${ES_CONTAINER:-elasticsearch}"
@@ -43,7 +54,7 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--file PATH]... [--space-id ID]...
+Usage: $(basename "$0") --context CTX [--file PATH]... [--space-id ID]...
                   [--id-prefix-for SPACE:PREFIX]...
                   [--include-data-view] [--no-overwrite] [--dry-run]
 
@@ -52,6 +63,11 @@ By default every *.ndjson in $(basename "$DASHBOARDS_DIR")/ is imported
 (excluding files matching the data-view bootstrap pattern $DATA_VIEW_PATTERN).
 
 Options:
+  --context CTX         REQUIRED. kube-context to run every kubectl call against.
+                        No default and no fallback to the current context — the
+                        on-prem and AWS clusters have identically named logging
+                        pods, so an implicit context silently targets the wrong
+                        one. \`kubectl config get-contexts -o name\` lists them.
   --file PATH           Import only the given NDJSON file. May be repeated.
                         Path may be absolute or relative to this directory.
   --space-id ID         Import into the given Kibana Space (may be repeated to
@@ -74,6 +90,7 @@ Options:
   --dry-run             Print actions without contacting Kibana.
 
 Env overrides:
+  KUBE_CONTEXT=$KUBE_CONTEXT
   NAMESPACE=$NAMESPACE
   ES_POD=$ES_POD
   ES_CONTAINER=$ES_CONTAINER
@@ -89,6 +106,11 @@ DRY_RUN=0
 EXPLICIT_FILES=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift
+      [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --file)
       shift
       [ $# -gt 0 ] || { err "--file requires PATH"; exit 2; }
@@ -112,6 +134,17 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run: the point is that the operator states the target
+# cluster before anything else, and a dry-run whose context is only supplied on
+# the real run has verified nothing.
+KUBE_CONTEXT_HINT="${NAMESPACE}/${ES_POD}"
+_KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
+require_kube_context
 
 # Default to the built-in default Space when no --space-id provided.
 if [ ${#SPACE_IDS[@]} -eq 0 ]; then
@@ -168,7 +201,7 @@ fi
 
 # Look up elastic password from the ECK-managed secret.
 if [ "$DRY_RUN" != "1" ]; then
-  PASS=$(kubectl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
+  PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   if [ -z "$PASS" ]; then
     err "Failed to read password from secret $NAMESPACE/$ES_SECRET key=$ES_USER"
     exit 1
@@ -260,12 +293,12 @@ import_one() {
   local resp
   if [ -n "$id_prefix" ]; then
     resp=$(transform_ndjson "$id_prefix" < "$file" | \
-      kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+      kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
         curl -s -u "${ES_USER}:${PASS}" -H 'kbn-xsrf: true' \
           -X POST "${KIBANA_URL}${prefix}${IMPORT_PATH}" \
           -F "file=@-;filename=$(basename "$file");type=application/ndjson")
   else
-    resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    resp=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
       curl -s -u "${ES_USER}:${PASS}" -H 'kbn-xsrf: true' \
         -X POST "${KIBANA_URL}${prefix}${IMPORT_PATH}" \
         -F "file=@-;filename=$(basename "$file");type=application/ndjson" \
@@ -290,6 +323,10 @@ import_one() {
 }
 
 log "Kibana saved objects apply"
+# Print the resolved cluster, not just the context name — a context can be
+# renamed or repointed, so the cluster/server is what actually identifies the
+# target. This line is the operator's last chance to catch a wrong-cluster run.
+log "  context=${KUBE_CONTEXT}  cluster=$(kube_context_cluster)"
 log "  namespace=$NAMESPACE  pod=$ES_POD  kibana=$KIBANA_URL"
 log "  overwrite=$OVERWRITE  include-data-view=$INCLUDE_DATA_VIEW  dry-run=$DRY_RUN"
 log "  spaces (${#SPACE_IDS[@]}): ${SPACE_IDS[*]}"

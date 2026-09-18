@@ -1,6 +1,6 @@
 # Deploy Argo CD via helmfile, consuming upstream argo/argo-cd chart.
 # Multi-file values split: global / server / redis / notifications.
-# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+# Chart version pinned. Bump via ./upgrade.py after verifying the new release.
 # Lifecycle hooks: presync → helm dep update + ensure namespace.
 
 repositories:
@@ -23,7 +23,7 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 10.1.3
+    version: 10.3.2
     values:
       - values/dev.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/dev-server.yaml        # controller, dex, server, repoServer, applicationSet

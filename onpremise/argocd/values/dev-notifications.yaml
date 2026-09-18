@@ -3,6 +3,23 @@ notifications:
   # -- Enable notifications controller
   enabled: true
 
+  # Values injected into every notification template as `.context.<key>`; the chart's own
+  # documented extension point (values.yaml shows `region` / `environmentName`).
+  #
+  # 🔴 `cluster` replaces `.app.spec.destination.server` in the alert fields. This ArgoCD manages
+  # exactly ONE cluster, so that field rendered the same `https://192.0.2.17:6443` in all 55
+  # apps' alerts -- a column that never varies carries no information. The cluster name does, and
+  # it stays right if the API endpoint ever changes.
+  #
+  # 🔧 2026-09-10: prod-notifications.yaml now carries this same key. When the warning that used
+  # to sit here was written, that instance still RAN the example-app-test app, so its destination
+  # field was genuinely dynamic and had to stay. That workload moved to the example-app-prod
+  # ArgoCD on 2026-08-31; the example-app-test cluster is still REGISTERED there, but no
+  # Application targets it any more, so the field had gone constant. Revert either file if a
+  # cross-cluster app is ever added back to it.
+  context:
+    cluster: onprem-dev
+
   secret:
     create: true
     items:
@@ -43,12 +60,12 @@ notifications:
             },
             {
               "title": "Deployed At",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -86,20 +103,31 @@ notifications:
             },
             {
               "title": "Occurred At",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.health.lastTransitionTime}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             }
             {{range $index, $c := .app.status.conditions}}
             ,{
               "title": "{{$c.type}}",
-              "value": "{{$c.message}}",
+              "value": {{printf "%q" $c.message}},
               "short": false
             }
+            {{end}}
+            {{range $index, $r := .app.status.resources}}
+            {{- if $r.health}}
+            {{- if ne $r.health.status "Healthy"}}
+            ,{
+              "title": "{{$r.kind}}/{{$r.name}} - {{$r.health.status}}",
+              "value": {{if $r.health.message}}{{printf "%q" $r.health.message}}{{else}}"(no message reported)"{{end}},
+              "short": false
+            }
+            {{- end}}
+            {{- end}}
             {{end}}
             ,{
               "title": "Details",
@@ -136,12 +164,12 @@ notifications:
             },
             {
               "title": "Failed At",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -184,12 +212,12 @@ notifications:
             },
             {
               "title": "Detected At",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -222,12 +250,12 @@ notifications:
             },
             {
               "title": "Detected At",
-              "value": "{{.app.status.operationState.finishedAt}}",
+              "value": "{{.app.status.health.lastTransitionTime}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -264,13 +292,13 @@ notifications:
               "short": true
             },
             {
-              "title": "Restarted At",
-              "value": "{{.app.status.operationState.startedAt}} (UTC+9=KST)",
+              "title": "Detected At",
+              "value": "{{.app.status.health.lastTransitionTime}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -308,12 +336,12 @@ notifications:
             },
             {
               "title": "Detected At",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.health.lastTransitionTime}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -351,12 +379,12 @@ notifications:
             },
             {
               "title": "Last Sync",
-              "value": "{{.app.status.operationState.finishedAt}} (UTC+9=KST)",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC)",
               "short": true
             },
             {
-              "title": "Destination Server",
-              "value": "{{.app.spec.destination.server}}",
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
               "short": true
             },
             {
@@ -406,25 +434,66 @@ notifications:
     # image change notifies. Trade-off: a rollback to an image still in the engine's
     # last-100 notified history is also suppressed (rollbacks are rare here, accepted).
     #
-    # The 120s settle buffer prevents a duplicate alert per deploy. Once the new pods are
-    # Ready the app flips to Healthy while the old pods are still terminating, so
-    # summary.images transiently holds BOTH images — a different oncePer key than the
-    # final single-image set, which fired a second alert ~20s later. The buffer clears the
-    # rollout's terminationGracePeriodSeconds (60s on app-admin) so the trigger only
-    # evaluates once summary.images has settled to the final set.
+    # oncePer drops operator-injected sidecar images. summary.images comes from the live
+    # resource tree, so it also carries the OpenTelemetry auto-instrumentation init image
+    # the operator injects. That image moves on an operator upgrade with no deploy of
+    # ours, which changes the key and fires a false "deploy succeeded" — hit 2026-08-21,
+    # when a Karpenter drift roll replaced the game nodes and the new pods came up with
+    # nodejs 0.78.0 while the old ones still ran 0.77.0 (the app had not synced since
+    # 2026-08-06). The nil guard keeps image-less apps (appsets, projects, CRD-only)
+    # rendering as `<nil>`: filter() on a nil list errors and takes on-deployed down for
+    # them.
+    #
+    # Two settle buffers stop one deploy from alerting twice. When the new pods go Ready
+    # the app flips to Healthy while the old pods are still terminating, so summary.images
+    # transiently holds BOTH images. That mixed list is a different oncePer key than the
+    # final one, so a second alert lands seconds later.
+    #   - finishedAt + 120s covers the sync path.
+    #   - health.lastTransitionTime + 120s covers the ACTUAL settle window. The finishedAt
+    #     anchor alone is not enough: a canary Rollout keeps rolling for minutes after the
+    #     sync operation finishes, so that buffer expires mid-roll (observed 2026-07-16 /
+    #     07-24 / 08-03, all after it landed). Health goes Healthy when the roll completes,
+    #     so anchoring there covers what is left — the last old pod's grace period.
+    #
+    # 120s is sized off the server-channel apps: battle 75s, game 60s, review-game 30s.
+    # Do NOT lower it to 75s, that ties with battle's grace and stops covering it.
+    #
+    # Accepted limits:
+    #   - The alert lands 120-180s after the roll settles — the controller's app informer
+    #     resyncs on a 60s period, so the buffer expires between two ticks.
+    #   - A deploy superseded inside the buffer window is swallowed: its key never sees a
+    #     true condition before the next image set replaces it. Needs two deploys within
+    #     ~2min, which the CI cycle makes unlikely.
+    #   - Apps whose grace exceeds the buffer still double-fire: gitlab-runner
+    #     (infra-build-image / infra-deploy-image) runs terminationGracePeriodSeconds 3600
+    #     so in-flight CI jobs can drain, prometheus 600, elasticsearch 180. All
+    #     infra-channel; accepted rather than delaying every deploy alert by an hour.
+    #
+    # Editing the `when` text below changes the dedup hash and re-fires on-deployed once
+    # per app. Read cicd/argo-cd/docs/notification-rule-change-playbook.md first.
     trigger.on-deployed: |
       - description: Application deployed with a changed image set (chart-only syncs are deduped).
         send:
         - app-deployed
         when: |
+          app.status.operationState != nil and
           app.status.operationState.phase == 'Succeeded' and
           app.status.health.status == 'Healthy' and
-          app.status.operationState != null and
           app.status.operationState.finishedAt != nil and
-          time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 120
-        oncePer: app.status.summary.images
+          time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 120 and
+          app.status.health.lastTransitionTime != nil and
+          time.Now().Sub(time.Parse(app.status.health.lastTransitionTime)).Seconds() > 120
+        oncePer: 'app.status.summary.images == nil ? app.status.summary.images : filter(app.status.summary.images, {not (# contains "/autoinstrumentation-")})'
 
-    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish); dedup per sync operation.
+    # Fires on Degraded health, excluding transient Degraded during sync (3min buffer after sync finish);
+    # dedup per HEALTH TRANSITION, not per sync. Verified 2026-08-05: health.lastTransitionTime only
+    # moves when the status actually changes (29/29 apps held it steady across reconciles while
+    # reconciledAt kept advancing), so an app sitting Degraded still sends exactly ONE message —
+    # the no-duplicates goal is preserved. Keying on operationState.finishedAt instead ALSO swallowed
+    # every re-occurrence: a repeat degradation reuses the last sync's key and is silently dropped
+    # until someone syncs the app. Hit live on aws-app-appsets, which last synced 2026-06-30 and had
+    # therefore spent its only key. Do NOT revert to finishedAt to quieten a flapping app — fix the
+    # app, or widen the buffer above; a flap is a distinct incident, not a duplicate.
     trigger.on-health-degraded: |
       - description: Application has degraded (not due to sync)
         send:
@@ -435,14 +504,24 @@ notifications:
            (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
             app.status.operationState.finishedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
-        oncePer: app.status.operationState.finishedAt
+        oncePer: app.status.health.lastTransitionTime
 
     # Fires once per failed sync operation (dedup by finishedAt timestamp).
     trigger.on-sync-failed: |
       - description: Application syncing has failed
         send:
         - app-sync-failed
-        when: app.status.operationState.phase in ['Error', 'Failed']
+        # The nil guard is load-bearing, not defensive style. A freshly created Application has no
+        # operationState until its first sync completes, and reading .phase off nil makes expr
+        # ERROR instead of evaluating false: "failed to execute when condition: cannot fetch phase
+        # from <nil>". The trigger does not fire either way, so no alert was ever lost -- but every
+        # new app logged that error on each reconcile until its first sync, which buries real
+        # errors in the controller log. Every other trigger here already guards the same way; see
+        # on-restarted and on-sync-status-out-of-sync. expr short-circuits `and`, so the second
+        # operand is never evaluated when the guard is false.
+        when: |
+          app.status.operationState != nil and
+          app.status.operationState.phase in ['Error', 'Failed']
         oncePer: app.status.operationState.finishedAt
 
     # Fires on OutOfSync, excluding freshly-created apps (<5min) and post-sync settling window (<60s); dedup per git revision.
@@ -481,7 +560,9 @@ notifications:
            (app.status.operationState.phase in ['Succeeded', 'Failed', 'Error'] and
             app.status.operationState.finishedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 3))
-        oncePer: app.status.operationState.finishedAt
+        # Dedup per HEALTH TRANSITION, not per sync. Keyed on operationState.finishedAt this
+        # deduped per SYNC, so a second restart between two syncs was silently swallowed.
+        oncePer: app.status.health.lastTransitionTime
 
     # Fires on Unknown health; dedup per reconcile cycle.
     trigger.on-health-unknown: |
@@ -492,6 +573,7 @@ notifications:
         oncePer: app.status.reconciledAt
 
     # Fires when an app returns to Healthy. Edge-triggered (no oncePer) so it re-arms each time health leaves Healthy. Subscribed to the infra channel only. A real deploy (Progressing->Healthy) also fires this, so an infra deploy emits a deploy + restored pair; drain/crash recovery (no new sync) emits only restored.
+    # Note the pair arrives out of causal order: this trigger has no settle buffer and fires immediately, while on-deployed waits 120-180s, so #infra-argocd-alarm shows "restored" ~2-3min BEFORE "deployed" for the same deploy.
     trigger.on-health-restored: |
       - description: Application recovered to Healthy (not due to sync)
         send:
@@ -509,11 +591,12 @@ notifications:
   # Option A (optional): move Degraded/Missing/Unknown to Alertmanager for auto-RESOLVED,
   #   silencing, and inhibit rules. To switch to A:
   #     1) comment out the 3 triggers below (on-health-degraded/missing/unknown)
-  #     2) enable the 3 commented-out alerts in observability/.../dev-alerts.yaml
+  #     2) enable the 3 commented-out alerts in observability/.../dev-alerts-apps.yaml
   #     3) enable the ArgoCD inhibit_rule in observability/.../dev-alertmanager.yaml
   #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
   # Channel routing by the notify-channel label on each Application (set in the appset templates):
   #   notify-channel: server -> #argocd-alarm   |   notify-channel: infra -> #infra-argocd-alarm
+  #   notify-channel: ignite -> #ignite-argocd-alarm
   # Positive selectors on BOTH sides — an app with NO notify-channel label gets NO notification,
   # so every appset MUST set notify-channel on its generated apps.
   subscriptions:
@@ -528,6 +611,10 @@ notifications:
       - on-health-degraded   # A: comment out when moving to Alertmanager
       - on-health-missing    # A: comment out when moving to Alertmanager
       - on-health-unknown    # A: comment out when moving to Alertmanager
+      # Pairs with on-health-degraded above. Without it a transient degradation leaves a red
+      # message standing in #argocd-alarm with no green follow-up, so a 17s blip reads as an
+      # open incident (observed 2026-09-09 on prod-example-app-battle).
+      - on-health-restored
       # - test-notification
     - recipients:
       - slack:#infra-argocd-alarm
@@ -536,6 +623,26 @@ notifications:
       - on-deployed
       - on-sync-failed
       - on-sync-status-out-of-sync
+      - on-restarted
+      - on-health-degraded
+      - on-health-missing
+      - on-health-unknown
+      - on-health-restored
+    # Ignite platform apps (ignite-manifests appset). A dedicated channel rather than a
+    # share of #argocd-alarm: ignite SCAFFOLDS apps, so the app count here grows on its own
+    # and its sync traffic would bury the example-project/secondary-project signal in the server channel.
+    #
+    # on-sync-status-out-of-sync is deliberately absent. It is the noisiest trigger, and it
+    # fires on every deploy for these apps — CI rewrites the image tag in ignite-manifests,
+    # so each app goes OutOfSync for the seconds between the commit and the sync. With one
+    # app that is a nuisance; with the app count ignite is meant to grow, it is the channel.
+    # on-deployed already reports the same deploy, on the far side.
+    - recipients:
+      - slack:#ignite-argocd-alarm
+      selector: notify-channel=ignite
+      triggers:
+      - on-deployed
+      - on-sync-failed
       - on-restarted
       - on-health-degraded
       - on-health-missing

@@ -190,11 +190,20 @@ fileConfigs:
     </system>
     
     # Input from Fluent Bit
+    #
+    # 🔴 Do NOT add a `tag` parameter here. in_forward's `tag` REPLACES the
+    # incoming tag rather than prefixing it (add_tag_prefix is the prefix knob).
+    # This config carried `tag example-project.*` from 2026-05-04 to 2026-09-15, which
+    # flattened every record to that one literal tag: the catch-all
+    # `example-project.**` filters and the ES output still matched, so nothing looked
+    # broken, but every tag-SPECIFIC pattern silently matched nothing. The
+    # per-component filter in 02_filters.conf had therefore never run once since
+    # the day it was added. fluent-bit's tags (example-project.stdout.<env>.<component>.*)
+    # now reach the filters intact.
     <source>
       @type forward
       port 24224
       bind 0.0.0.0
-      tag example-project.*
     </source>
 
     # Prometheus metrics
@@ -222,6 +231,14 @@ fileConfigs:
   02_filters.conf: |-
     # Step 1: Fallback JSON parsing
     # Fallback for when fluent-bit's example-project_json parser fails
+    #
+    # 🔴 DO NOT change key_name to `message`. It was tried on 2026-08-06 (with
+    # remove_key_name_field true) on the theory that `log` is a key nothing in this
+    # pipeline produces, so the net never fires. That is true, but the replacement
+    # STRIPPED `data` off every record within minutes of rolling out on the prod-example-app
+    # twin — 100% of documents landed with data=null — and had to be reverted. `log` is
+    # inert and harmless; `message` is actively destructive here. Re-derive the whole
+    # filter (and test it outside a live cluster) before touching this again.
     <filter example-project.**>
       @type parser
       key_name log
@@ -279,12 +296,30 @@ fileConfigs:
     </filter>
 
     # Step 4: Handle nested JSON inside the data field
-    # Convert requestBody, responseBody, requestHeader to JSON strings (compatible with ES text mapping)
+    # Convert requestBody, responseBody, requestHeader to JSON strings (compatible with ES text mapping),
+    # and redact the requestHeader Authorization credential on the way through.
+    # Ported from the AWS prod pipeline (fluentd-aws/values/prod.yaml, shipped
+    # 2026-07-31); the expression is byte-identical, only the tag differs.
+    # The value is `Basic base64(accountId:sessionId)` — a live credential, since
+    # the game server authenticates by comparing that sessionId against the Redis
+    # session (example-project apps/game/src/auth/strategy/basic.strategy.ts). Both the
+    # dev and qa game pipelines carry it; the battle pipeline does not. The scheme
+    # token (Basic / Bearer / Digest / Negotiate) is preserved so auth-scheme drift
+    # stays debuggable; anything not matching a known scheme is redacted whole, so
+    # an unrecognized format fails closed. Header lookup is case-insensitive —
+    # Pino emits lowercase `authorization`, but another client may not.
+    # Value shapes are handled exactly as before this filter grew the redaction
+    # step: a Hash is serialized, a String is re-serialized only when it parses
+    # (and left verbatim when it does not), and anything else — notably a native
+    # Array — is passed through untouched. Only `requestHeader` gains the masking
+    # pass. `to_json` is guarded because a raise here drops the whole record via
+    # emit_error_event, and there is no `<label @ERROR>` to catch it; the fallback
+    # must NOT be the pre-masking original, which would resurrect the credential.
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
-        data ${d = record["data"]; d = (JSON.parse(d) rescue d) if d.is_a?(String); if d.is_a?(Hash); ["requestBody", "responseBody", "requestHeader"].each do |k| ; if d.dig(k).is_a?(Hash); d[k] = d[k].to_json; elsif d.dig(k).is_a?(String); d[k] = (JSON.parse(d[k]).to_json rescue d[k]); end; end; end; d}
+        data ${d = record["data"]; d = (JSON.parse(d) rescue d) if d.is_a?(String); if d.is_a?(Hash); ["requestBody", "responseBody", "requestHeader"].each do |k| ; v = d.dig(k); next unless v.is_a?(Hash) || v.is_a?(String); v = (JSON.parse(v) rescue nil) if v.is_a?(String); next if v.nil?; if k == "requestHeader" && v.is_a?(Hash); v.keys.each do |hk| ; next unless hk.to_s.downcase == "authorization"; m = v[hk].to_s.match(/\A(Basic|Bearer|Digest|Negotiate)\s+\S/i); v[hk] = m ? m[1] + " [REDACTED]" : "[REDACTED]"; end; end; d[k] = (v.to_json rescue "[UNSERIALIZABLE]"); end; end; d}
       </record>
     </filter>
 
@@ -308,9 +343,20 @@ fileConfigs:
     # This filter renames the known expression keys to canonical names and
     # removes the originals. When a new expression key appears in stdout,
     # register it here — otherwise ES dynamic mapping will keep absorbing
-    # arbitrary expression-shaped fields. Match scope is dev.battle only
-    # because dev.game (Pino) and qa.game (Pino) do not have this issue.
-    <filter example-project.stdout.dev.battle.**>
+    # arbitrary expression-shaped fields. Match scope is the battle tags only
+    # because the game components (Pino) do not have this issue.
+    #
+    # This is the ONLY tag-specific pattern in this file — every other filter is
+    # the catch-all example-project.** and the output derives its index from
+    # ${log_source}. It went dead from 2026-05-22 to 2026-09-15 because the
+    # in_forward source flattened every tag (see 01_sources.conf); it works again
+    # now. The environment part is a single-part wildcard so every battle
+    # environment is covered and a new one needs no change here.
+    #
+    # 🟡 The battle app has emitted the canonical keys directly since the ZLogger
+    # migration, so this filter currently finds nothing to rename. It is kept as
+    # the safety net for a regression, not as a load-bearing step.
+    <filter example-project.stdout.*.battle.**>
       @type record_transformer
       enable_ruby true
       <record>
@@ -335,6 +381,18 @@ fileConfigs:
         _doc_id ${record["data"].is_a?(Hash) ? record["data"]["traceId"] : nil}
       </record>
     </filter>
+
+    # NOTE: data.traceId is kept here, and in prod too. The AWS prod pipeline
+    # (fluentd-aws/values/prod.yaml) briefly ran a Step 7 that deleted the field
+    # after this filter — the value also survives as the document _id, and dropping
+    # it saved ~87 B/doc against 400k docs/day. That was reverted 2026-08-05:
+    # _id has no .keyword sub-field and no fielddata, so terms aggregations and
+    # wildcard / prefix searches on traceId became impossible — and those are the
+    # queries the field exists for. It is a UUID the app issues per request and
+    # shares with the battle server, so one request can be followed across both.
+    # On-prem the case for dropping it was always weaker still: the whole
+    # dev-example-project-game index is ~281 MB and is not ILM-managed at all, so there
+    # was no saving to chase in the first place.
 
   03_outputs.conf: |-
     # Output to Elasticsearch with dynamic index based on log_source
@@ -361,7 +419,17 @@ fileConfigs:
       remove_keys _doc_id
 
       # Buffer settings for performance
-      <buffer tag,log_source>
+      #
+      # Chunk key is log_source ONLY — deliberately not `tag`. fluent-bit's tail
+      # tag ends in the log FILE PATH, so it is unique per pod and changes on
+      # every rollout and log rotation. Keying chunks on it would turn a handful
+      # of steady chunks into one per pod-file, each with its own flush timer and
+      # its own small bulk request. `tag` was in this list while the source above
+      # flattened every tag to one literal value, which hid the problem; removing
+      # that flattening (2026-09-15) makes the distinction real. Nothing in this
+      # output references ${tag} — the index comes from ${log_source} — so the
+      # chunk key is purely a batching choice.
+      <buffer log_source>
         @type file
         path /var/log/fluent/elasticsearch-buffers
         flush_mode interval

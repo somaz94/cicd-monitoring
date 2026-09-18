@@ -18,11 +18,7 @@ argo-cd/
 │   └── dev-notifications.yaml # notifications controller (Slack templates/triggers)
 ├── upgrade.py
 ├── backup/
-├── docs/
-│   ├── ghost-alarm-incident-2026-04-23.md      # 2026-04-23 ghost-alarm incident analysis + Notification rules design
-│   ├── ghost-alarm-followup-prompt.md          # Prompt template for asking Claude when similar symptoms recur
-│   ├── notification-rule-change-playbook.md    # Playbook for minimizing resends when changing notification rules
-│   └── helm-release-history-bloat.md           # Recovery when helm release-history bloat breaks helmfile diff/apply
+├── docs/                       # Topic guides — see the Documentation table below for the list
 ├── scripts/
 │   └── notify-rule-change.sh                   # Rule-change helper (check/pre/post/status)
 ├── README.md
@@ -41,10 +37,10 @@ argo-cd/
 | Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook-en.md](docs/notification-rule-change-playbook.md) |
 | Helm release-history bloat (~700KB × 10 revisions) breaking `helmfile diff` / `apply` with stream error / timeout — root cause, recovery, and `historyMax` prevention | [docs/helm-release-history-bloat-en.md](docs/helm-release-history-bloat.md) |
 | Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt-en.md](docs/ghost-alarm-followup-prompt.md) |
-| Upstream issue submission template (English) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template.md) |
+| Upstream issue submission record (#27516, archived) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template.md) |
 
 Related external files:
-- Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml](../kube-prometheus-stack/values/dev-alerts.yaml)
+- Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml](../kube-prometheus-stack/values/dev-alerts-apps.yaml)
 - Alertmanager inhibit/routing config: [observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml](../kube-prometheus-stack/values/dev-alertmanager.yaml)
 
 <br/>
@@ -54,7 +50,7 @@ Related external files:
 - Kubernetes cluster (>= 1.25)
 - Helm 3
 - Helmfile
-- Ingress controller (nginx)
+- A Gateway API implementation — nginx-gateway-fabric (exposed via `server.httproute`; Ingress has been disabled since the Phase 6 cutover)
 - Domain for ArgoCD (e.g., argocd.example.com)
 
 <br/>
@@ -216,7 +212,7 @@ kubectl apply -f gitlab-appset-repo-secret.yaml -n argocd
 
 ## SSO — Keycloak OIDC (Phase 6, 2026-04-29+)
 
-ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy GitLab dex connector (Phase 6 cutover). Keycloak's Identity Provider brokers GitLab, so user accounts and groups are preserved (`server` group → `role:server-admin`, `admin@example.com` → `role:global-admin`).
+ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy GitLab dex connector (Phase 6 cutover). Keycloak's Identity Provider brokers GitLab, so user accounts and groups are preserved (`server` group → `role:server-admin`, `global-admin` group → `role:global-admin`). The live mapping is owned by `configs.rbac.policy.csv` in [`values/dev.yaml`](values/dev.yaml).
 
 OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
 
@@ -225,7 +221,7 @@ OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `c
 
 ### 5 Pitfalls (discovered during Phase 6 cutover, all fixed)
 
-1. **Dex boots with `no signing key found`** — argo-cd chart 9.x secrets path is `configs.secret.extra` (not legacy `configs.secrets`). Worked around by inlining client secret as plaintext in dex.config.
+1. **Dex boots with `no signing key found`** — the chart at the time had moved the secrets path to `configs.secret.extra` (not the legacy `configs.secrets`) while the config still used the old one. Worked around by inlining the client secret as plaintext in dex.config. Check the upstream `values.yaml` for the current path.
 2. **HTTP→HTTPS 301 redirect not working** — chart-native `argocd-server` HTTPRoute attaches to both listeners. Force HTTPS-only via `server.httproute.parentRefs[0].sectionName: https`.
 3. **Keycloak rejects `Invalid scopes: openid openid profile email groups`** — dex auto-prepends `openid` to connector scopes → duplicate. Omit `scopes:` block + add `groups` client-scope to realm.
 4. **Token missing groups claim (silent)** — bootstrap's `-s 'config."key"=value'` syntax partially failed for nested config → mapper config created with `{}` empty. Fixed by JSON file (`-f`) approach + 6-field explicit spec.
@@ -233,7 +229,7 @@ OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `c
 
 ### RBAC enforcement verification (recommended after every cutover)
 
-1. Comment out `g, admin@example.com, role:global-admin` temporarily → apply → user logout/login → verify it still works via server-admin only (proves server group claim works)
+1. Comment out `g, global-admin, role:global-admin` in `configs.rbac.policy.csv` ([`values/dev.yaml`](values/dev.yaml)) temporarily → apply → user logout/login → verify it still works via server-admin only (proves server group claim works)
 2. Comment out `secondary-project/*` 4 permission lines temporarily → apply → verify secondary-project apps disappear from UI immediately (proves server-admin policy enforcement)
 3. Restore both immediately after verification — **NEVER commit temporary policy.csv changes**
 
@@ -253,12 +249,12 @@ helm repo update
 # Check latest available version
 helm search repo argo/argo-cd
 # NAME          CHART VERSION  APP VERSION  DESCRIPTION
-# argo/argo-cd  9.4.15         v3.3.4       A Helm chart for Argo CD, a declarative, GitOps...
+# argo/argo-cd  <chart-version>  <app-version>  A Helm chart for Argo CD, a declarative, GitOps...
 
 # Compare with currently installed version
 helm list -n argocd
-# NAME    NAMESPACE  REVISION  UPDATED                              STATUS    CHART          APP VERSION
-# argocd  argocd     11        2026-01-05 16:32:22.27862 +0900 KST  deployed  argo-cd-9.2.4  v3.2.3
+# NAME    NAMESPACE  REVISION  UPDATED                              STATUS    CHART                      APP VERSION
+# argocd  argocd     11        2026-01-05 16:32:22.27862 +0900 KST  deployed  argo-cd-<chart-version>  <app-version>
 ```
 
 <br/>
@@ -278,7 +274,7 @@ An automated upgrade script that handles version checking, backup, diff, and rol
 ./upgrade.py
 
 # Upgrade to a specific version
-./upgrade.py --version 9.3.0
+./upgrade.py --version <chart-version>
 
 # List available backups
 ./upgrade.py --list-backups
@@ -309,7 +305,7 @@ Update the `version` field in `helmfile.yaml`:
 releases:
   - name: argocd
     ...
-    version: 9.4.15  # ← update to target version
+    version: <chart-version>  # ← update to target version
 ```
 
 ```bash

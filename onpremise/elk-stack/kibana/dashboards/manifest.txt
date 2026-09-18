@@ -4,3 +4,4 @@
 
 dev-pm-retention-dashboard  dev-pm-retention-dashboard.ndjson   # DEV — Game User Matric & Retention
 qa-pm-retention-dashboard   qa-pm-retention-dashboard.ndjson    # QA — Game User Matric & Retention
+dev2-pm-retention-dashboard dev2-pm-retention-dashboard.ndjson  # DEV2 — Game User Matric & Retention

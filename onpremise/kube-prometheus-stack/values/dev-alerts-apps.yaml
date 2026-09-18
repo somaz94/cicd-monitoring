@@ -1,0 +1,490 @@
+# yaml-language-server: $schema=
+# =============================================================================
+# Alert Rules (workloads) — platform apps + datastores
+#
+# Things running ON the cluster, as opposed to the cluster itself (dev-alerts.yaml).
+# Split out of dev-alerts.yaml; severity levels and field meanings are documented
+# in that file.
+#
+# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
+# it across every values file and each top-level key becomes its own PrometheusRule CR --
+# the file boundary has no effect at runtime, it exists so a 76K file stops being one
+# reviewable unit.
+#
+#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
+#                            control-plane)
+#   dev-alerts-network.yaml  metallb, blackbox
+#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
+#                            elasticsearch, redis, mysql
+#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
+#
+# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
+# key in two files does not combine the two rule lists -- the later file replaces the
+# earlier one wholesale and the dropped rules disappear silently.
+#
+# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
+# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
+# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
+# **/values/*.yaml.
+# =============================================================================
+
+additionalPrometheusRulesMap:
+
+  # ---------------------------------------------------------------------------
+  # ArgoCD Alerts — controller-level health (Option B, active)
+  #
+  # Current mode: Option B
+  #   - Only ArgoCDControllerReconcileStuck is active (root-cause alert for 2026-04-23 incident).
+  #   - App-level health alerts (Degraded/Missing/OutOfSync) remain in ArgoCD notifications
+  #     (cicd/argo-cd/values/dev-notifications.yaml, #argocd-alarm channel).
+  #
+  # Option A (optional): also move app-level health to Alertmanager.
+  #   Benefits: auto-RESOLVED alerts (send_resolved=true), silencing, inhibit rules.
+  #   To switch to A:
+  #     1) uncomment the 3 alerts below (ArgoCDAppDegraded/Missing/OutOfSync)
+  #     2) comment out the 3 triggers in cicd/argo-cd/values/dev-notifications.yaml
+  #        (on-health-degraded/missing/unknown in subscriptions)
+  #     3) uncomment the ArgoCD inhibit_rule in dev-alertmanager.yaml
+  #   See cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md - final architecture section.
+  # ---------------------------------------------------------------------------
+  argocd-alerts:
+    groups:
+      - name: argocd-alerts
+        rules:
+
+          # --- Active rules (Option B) ---
+
+          # Controller reconcile stuck — early detection of the 2026-04-23 incident pattern
+          # Normal reconcile interval is 3-10 min (timeout.reconciliation=600s); 30 min silence is abnormal
+          #
+          # The `time() - timestamp(...) < 300` clause filters out stale series from
+          # recently-deleted pods (pod restarts leave old instance IPs in Prometheus
+          # for ~5 min with counter frozen, which would otherwise cause false firing).
+          #
+          # The `{dest_server!=""}` filter excludes the near-static empty-dest_server series:
+          # argocd_app_reconcile_count carries one series per destination, and a few transient
+          # reconciles land in dest_server="" while a newly-generated Application's destination is
+          # still resolving (e.g. when an ApplicationSet first creates apps). That series then
+          # freezes (count stays tiny) but keeps being scraped (fresh) — and since this expr is
+          # evaluated per-series with no aggregation, the frozen-but-fresh empty series would trip
+          # the alert (increase==0 AND fresh) even though the real per-cluster series keeps
+          # incrementing normally. Scoping to dest_server!="" watches only real cluster reconciles.
+          # The `and on(dest_server) count by (dest_server) (argocd_app_info) > 0` clause narrows the
+          # watch to destinations that still hold Applications. This is the same frozen-but-fresh
+          # failure mode as the empty dest_server above, but with a real cluster URL, so the
+          # `!= ""` filter does not catch it: argocd_app_reconcile_count keeps one series per
+          # destination and the client library never drops a label combination while the process
+          # lives, so when the last Application for a destination goes away the series freezes at
+          # its final value yet keeps being scraped — both clauses above then stay true forever.
+          # Precedent: 2026-08-31 09:25Z, handing the example-app-test cluster over to the
+          # example-app-prod argocd emptied that destination on prod-example-app-v1 and the leftover
+          # series paged critical for a fully healthy controller (local destination was reconciling
+          # 283 times per 30m at the time).
+          #
+          - alert: ArgoCDControllerReconcileStuck
+            expr: |
+              (increase(argocd_app_reconcile_count{dest_server!=""}[30m]) == 0)
+              and ((time() - timestamp(argocd_app_reconcile_count{dest_server!=""})) < 300)
+              and on(dest_server) (count by (dest_server) (argocd_app_info) > 0)
+            for: 10m
+            labels:
+              severity: critical
+              group: argocd
+            annotations:
+              summary: "ArgoCD application-controller reconcile stuck (no activity 30+ min)"
+              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue / sharding issue or v3.3.7 goroutine leak (see ghost-alarm-incident-2026-04-23.md, Post-incident follow-up section). Recover with: kubectl rollout restart statefulset/argocd-application-controller -n argocd"
+
+          # --- Option A rules (disabled by default) ---
+          # Uncomment the block below to enable Option A (move app-level health to Alertmanager)
+
+          # # App Degraded for 5 minutes
+          # - alert: ArgoCDAppDegraded
+          #   expr: argocd_app_info{health_status="Degraded"} == 1
+          #   for: 5m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} is Degraded"
+          #     description: "Application {{ $labels.name }} (project: {{ $labels.project }}, dest: {{ $labels.dest_namespace }}) has been Degraded for 5+ minutes."
+          #
+          # # App resources Missing for 10 minutes
+          # - alert: ArgoCDAppMissing
+          #   expr: argocd_app_info{health_status="Missing"} == 1
+          #   for: 10m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} is Missing"
+          #     description: "Application {{ $labels.name }} has Missing resources for 10+ minutes — expected resources are not present on the cluster."
+          #
+          # # App OutOfSync for 30 minutes — likely auto-sync disabled or failing
+          # - alert: ArgoCDAppOutOfSync
+          #   expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          #   for: 30m
+          #   labels:
+          #     severity: warning
+          #     group: argocd
+          #   annotations:
+          #     summary: "ArgoCD app {{ $labels.name }} OutOfSync for 30+ min"
+          #     description: "Application {{ $labels.name }} has been OutOfSync for 30+ minutes. Auto-sync may be disabled or failing — investigate in ArgoCD UI."
+
+  # ---------------------------------------------------------------------------
+  # GitLab Runner Alerts — runner-manager self-metrics (via the build/deploy PodMonitors)
+  # Parity with the AWS side (kube-prometheus-stack-aws/values/prod-alerts*.yaml, -platform file).
+  # Two differences
+  # from AWS, which runs a single build-image fleet:
+  #   1. On-prem runs TWO runner fleets — build-image + deploy-image (cicd/gitlab-runner values
+  #      build.yaml / deploy.yaml) — so GitLabRunnerDown checks both jobs.
+  #   2. The scrape is a PodMonitor, so the `job` label is namespace-prefixed
+  #      (`monitoring/build-image-gitlab-runner`), unlike the AWS ServiceMonitor's bare job name.
+  #      NOTE: GitLabRunnerDown hardcodes both job strings — renaming a release / moving the
+  #      PodMonitor namespace / setting a jobLabel in the gitlab-runner values is a REQUIRED paired
+  #      edit here (else absent() goes permanently true → false critical page).
+  # The aggregate rules span both fleets: saturation / errors use `sum by (job)` (name the fleet),
+  # api uses `sum by (status)`, and config-load fires per-pod.
+  # Distinct from GitLabRunnerPodSurge above (a control-plane-pressure indicator from kube-state-metrics).
+  # ---------------------------------------------------------------------------
+  gitlab-runner-alerts:
+    groups:
+      - name: gitlab-runner-alerts
+        rules:
+
+          # An entire runner fleet (build OR deploy) is absent/unscrapable for 10m. gitlab_runner_version_info
+          # is an always-present gauge while a manager is up AND scraped; absent() per job catches a whole
+          # fleet being gone. Single-replica loss is left to the generic PodNotReady; this is total-outage.
+          - alert: GitLabRunnerDown
+            expr: absent(gitlab_runner_version_info{job="monitoring/build-image-gitlab-runner"}) or absent(gitlab_runner_version_info{job="monitoring/deploy-image-gitlab-runner"})
+            for: 10m
+            labels:
+              severity: critical
+              group: gitlab-runner
+            annotations:
+              summary: "GitLab Runner fleet is down or unscrapable"
+              description: "gitlab_runner_version_info has been absent for 10+ minutes for {{ $labels.job }} — that entire runner fleet (build or deploy) is down or its /metrics endpoint is unreachable, so CI stops picking up its jobs. Check `kubectl -n gitlab-runner get pods` and the manager logs."
+
+          # Build slots are saturated: a fleet's in-use slots sit at 85%+ of its capacity for 15m.
+          # Deliberately NOT gitlab_runner_request_concurrency_exceeded_total — that metric cannot
+          # carry this signal on Runner 19.x. It counts excess against the ADAPTIVE request
+          # concurrency limit, not the configured one (live 2026-09-07: hard_limit 2 for build / 3
+          # for deploy, but adaptive_limit = used_limit = 1 on every manager). At an effective limit
+          # of 1 any two overlapping polls bump the counter, so it rises on coordinator latency
+          # while the fleet is IDLE, not on saturation. This LAN-path fleet has it at exactly 0
+          # after 350+ jobs per manager over 46 days, while the two AWS fleets — same GitLab, WAN
+          # path — tripped the old `> 0` rule at 05:24 and 05:28 KST on 2026-09-07 with
+          # gitlab_runner_jobs=0 and no job handled for days. Do not restore it as the basis.
+          # gitlab_runner_jobs over gitlab_runner_concurrent is what this alert's name and its
+          # remediation actually mean; both are kept `by (job)` so the build and deploy fleets are
+          # judged on their own slot counts instead of a blend that would hide one fleet's
+          # saturation behind the other's headroom. The numerator is deliberately NOT filtered by
+          # `state`: a pending build already holds a concurrent slot, so running + pending is what
+          # "in use" means here.
+          # 0.85, NOT the 0.9 its AWS siblings use — a ratio threshold has to clear the
+          # denominator's granularity, and these two fleets are small. Slots are `concurrent` x
+          # replicas (build 9, deploy 10 as configured today), so `> 0.9` needs 9/9 and 10/10 —
+          # full saturation, with deploy's 9/10 = 0.90 excluded by the strict `>`. Paired with
+          # `for: 15m` that demands ZERO free slots at every evaluation for 15 minutes, and a
+          # single finishing job resets the timer, so the rule would essentially never fire.
+          # `>= 0.85` fires at 8/9 and 9/10 — one free slot, the same operational meaning as the
+          # AWS side's 19/20. Re-derive it if `concurrent` or the replica count changes.
+          - alert: GitLabRunnerConcurrentLimitReached
+            expr: sum by (job)(gitlab_runner_jobs) / sum by (job)(gitlab_runner_concurrent) >= 0.85
+            for: 15m
+            labels:
+              severity: warning
+              group: gitlab-runner
+            annotations:
+              summary: "GitLab Runner job slots are saturated (jobs queuing)"
+              description: "The {{ $labels.job }} fleet has been running at 85%+ of its job-slot capacity for 15+ minutes ({{ $value | humanizePercentage }} of its slots in use) — new CI jobs queue on the GitLab side until a slot frees. Raise `concurrent` in cicd/gitlab-runner/values/{build,deploy}.yaml, add a manager replica, or check why jobs run long. Inspect `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` (and deploy-image-gitlab-runner)."
+
+          # Runner-manager logged error/fatal/panic entries at a sustained rate for 15m. `warning` level is
+          # excluded (benign transient baseline); only genuine error-class entries trip this.
+          #
+          # TRIAGE FIRST — the most common trip is BENIGN and not a runner fault:
+          #   `ERROR: Could not create cache adapter  error=cache factory not found: factory for cache
+          #    adapter "" was not registered (registered adapters: azure, gcs, gcsv2, s3, s3v2)`
+          # No runner manager here defines a [runners.cache] block, because the on-prem cluster has no
+          # S3-compatible backend (runner cache supports only s3/gcs/azure — NFS and local-path cannot
+          # serve as one). So any CI job that declares `cache:` makes the manager try to build an adapter
+          # with an empty Type and log ERROR, a few entries per job. The job itself does NOT fail — only
+          # the cache step is skipped — and the rate returns to 0 once the build burst ends, so the alert
+          # self-resolves. Confirm before chasing a real fault:
+          #   kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner --since=1h | grep -c 'cache adapter'
+          # gitlab_runner_errors_total carries no message label, so this cause cannot be filtered out of
+          # the expr — do NOT loosen the rule (that would blind it to real API/executor failures). Fix it
+          # at the source instead: drop `cache:` from the offending job, or stand up an S3-compatible
+          # backend and add a [runners.cache] block to cicd/gitlab-runner/values/{build,deploy}.yaml.
+          - alert: GitLabRunnerErrors
+            expr: sum by (job)(rate(gitlab_runner_errors_total{level=~"error|fatal|panic"}[10m])) > 0
+            for: 15m
+            labels:
+              severity: warning
+              group: gitlab-runner
+            annotations:
+              summary: "GitLab Runner error-level log rate sustained"
+              description: "The {{ $labels.job }} fleet has logged error/fatal/panic entries at a non-zero rate for 15+ minutes ({{ $value }}/sec) — job handling or GitLab API communication may be degraded. Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` / `deploy-image-gitlab-runner`."
+
+          # A config.toml (re)load failed — a manager could not apply its configuration. The runner config is
+          # managed via cicd/gitlab-runner/values/{build,deploy}.yaml, so a malformed edit rendering bad TOML
+          # trips this. Warning (not critical): the manager keeps serving the old config, so CI is not down.
+          - alert: GitLabRunnerConfigLoadError
+            expr: increase(gitlab_runner_configuration_loading_error_total[10m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+              group: gitlab-runner
+            annotations:
+              summary: "GitLab Runner failed to load its configuration"
+              description: "gitlab_runner_configuration_loading_error_total increased by {{ $value }} in the last 10 minutes on {{ $labels.pod }} — this runner manager could not (re)load config.toml and may be running stale/default settings, so a recent change may not have taken effect. Review the latest change to cicd/gitlab-runner/values/{build,deploy}.yaml and check `kubectl -n gitlab-runner logs {{ $labels.pod }}`."
+
+          # Sustained non-success GitLab API responses. status is the HTTP code; normal job polling returns
+          # 204/201 (excluded). sum BY (status) so the alert names the dominant code — 5xx / 401·403 / 429
+          # have very different fixes (GitLab health vs runner token vs rate limit).
+          - alert: GitLabRunnerAPIErrors
+            expr: sum by (status)(rate(gitlab_runner_api_request_statuses_total{status=~"5..|401|403|429"}[10m])) > 0
+            for: 15m
+            labels:
+              severity: warning
+              group: gitlab-runner
+            annotations:
+              summary: "GitLab Runner GitLab-API error responses sustained"
+              description: "The GitLab Runner managers have received HTTP {{ $labels.status }} responses from the GitLab API at {{ $value }}/sec for 15+ minutes — job pickup and status reporting may be degraded (5xx = GitLab server errors, 401/403 = revoked/expired runner token, 429 = API rate limiting). Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` and the GitLab instance health."
+
+  # ---------------------------------------------------------------------------
+  # Harbor Alerts — per-component + aggregate health (via harbor-exporter, namespace=harbor)
+  # Components: core, database, jobservice, portal, redis, registry, registryctl, trivy
+  # ---------------------------------------------------------------------------
+  harbor-alerts:
+    groups:
+      - name: harbor-alerts
+        rules:
+
+          # Harbor component reports harbor_up=0 for 3 minutes
+          # Per-component label pinpoints which subsystem failed (e.g., registry vs jobservice)
+          - alert: HarborComponentDown
+            expr: harbor_up == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: harbor
+            annotations:
+              summary: "Harbor component {{ $labels.component }} is down"
+              description: "Harbor component '{{ $labels.component }}' has been unhealthy for 3+ minutes (pod: {{ $labels.pod }}) — image push/pull for this subsystem is affected."
+
+          # Harbor aggregate /api/v2.0/health reports unhealthy for 3 minutes
+          # Fires when core health endpoint returns non-healthy — cross-check with HarborComponentDown
+          - alert: HarborOverallHealth
+            expr: harbor_health == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: harbor
+            annotations:
+              summary: "Harbor overall health is unhealthy"
+              description: "Harbor /api/v2.0/health aggregate has been unhealthy for 3+ minutes — one or more components failing (check HarborComponentDown for specifics)."
+
+  # ---------------------------------------------------------------------------
+  # Keycloak — the Agroal JDBC pool, which is where an auth outage hides.
+  #
+  # Metrics arrive from the Keycloak server's management port (9000) via the
+  # ServiceMonitor the operator renders once `metrics-enabled` is set — see
+  # security/keycloak/values/dev-keycloak.yaml.
+  #
+  # Deliberately NOT a "Keycloak is down" rule: the built-in TargetDown covers the
+  # scrape vanishing, KubeStatefulSetReplicasMismatch covers the pod, and the
+  # blackbox probe on auth.example.com covers the path in. All three are active.
+  #
+  # Also deliberately NOT a login-failure rule: the base `metrics-enabled` surface
+  # has no such metric. keycloak_* is four session-expiration-task families and
+  # nothing else — user event metrics need `event-metrics-user-enabled` on top.
+  # ---------------------------------------------------------------------------
+  keycloak-alerts:
+    groups:
+      - name: keycloak-alerts
+        rules:
+          # agroal_awaiting_count is the number of threads blocked waiting to be
+          # handed a JDBC connection. It only leaves zero when the pool is already
+          # at its maximum and every connection is checked out, so this is pool
+          # exhaustion with no threshold to guess at.
+          #
+          # Do NOT rewrite this as `agroal_available_count == 0`. available_count is
+          # the count of IDLE connections currently held, not free capacity: Agroal
+          # opens connections lazily (measured 2026-08-05: active 0, available 3,
+          # max_used 3, against a default db-pool-max-size of 100). A busy but
+          # perfectly healthy pool drives available to 0 routinely, so that form
+          # would fire constantly and mean nothing.
+          #
+          # for: 5m — at a 30s scrape that is ten consecutive scrapes with someone
+          # still waiting, which no ordinary load spike survives.
+          - alert: KeycloakDBConnectionPoolSaturated
+            expr: agroal_awaiting_count > 0
+            for: 5m
+            labels:
+              severity: critical
+              group: keycloak
+            annotations:
+              summary: "Keycloak JDBC pool saturated — {{ $value }} thread(s) waiting on a connection"
+              description: "Keycloak has had threads blocked waiting for a database connection for 5+ minutes (datasource {{ $labels.datasource }}). Every login and token refresh brokered through auth.example.com stalls behind this, while the Pod stays Ready and its health probes keep passing — no other alert names the cause. Check PostgreSQL first (`kubectl -n keycloak logs sts/keycloak-postgresql`, connection count vs max_connections), then Keycloak (`kubectl -n keycloak logs keycloak-0`). Raising db.poolMaxSize in security/keycloak/values/dev-keycloak.yaml only helps once the database can actually take the extra connections."
+
+  # ---------------------------------------------------------------------------
+  # Sealed Secrets — the one failure mode no other signal reports.
+  #
+  # Deliberately NOT a "controller is down" rule: the built-in TargetDown covers
+  # the scrape disappearing, and KubeDeploymentReplicasMismatch covers the pod,
+  # both already active. Adding a third would put three alerts on one event.
+  #
+  # What is left is the state where the controller pod is Running, its metrics
+  # endpoint is up, and a SealedSecret still fails to unseal — a rotated or
+  # restored controller key, a `--scope strict` ciphertext moved to a different
+  # namespace/name, or corrupted encryptedData. The downstream plain Secret is
+  # then never created or silently goes stale, and nothing else in the stack
+  # says a word until some unrelated workload fails to mount it.
+  # ---------------------------------------------------------------------------
+  sealed-secrets-alerts:
+    groups:
+      - name: sealed-secrets-alerts
+        rules:
+          # condition_info is 1 (true) / 0 (unknown or absent) / -1 (false), so
+          # `!= 1` catches both the explicit failure and the "controller cannot
+          # tell" case. One series per SealedSecret — 27 tracked as of 2026-08-05,
+          # all at 1.
+          #
+          # severity: warning, not critical. A workload actually blocked by the
+          # missing Secret raises PodCrashLooping (critical) on its own; this rule
+          # exists to name the cause earlier and more precisely, not to page twice
+          # for the same outage.
+          #
+          # for: 15m — a freshly applied SealedSecret reconciles in seconds, and a
+          # controller restart briefly republishes conditions, so a short window
+          # would flap on ordinary activity.
+          - alert: SealedSecretNotSynced
+            expr: sealed_secrets_controller_condition_info != 1
+            for: 15m
+            labels:
+              severity: warning
+              group: sealed-secrets
+            annotations:
+              summary: "SealedSecret {{ $labels.namespace }}/{{ $labels.name }} is not synced"
+              description: "The sealed-secrets controller reports condition '{{ $labels.condition }}' = {{ $value }} for SealedSecret {{ $labels.namespace }}/{{ $labels.name }} (1 = synced, 0 = unknown, -1 = failed), so the plain Secret it should produce is missing or stale. Usual causes: the controller key was rotated or restored from a different cluster, or a `--scope strict` ciphertext was moved to another namespace/name — a sealed value is bound to both. Check `kubectl -n {{ $labels.namespace }} describe sealedsecret {{ $labels.name }}` and `kubectl -n sealed-secrets logs deploy/sealed-secrets`."
+
+  # ---------------------------------------------------------------------------
+  # Elasticsearch Alerts — cluster health + disk (via prometheus-elasticsearch-exporter, namespace=logging)
+  # ---------------------------------------------------------------------------
+  elasticsearch-alerts:
+    groups:
+      - name: elasticsearch-alerts
+        rules:
+
+          # Cluster health RED for 5 minutes — at least one primary shard unassigned
+          # Indicates potential data unavailability; queries/ingest may fail
+          - alert: ElasticsearchClusterRed
+            expr: elasticsearch_cluster_health_status{color="red"} == 1
+            for: 5m
+            labels:
+              severity: critical
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch cluster {{ $labels.cluster }} health is RED"
+              description: "Cluster {{ $labels.cluster }} has been in RED state for 5+ minutes — at least one primary shard is unassigned. Check `kubectl get pods -n logging` and ES _cluster/allocation/explain."
+
+          # Cluster health YELLOW for 15 minutes — replica shards unassigned (redundancy lost)
+          # 15m for suppresses transient YELLOW during rolling restart / index creation.
+          # Guarded by data_nodes > 1: in single-node deployments YELLOW is the steady state
+          # (replica shards cannot be allocated on the same node as the primary), so this
+          # alert only fires when the cluster has ≥2 data nodes — i.e., replicas SHOULD be placeable.
+          - alert: ElasticsearchClusterYellow
+            expr: |
+              elasticsearch_cluster_health_status{color="yellow"} == 1
+              and on(cluster) elasticsearch_cluster_health_number_of_data_nodes > 1
+            for: 15m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch cluster {{ $labels.cluster }} health is YELLOW"
+              description: "Cluster {{ $labels.cluster }} has been in YELLOW state for 15+ minutes — replica shards are unassigned, redundancy is reduced."
+
+          # Data path free space < 15% for 10 minutes
+          # ES low watermark defaults to 85% used (15% free); alert before allocation is blocked
+          - alert: ElasticsearchDiskLow
+            expr: (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) * 100 < 15
+            for: 10m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch disk low on {{ $labels.name }}"
+              description: "Node {{ $labels.name }} has only {{ $value }}% free space on {{ $labels.path }} — approaching ES low watermark (85% used). Shard allocation will be blocked at 85%."
+
+          # es-index-retention is the only thing keeping the on-prem indices from
+          # growing without bound: unlike the AWS cluster, on-prem writes into
+          # long-lived indices that ILM cannot drop whole, so retention is a daily
+          # document-level _delete_by_query rather than an index expiry.
+          #
+          # Without this pair the job's silence is invisible until ElasticsearchDiskLow
+          # fires above — which reports a disk symptom, not the retention cause, and
+          # by then there are weeks of documents to work through. It is grouped with
+          # elasticsearch rather than backup on purpose: this deletes data, it does not
+          # preserve any, so filing it under backup would misrepresent what a green
+          # alert means.
+          - alert: ElasticsearchIndexRetentionStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="logging", cronjob="es-index-retention"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch index retention has not succeeded in 36h"
+              description: "The es-index-retention CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 04:00 KST schedule. Old documents are no longer being trimmed, so the on-prem indices grow until ElasticsearchDiskLow fires. Check `kubectl -n logging get cronjob es-index-retention` (is it suspended?) and `kubectl -n logging logs job/<latest>` — a per-index failure is reported in that log rather than by a non-zero Job exit."
+
+          - alert: ElasticsearchIndexRetentionMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="logging", cronjob="es-index-retention"})
+            for: 30m
+            labels:
+              severity: warning
+              group: elasticsearch
+            annotations:
+              summary: "Elasticsearch index retention CronJob no longer exists"
+              description: "The es-index-retention CronJob is not present in the logging namespace — nothing is trimming the on-prem indices. Re-apply observability/logging/elasticsearch/index-retention/manifests/cronjob.yaml and confirm with `kubectl -n logging get cronjob es-index-retention`."
+
+  # ---------------------------------------------------------------------------
+  # Redis Alerts — instance availability
+  # Covers both example-project-redis-exporter (namespace=monitoring) and valkey-redis-metrics (namespace=example-project-db-redis)
+  # ---------------------------------------------------------------------------
+  redis-alerts:
+    groups:
+      - name: redis-alerts
+        rules:
+
+          # Redis instance unreachable from exporter for 2 minutes
+          # redis_up=0 means exporter cannot PING/INFO the target — Redis down or network partition
+          - alert: RedisDown
+            expr: redis_up == 0
+            for: 2m
+            labels:
+              severity: critical
+              group: redis
+            annotations:
+              summary: "Redis instance down ({{ $labels.namespace }}/{{ $labels.service }})"
+              description: "Redis exporter reports redis_up=0 for 2+ minutes (instance: {{ $labels.instance }}, job: {{ $labels.job }}) — dependent apps may see cache/session failures."
+
+  # ---------------------------------------------------------------------------
+  # MySQL Alerts — instance availability (via example-project-mysql-exporter, namespace=monitoring)
+  # ---------------------------------------------------------------------------
+  mysql-alerts:
+    groups:
+      - name: mysql-alerts
+        rules:
+
+          # MySQL instance unreachable from exporter for 2 minutes
+          # mysql_up=0 means exporter cannot connect — DB down, credentials, or network issue
+          - alert: MySQLDown
+            expr: mysql_up == 0
+            for: 2m
+            labels:
+              severity: critical
+              group: mysql
+            annotations:
+              summary: "MySQL instance down ({{ $labels.namespace }}/{{ $labels.service }})"
+              description: "MySQL exporter reports mysql_up=0 for 2+ minutes (instance: {{ $labels.instance }}) — dependent services will fail DB operations."

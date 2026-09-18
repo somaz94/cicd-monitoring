@@ -26,6 +26,7 @@
     {"datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 33}, "id": 13, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "title": "Request Concurrency", "type": "timeseries", "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "gitlab_runner_request_concurrency{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "{{instance}}", "refId": "A"}]},
     {"datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 33}, "id": 14, "options": {"legend": {"displayMode": "list", "placement": "bottom"}}, "title": "Queue Depth", "type": "timeseries", "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "gitlab_runner_job_queue_depth{job=~\"$job\",instance=~\"$instance\"}", "legendFormat": "{{instance}}", "refId": "A"}]}
   ],
+  "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["gitlab", "runner", "cicd", "kubernetes"],
   "templating": {

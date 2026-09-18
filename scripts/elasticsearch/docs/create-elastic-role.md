@@ -43,19 +43,19 @@ Each section is opt-out — set the corresponding flag to `''` (empty string) to
 
 ```bash
 # Show help
-./create-elastic-role.sh -h
+./create-elastic-role.sh --context onprem-dev -h
 
 # === Default — read_only_role over all indices ===
-./create-elastic-role.sh --yes
+./create-elastic-role.sh --context onprem-dev --yes
 
 # === Restrict to a specific index family ===
-./create-elastic-role.sh \
+./create-elastic-role.sh --context onprem-dev \
   --role-name pm_viewer \
   --indices 'example-project-*,dev-example-project-game*,qa-example-project-game*' \
   --yes
 
 # === Read-write role ===
-./create-elastic-role.sh \
+./create-elastic-role.sh --context onprem-dev \
   --role-name dev_writer \
   --indices 'dev-*' \
   --index-privileges 'read,write,create,create_index,view_index_metadata' \
@@ -63,26 +63,26 @@ Each section is opt-out — set the corresponding flag to `''` (empty string) to
   --yes
 
 # === Include Dev Tools (admin-grade) — be deliberate ===
-./create-elastic-role.sh \
+./create-elastic-role.sh --context onprem-dev \
   --role-name kibana_power_user \
   --kibana-privileges all \
   --yes
 
 # === Kibana-only role (no ES indices privileges) ===
-./create-elastic-role.sh \
+./create-elastic-role.sh --context onprem-dev \
   --role-name kibana_only \
   --indices '' \
   --kibana-privileges read \
   --yes
 
 # === ES-only role (no Kibana access) ===
-./create-elastic-role.sh \
+./create-elastic-role.sh --context onprem-dev \
   --role-name es_search \
   --kibana-application '' \
   --yes
 
 # === Dry-run ===
-./create-elastic-role.sh --role-name foo --dry-run --yes
+./create-elastic-role.sh --context onprem-dev --role-name foo --dry-run --yes
 ```
 
 <br/>

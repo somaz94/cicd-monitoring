@@ -1,8 +1,12 @@
-# Per-release ArgoCD metadata for the gitlab-runner LEGACY runner (helmfile release: old-build-deploy-image).
-# Pinned to an older chart (older executor config) — deliberately behind build/deploy; compare the
-# chart.version field in this file against the one in build-image.yaml / deploy-image.yaml.
+# Per-release ArgoCD metadata for the runner that serves gitlab-old (helmfile release: old-build-deploy-image).
+# LIVE, not retired: this is the only runner gitlab-old CI has. It now tracks the same chart as
+# build-image / deploy-image; it spent a long time pinned to 0.70.3 and was caught up on 2026-08-31,
+# together with the image (alpine-v13.5.0 -> alpine-v16.11.4) and a switch to a glrt- instance-runner
+# token. That also put it back into upgrade.py's ARGOCD_PIN_FILES, so the chart auto-upgrades again.
 # Consumed by the infra-applicationset git-files generator -> Application infra-old-build-deploy-image.
-# autoSync:false = enroll MANUAL; verify adopt-diff (zero recreate) then flip to true.
+# The image tag pin was dropped on 2026-09-01: values/old-gitlab-runner.yaml now comments out `tag:`
+# like its siblings, so the image follows the chart's appVersion instead of the gitlab-old server
+# version — see scripts/gitlab/old-upgrade/UPGRADE-PATH.md.
 component: gitlab-runner
 releaseName: old-build-deploy-image           # MUST equal the existing helmfile release name (clean adoption)
 namespace: gitlab-runner
@@ -10,7 +14,7 @@ syncWave: "5"
 chart:
   repoURL: https://charts.gitlab.io
   name: gitlab-runner
-  version: "0.70.3"
+  version: "0.91.0"
 valueFile: cicd/gitlab-runner/values/old-gitlab-runner.yaml
 createNamespace: false                        # 'gitlab-runner' already exists
 autoSync: true

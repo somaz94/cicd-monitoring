@@ -1,8 +1,10 @@
 # Vaultwarden OIDC → Keycloak migration
 
+> 🔴 **Status: not applied (two attempts on 2026-04-29, both rolled back).** vaultwarden currently runs on direct GitLab SSO. For the root cause and the re-attempt conditions, see the header comments in [`security/vaultwarden/values/dev.yaml`](../../vaultwarden/values/dev.yaml). The procedure below is kept as the **re-attempt recipe**.
+
 Switch vaultwarden's SSO endpoint from a direct GitLab integration to the Keycloak `example` realm. Existing GitLab-account users keep signing in transparently via Keycloak → GitLab brokering — minimal user impact, ~30s pod restart only.
 
-vaultwarden's SSO support comes from [PR #3899](https://github.com/dani-garcia/vaultwarden/pull/3899) (community fork). This cluster already runs with `sso.enabled=true` ([security/vaultwarden/values/dev.yaml:39-49](../../vaultwarden/values/dev.yaml#L39-L49)) — only the `authority`/`clientId`/`clientSecret` change.
+vaultwarden's SSO support comes from [PR #3899](https://github.com/dani-garcia/vaultwarden/pull/3899) (community fork). This cluster already runs with `sso.enabled=true` (the `sso:` block in [security/vaultwarden/values/dev.yaml](../../vaultwarden/values/dev.yaml)) — only the `authority`/`clientId`/`clientSecret` change.
 
 <br/>
 

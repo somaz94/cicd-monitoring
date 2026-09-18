@@ -18,6 +18,10 @@ source "${SCRIPT_DIR}/../../../../scripts/lib/prompts.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/es-helpers.sh"
 
+# This script's only cluster call is the SOURCE-password secret read, so name that
+# secret as the collision rather than es-helpers.sh's port-forward default.
+KUBE_CONTEXT_HINT="monitoring/elasticsearch-master-credentials (the SOURCE password)"
+
 ###################
 # Global Variables #
 ###################
@@ -31,7 +35,10 @@ SOURCE_PASSWORD=""
 # TARGET Kibana (new stack, logging ns, ECK-managed)
 TARGET_HOST="https://kibana-eck.example.com"
 TARGET_USER="elastic"
-TARGET_PASSWORD="exampleAdminPassword"
+# Empty -> auto-fetch from the TARGET cluster's own secret logging/elasticsearch-es-elastic-user.
+# It used to carry the on-prem admin password inline, which is both a credential in the
+# repo and a cross-cluster hazard now that --context makes the cluster selectable.
+TARGET_PASSWORD=""
 
 # Saved object types to migrate (comma-separated)
 SAVED_OBJECT_TYPES="dashboard,visualization,search,index-pattern,lens,map,canvas-workpad,tag"
@@ -71,14 +78,27 @@ Modes (pick one):
       --list-target       Show per-type counts on TARGET
 
 Connection options:
+      --context CTX              kube-context used ONLY to auto-fetch the SOURCE
+                                 password from a Kubernetes secret. Required
+                                 unless --source-password is given, in which case
+                                 this script never touches a cluster. There is no
+                                 fallback to the current context — both clusters
+                                 hold identically named secrets, so an implicit
+                                 context reads the wrong cluster's credentials.
+                                 The name is a LOCAL kubeconfig alias with no
+                                 fixed value — list yours with
+                                 \`kubectl config get-contexts -o name\`.
       --source URL               SOURCE Kibana host (default: ${SOURCE_HOST})
       --source-user USER         SOURCE user (default: ${SOURCE_USER})
       --source-password PW       SOURCE password
                                  (if empty, auto-fetched from
-                                  monitoring/elasticsearch-master-credentials)
+                                  monitoring/elasticsearch-master-credentials —
+                                  this is what makes --context required)
       --target URL               TARGET Kibana host (default: ${TARGET_HOST})
       --target-user USER         TARGET user (default: ${TARGET_USER})
-      --target-password PW       TARGET password (default: ${TARGET_PASSWORD})
+      --target-password PW       TARGET password (if empty, auto-fetched from
+                                 logging/elasticsearch-es-elastic-user — this is
+                                 the other reason --context may be required)
 
 Data options:
   -f, --file PATH         NDJSON file path
@@ -120,12 +140,33 @@ fetch_source_password() {
     if [ -n "$SOURCE_PASSWORD" ]; then
         return 0
     fi
-    echo "▸ Fetching SOURCE password (monitoring/elasticsearch-master-credentials)..."
+    # The secret read is the ONLY cluster call this script makes, so the kube-context
+    # gate lives here rather than at startup — a run that passes --source-password
+    # never touches a cluster and should not be forced to name one.
+    require_kube_context
+    echo "▸ Fetching SOURCE password from ${KUBE_CONTEXT} (cluster=$(kube_context_cluster))"
+    echo "  secret: monitoring/elasticsearch-master-credentials"
     SOURCE_PASSWORD=$(es_fetch_password_from_k8s monitoring elasticsearch-master-credentials password) || {
         echo "  Pass --source-password explicitly." >&2
         exit 1
     }
     echo "✓ SOURCE password fetched"
+    echo ""
+}
+
+# Auto-fetch TARGET password from the ECK secret — mirrors fetch_source_password.
+fetch_target_password() {
+    if [ -n "$TARGET_PASSWORD" ]; then
+        return 0
+    fi
+    require_kube_context
+    echo "▸ Fetching TARGET password from ${KUBE_CONTEXT} (cluster=$(kube_context_cluster))"
+    echo "  secret: logging/elasticsearch-es-elastic-user"
+    TARGET_PASSWORD=$(es_fetch_password_from_k8s logging elasticsearch-es-elastic-user elastic) || {
+        echo "  Pass --target-password explicitly." >&2
+        exit 1
+    }
+    echo "✓ TARGET password fetched"
     echo ""
 }
 
@@ -148,6 +189,7 @@ pretty_json() {
 do_list() {
     local host="" user="" pw="" label=""
     if [ "$LIST_TARGET" = true ]; then
+        fetch_target_password
         host="$TARGET_HOST"; user="$TARGET_USER"; pw="$TARGET_PASSWORD"
         label="TARGET ($TARGET_HOST)"
     else
@@ -168,7 +210,7 @@ do_list() {
         resp=$(es_curl "$user" "$pw" \
             -H 'kbn-xsrf: true' \
             "$host/api/saved_objects/_find?type=${t}&per_page=1&fields=id")
-        count=$(echo "$resp" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
+        count=$(echo "$resp" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2 || true)
         if [ -z "$count" ]; then
             printf "  %-18s : (query failed)\n" "$t"
             fail=$((fail + 1))
@@ -275,6 +317,7 @@ do_import() {
     fi
 
     local resp
+    fetch_target_password
     resp=$(es_curl "$TARGET_USER" "$TARGET_PASSWORD" \
         -H 'kbn-xsrf: true' \
         -X POST "$TARGET_HOST/api/saved_objects/_import${url_params}" \
@@ -285,9 +328,9 @@ do_import() {
     echo ""
 
     local success="" success_count="" error_count=""
-    success=$(echo "$resp" | grep -o '"success":[a-z]*' | head -1 | cut -d: -f2)
-    success_count=$(echo "$resp" | grep -o '"successCount":[0-9]*' | head -1 | cut -d: -f2)
-    error_count=$(echo "$resp" | grep -o '"errors":\[' | wc -l | tr -d ' ')
+    success=$(echo "$resp" | grep -o '"success":[a-z]*' | head -1 | cut -d: -f2 || true)
+    success_count=$(echo "$resp" | grep -o '"successCount":[0-9]*' | head -1 | cut -d: -f2 || true)
+    error_count=$(echo "$resp" | grep -o '"errors":\[' | wc -l | tr -d ' ' || true)
 
     if [ "$success" = "true" ]; then
         echo "✓ Import complete (successCount=${success_count:-?})"
@@ -346,6 +389,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --list-target)
             MODE="list"; LIST_TARGET=true; shift
+            ;;
+        --context)
+            KUBE_CONTEXT="$2"; shift 2
             ;;
         --source)
             SOURCE_HOST="$2"; shift 2

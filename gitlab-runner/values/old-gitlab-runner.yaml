@@ -12,7 +12,7 @@
 image:
   registry: registry.gitlab.com
   image: gitlab-org/gitlab-runner
-  tag: alpine-v13.5.0
+  # tag: alpine-v{{.Chart.AppVersion}}
 
 ## How many runner pods to launch.
 ##
@@ -29,20 +29,54 @@ gitlabUrl: http://external.example.com:31080/
 
 ## DEPRECATED: The Registration Token for adding new Runners to the GitLab Server.
 ##
+## Deliberately empty -- see runnerToken below. Registering on every pod start
+## made this runner create a NEW Ci::Runner row each time, and 26 of them had
+## piled up on project 57 (server/projecta_clientcs) by 2026-08-27. It also
+## broke outright in the 14.3.6 -> 14.9.5 hop, because 14.x re-generates project
+## registration tokens with a GR1348941 prefix, so the value pinned here stopped
+## matching the server and registration failed with "forbidden".
+##
 ## ref: https://docs.gitlab.com/ee/ci/runners/new_creation_workflow.html
 ##
-runnerRegistrationToken: "<GITLAB_RUNNER_TOKEN>"
+runnerRegistrationToken: ""
 
 ## The Runner Token for adding new Runners to the GitLab Server. This must
 ## be retrieved from your GitLab instance. It is the token of an already registered runner.
-## ref: (we don't have docs for that yet, but we want to use an existing token)
 ##
-# runnerToken: "<GITLAB_RUNNER_TOKEN>"
+## This is Ci::Runner id=45, an INSTANCE runner created through the Admin Area on
+## 2026-08-31, replacing the project-scoped id=44 that had served since the 14.9.5
+## hop. Two things forced the swap:
+##
+##   1. Chart 0.91.0's entrypoint branches on the token format --
+##      `[ "${CI_SERVER_TOKEN#glrt-}" != "$CI_SERVER_TOKEN" ]` -- and only unsets
+##      REGISTER_LOCKED / RUNNER_TAG_LIST when the prefix is present. The old
+##      token predated that prefix, so it would have taken the registration path
+##      instead: exactly what broke this runner during the 14.9.5 hop.
+##   2. GitLab 17.0 disables registration tokens by default anyway.
+##
+## Scope widened from project 57 to instance-wide, which is deliberate: any project
+## on gitlab-old can now use it.
+##
+## 🔴 Nothing below narrows that back. A tag is a ROUTING label, not an authorization
+## boundary -- any project can put `tags: [build-deploy-image]` in its .gitlab-ci.yml
+## and land here. The effective boundary is now "anyone who can push to gitlab-old".
+## Job pods land in this same namespace as the build-image / deploy-image runners.
+##
+## ref: https://docs.gitlab.com/ci/runners/new_creation_workflow/
+##
+runnerToken: "<GITLAB_RUNNER_TOKEN>"
 
 ## Configure the maximum number of concurrent jobs
+##
+## Lowered from 10 to 3 on 2026-08-31, when this became an instance runner. It had
+## been the highest of the three runners (build=3, deploy=5) while serving a single
+## project; carrying that into instance scope would have given the widest trust
+## boundary the largest capacity. 3 matches build-image, and this runner has never
+## actually executed a job, so there is no measured demand arguing for more.
+##
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
 ##
-concurrent: 10
+concurrent: 3
 
 ## Number of seconds until the forceful shutdown operation times out and exits the process.
 ## ref: https://docs.gitlab.com/runner/configuration/advanced-configuration.html#the-global-section
@@ -101,12 +135,12 @@ rbac:
     # - resources: ["services"]
     #   verbs: ["create","get"]
 
-  ## Use podSecurity Policy
-  ## ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/
+  ## PodSecurityPolicy was removed from Kubernetes in 1.25 and this cluster runs
+  ## v1.34, so leaving this enabled rendered nothing. Disabled on 2026-08-31 to stop
+  ## it reading as an active control that it never was.
+  ## ref: https://kubernetes.io/docs/concepts/security/pod-security-admission/
   podSecurityPolicy:
-    enabled: true
-    resourceNames:
-      - gitlab-runner
+    enabled: false
 
   ## Specify one or more imagePullSecrets used for pulling the runner image
   ##
@@ -130,15 +164,49 @@ runners:
   #
   # tpl: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
   # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+  # `request_concurrency` below is a CEILING, not the limit that is actually enforced. Runner 19.x
+  # also computes an adaptive request-concurrency limit and enforces the LOWER of the two, and on
+  # this fleet the adaptive one measured lower — so raising the number below does not by itself
+  # widen poll concurrency, and a burst can still serialize. Live figures and the full analysis sit
+  # next to the GitLabRunnerConcurrentLimitReached rule in
+  # observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml; that alert used to
+  # be justified by this setting and no longer reads the request-concurrency counter at all.
+  # This note lives ABOVE `config:` on purpose: comments inside the block are literal TOML, so they
+  # land in the rendered ConfigMap and every edit rolls the runner managers. Out here they are free.
   config: |
     [[runners]]
+      # New-job requests this manager acquires concurrently from GitLab. Kept below
+      # `concurrent: 3`. Must sit above the [runners.kubernetes] sub-table header
+      # (TOML binds keys to the last-opened table).
+      request_concurrency = 2
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"
+        # Reduce apiserver GET /pods polling frequency (default 3s) — eases control-plane load.
+        poll_interval = 5
+        # Tolerate transient apiserver slowdowns without failing the job (default 180s).
+        poll_timeout = 600
+        # Allow graceful pod termination instead of immediate delete (reduces etcd churn).
+        cleanup_grace_period_seconds = 30
+        # Resource bounds for the transient CI job pods, added 2026-08-31 alongside the
+        # switch to an instance runner. Until then this runner ran unbounded pods, which
+        # was tolerable while a single project could reach it and is not now that every
+        # project on gitlab-old can. Unlike build.yaml these numbers are NOT sized from
+        # observed peaks -- this runner has never executed a job, so there is nothing to
+        # measure. They are deliberately conservative: enough for a real build, low
+        # enough that a runaway pipeline cannot crowd out the build-image / deploy-image
+        # runners sharing this namespace. Revisit with real figures if it ever runs work.
+        cpu_request = "100m"
+        cpu_limit = "1"
+        memory_request = "256Mi"
+        memory_limit = "2Gi"
 
-  ## DEPRECATED: Specify the tags associated with the runner. Comma-separated list of tags.
+  ## DEPRECATED, and inert here since the 2026-08-31 switch to a glrt- token: the
+  ## chart 0.91.0 entrypoint unsets RUNNER_TAG_LIST whenever the token carries that
+  ## prefix. The runner's tags now live server-side on Ci::Runner id=45 -- editing
+  ## this line changes nothing. Kept only so the intended tag is visible here.
   ##
-  ## ref: https://docs.gitlab.com/ee/ci/runners/new_creation_workflow.html
+  ## ref: https://docs.gitlab.com/ci/runners/new_creation_workflow/
   ##
   tags: "build-deploy-image"
 

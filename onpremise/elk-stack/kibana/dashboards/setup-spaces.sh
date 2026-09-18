@@ -21,6 +21,13 @@ set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
+# Target kube-context. REQUIRED — no default, no fallback to the current
+# context. See the matching comment in apply.sh: the on-prem and AWS clusters
+# both expose logging/elasticsearch-es-default-0, so a bare kubectl succeeds
+# against whichever context is current. This script creates Spaces and shares
+# data views into them, so a wrong-cluster run mutates the other cluster's
+# Kibana layout.
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 NAMESPACE="${NAMESPACE:-logging}"
 ES_POD="${ES_POD:-elasticsearch-es-default-0}"
 ES_CONTAINER="${ES_CONTAINER:-elasticsearch}"
@@ -48,7 +55,7 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--space NAME:TZ]... [--dry-run]
+Usage: $(basename "$0") --context CTX [--space NAME:TZ]... [--dry-run]
 
 Creates Kibana Spaces (if missing) and pins each Space's dateFormat:tz
 Advanced Setting. Safe to re-run.
@@ -58,6 +65,11 @@ Default specs:
   cst:Asia/Shanghai     (CST / UTC+8)
 
 Options:
+  --context CTX     REQUIRED. kube-context to run every kubectl call against.
+                    No default and no fallback to the current context — the
+                    on-prem and AWS clusters have identically named logging
+                    pods, so an implicit context silently mutates the wrong
+                    cluster. \`kubectl config get-contexts -o name\` lists them.
   --space NAME:TZ   Override the default spec list. May be repeated.
                     When provided at least once, the defaults are dropped.
                     Examples:
@@ -66,6 +78,7 @@ Options:
   --dry-run         Print actions without contacting Kibana.
 
 Env overrides:
+  KUBE_CONTEXT=$KUBE_CONTEXT
   NAMESPACE=$NAMESPACE
   ES_POD=$ES_POD
   ES_CONTAINER=$ES_CONTAINER
@@ -81,6 +94,10 @@ DRY_RUN=0
 declare -a USER_SPECS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --space)
       shift; [ $# -gt 0 ] || { err "--space requires NAME:TZ"; exit 2; }
       USER_SPECS+=("$1")
@@ -92,6 +109,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run, same rationale as apply.sh.
+KUBE_CONTEXT_HINT="${NAMESPACE}/${ES_POD}"
+_KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
+require_kube_context
+
 if [ ${#USER_SPECS[@]} -gt 0 ]; then
   SPECS=("${USER_SPECS[@]}")
 fi
@@ -100,7 +126,7 @@ KIBANA_URL="${KIBANA_SCHEME}://${KIBANA_SVC}:${KIBANA_PORT}"
 
 # Look up elastic password
 if [ "$DRY_RUN" != "1" ]; then
-  PASS=$(kubectl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
+  PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   if [ -z "$PASS" ]; then
     err "Failed to read password from secret $NAMESPACE/$ES_SECRET key=$ES_USER"
     exit 1
@@ -135,7 +161,7 @@ ensure_space() {
   fi
 
   local code
-  code=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  code=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -o /dev/null -w '%{http_code}' \
       -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       "${KIBANA_URL}/api/spaces/space/${name}")
@@ -156,7 +182,7 @@ ensure_space() {
   # Note: trailing slash + non-2xx must propagate even though caller uses `if !`,
   # which suppresses set -e inside the function. Capture status explicitly.
   local status
-  status=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  status=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -o /dev/null -w '%{http_code}' \
       -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       -X POST "${KIBANA_URL}/api/spaces/space" -d "$payload")
@@ -178,7 +204,7 @@ set_timezone() {
   payload=$(printf '{"changes":{"dateFormat:tz":"%s"}}' "$tz")
 
   local status
-  status=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  status=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -o /dev/null -w '%{http_code}' \
       -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       -X POST "${KIBANA_URL}${prefix}/internal/kibana/settings" -d "$payload")
@@ -200,7 +226,7 @@ share_data_views_to() {
 
   # Find every index-pattern in the default Space.
   local list_json
-  list_json=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  list_json=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       "${KIBANA_URL}/api/saved_objects/_find?type=index-pattern&per_page=100&fields=title")
 
@@ -221,7 +247,7 @@ print(json.dumps(out))
   payload=$(printf '{"objects":%s,"spacesToAdd":["%s"],"spacesToRemove":[]}' "$objs" "$target")
 
   local body status
-  body=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  body=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -w '\n__HTTP__%{http_code}' \
       -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       -X POST "${KIBANA_URL}/api/spaces/_update_objects_spaces" -d "$payload")
@@ -268,6 +294,8 @@ print(bad)
 }
 
 log "Kibana Space bootstrap"
+# Resolved cluster, not just the context name — see apply.sh.
+log "  context=${KUBE_CONTEXT}  cluster=$(kube_context_cluster)"
 log "  namespace=$NAMESPACE  pod=$ES_POD  kibana=$KIBANA_URL"
 log "  dry-run=$DRY_RUN"
 log "  specs (${#SPECS[@]}):"

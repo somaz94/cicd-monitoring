@@ -6,7 +6,7 @@ Analysis and qa/prod-portable templating of the Kibana dashboard `Game User Matr
 
 ## One-line summary
 
-`<env>-pm-retention-dashboard` = (1) six KPI Vega cards + two Trend Lenses on top of the raw `dev-example-project-game` index, (2) a D+1..D+30 Retention Curve (Vega) + a Daily Cohort Retention table (Lens) on top of `dev-example-project-game-user-cohort` (transform output). Default time range: `now-30d ~ now`.
+`<env>-pm-retention-dashboard` = (1) seven KPI Vega cards + two Trend Lenses on top of the raw `dev-example-project-game` index, (2) a D+1..D+30 Retention Curve (Vega) + a Daily Cohort Retention table (Lens) + a Chapter Distribution (Vega) on top of `dev-example-project-game-user-cohort` (transform output). Default time range: `now-30d ~ now`.
 
 <br/>
 
@@ -21,7 +21,7 @@ Five substitutions:
 | 1 | Raw index name | `dev-example-project-game` → `<env>-example-project-game` |
 | 2 | Cohort index name + transform id | `dev-example-project-game-user-cohort` → `<env>-example-project-game-user-cohort` |
 | 3 | Kibana data view UUID (raw / cohort) | new UUIDs issued on the target cluster |
-| 4 | Dashboard / 12 panel saved-object ids | `pm-retention-*` → `<env>-pm-retention-*` (avoid id collision) |
+| 4 | Dashboard / 12 panel saved-object ids | `pm-retention-*` · `pm-chapter-distribution-*` → `<env>-…` (avoid id collision) |
 | 5 | (Optional) KPI card 4-color palette | per-env visual cue — dev/qa/prod different palettes recommended |
 
 Things that do **not** need to change (env-invariant):
@@ -49,7 +49,7 @@ Run through this before applying to a prod (or qa) cluster:
 | `data.requestPath` | `text` | NU KPI human readability (optional) | irrelevant if KPI only reads keyword |
 | `data.requestPath.keyword` | `keyword` (multi-field) | **Transform scripted_metric** (`doc['data.requestPath.keyword']`), NU KPI `term` filter | **Transform fails to boot** (the most common prod-rollout failure) |
 | `data.accountId` | `long` or `keyword` | (not used by this dashboard — reserved for sibling metrics) | no effect |
-| `data.statusCode` | `long` | DAU Trend Lens KQL `< 4` | drop that KQL clause if missing |
+| `data.statusCode` | `long` | DAU Trend Lens KQL `< 400` | drop that KQL clause if missing |
 
 > **Check command**: `GET /<RAW_INDEX>/_mapping`, confirm all fields exist under `properties.data.properties`, and `requestPath.fields.keyword` sub-field is present.
 
@@ -60,14 +60,14 @@ Run through this before applying to a prod (or qa) cluster:
 | timezone normalisation | fluentd writes `@timestamp` normalised to KST(+09:00) before ES | adjust the transform's `params.tz` to the actual data zone (ES converts internally, only the *value* needs to match) |
 | signup endpoint | `/users/create` is the new-user event (`data.requestPath` value) | swap the transform's `params.path` and the NU KPI's three `term` filters together |
 | health-check endpoint | `/api/health`, `/api/stats` are operational polling | adjust the DAU Trend KQL exclude clause |
-| signup-event retention window | the cohort transform needs the signup events to still exist in the raw index at run time to anchor the cohort | if ILM expires signup events first, D-N anchoring breaks — keep `/users/create` retained even when other events expire |
+| signup-event retention window | the cohort transform needs the signup events to still exist in the raw index at run time to anchor the cohort | if ILM expires signup events first, D-N anchoring breaks — keep `/users/create` retained even when other events expire (on-prem already exempts it in `elasticsearch/index-retention/manifests/cronjob.yaml`) |
 
 ### C. ECK / Kibana versions
 
 | Item | Verified version |
 |---|---|
 | Elasticsearch | 9.x (ECK operator-managed) |
-| Kibana | 9.3.x — uses Vega plugin `%context%` / `%timefield%` |
+| Kibana | pinned by `version` in `kibana/values/dev.yaml` — uses Vega plugin `%context%` / `%timefield%` |
 | ES Transform | continuous mode + scripted_metric (works on 7.x+, 9.x recommended) |
 
 ### D. Capacity / ops considerations
@@ -133,13 +133,15 @@ Coordinates are Kibana grid (48 columns). `y` grows downward.
 | 1 | 0 | 7 | **NU (Today)** | Vega-Lite | (0,12) | `<env>-pm-retention-nu-today` | raw |
 | 1 | 0 | 7 | **NU (Last 7d)** | Vega-Lite | (12,12) | `<env>-pm-retention-nu-7d` | raw |
 | 1 | 0 | 7 | **NU (Last 30d)** | Vega-Lite | (24,12) | `<env>-pm-retention-nu-30d` | raw |
+| 1 | 0 | 7 | **NU (Total)** | Vega-Lite | (36,12) | `<env>-pm-retention-nu-total` | raw |
 | 2 | 7 | 7 | **DAU** | Vega-Lite | (0,12) | `<env>-pm-retention-dau-today` | raw |
 | 2 | 7 | 7 | **WAU** | Vega-Lite | (12,12) | `<env>-pm-retention-wau-7d` | raw |
 | 2 | 7 | 7 | **MAU** | Vega-Lite | (24,12) | `<env>-pm-retention-mau-30d` | raw |
 | 3 | 14 | 11 | **NU Trend (30d)** | Lens (lnsXY) | (0,25) | `<env>-pm-retention-nu-trend` | raw |
-| 3 | 14 | 11 | **DAU Trend** | Lens (lnsXY) | (25,23) | `<env>-pm-retention-dau-trend` | raw |
+| 3 | 14 | 11 | **DAU Trend (30d)** | Lens (lnsXY) | (25,23) | `<env>-pm-retention-dau-trend` | raw |
 | 4 | 25 | 14 | **Average Retention Curve (D+1..D+30)** | Vega (full) | (0,48) | `<env>-pm-retention-curve` | cohort |
 | 5 | 39 | 15 | **Daily Cohort Retention (table)** | Lens (lnsDatatable) | (0,48) | `<env>-pm-retention-daily-table` | cohort |
+| 6 | 54 | 14 | **Chapter Distribution (per user latest)** | Vega (full) | (0,48) | `<env>-pm-chapter-distribution-v2` | cohort |
 
 > Dashboard saved-object id: `<env>-pm-retention-dashboard` (slug)
 > Description (verbatim): *"All live — DAU/WAU/MAU/DAU Trend/Stickiness/DAU breakdown query raw events, NU + cohort retention query the dev-example-project-game-user-cohort transform."*
@@ -167,7 +169,7 @@ Live spec (`kubectl ... GET /_transform/dev-example-project-game-user-cohort`):
 |---|---|
 | Source | `dev-example-project-game`, query `exists(data.userId)` |
 | Group by | `user_id` (terms on `data.userId`) |
-| Aggregations | `first_seen` (min @timestamp), `last_seen` (max), `total_events` (value_count), `active_days_count` (cardinality of KST local-date string), `active_dates` (scripted_metric — array of active KST dates), `max_cleared_chapter` (max). **Does not compute retention** — D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live` reading `active_dates` |
+| Aggregations | `first_seen` (scripted_metric — minimum @timestamp of `/users/create` events), `last_seen` (max), `total_events` (value_count), `active_days_count` (cardinality of KST local-date string), `active_dates` (scripted_metric — array of active KST dates), `active_days_count_cst` / `active_dates_cst` (the same computation in CST), `max_cleared_chapter` (max). **Does not compute retention** — D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live` reading `active_dates` |
 | Dest | `dev-example-project-game-user-cohort` |
 | Frequency | `5m` (live) |
 | Sync | `time.field: @timestamp`, `delay: 60s` |
@@ -187,7 +189,7 @@ reduce:        return the sorted keyword array of union(state.days across all st
 ```
 
 Key consequences (retention is computed by query-time runtime fields, not the transform):
-- The transform produces only per-user **atomic facts** (`first_seen`, `last_seen`, `total_events`, `active_days_count`, `active_dates`, `max_cleared_chapter`). It stores no D-N retention flag.
+- The transform produces only per-user **atomic facts** (`first_seen`, `last_seen`, `total_events`, `active_days_count`, `active_dates`, `active_days_count_cst`, `active_dates_cst`, `max_cleared_chapter`). It stores no D-N retention flag.
 - D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live`: 1 if `first_seen + N day` appears in `active_dates`, 0 if not. A maturity guard emits nothing for horizons that have not yet elapsed → the ES `avg()` operator skips them automatically (excluded, not 0).
 - The anchor is the first `/users/create` day (= `first_seen`, resolved via the `params.path` filter).
 - Timezone is controlled by the transform `params.tz` (`active_dates` / `active_days_count`) plus the data-view runtime fields' `ZoneId`.
@@ -257,9 +259,9 @@ KPI Vega-Lite skeleton:
 | Data view | `dev-example-project-game-logs` (raw) |
 | X | `date_histogram(@timestamp, 1d)` |
 | Y | `unique_count(data.userId)` label "New users" |
-| KQL filter | none (dashboard-level `now-30d` `timeRestore` handles the window) |
+| KQL filter | none — the Y column carries a column filter `data.requestPath: "/users/create"` instead (dashboard-level `now-30d` `timeRestore` handles the window) |
 
-#### DAU Trend — `<env>-pm-retention-dau-trend`
+#### DAU Trend (30d) — `<env>-pm-retention-dau-trend`
 
 | Item | Value |
 |---|---|
@@ -267,7 +269,7 @@ KPI Vega-Lite skeleton:
 | Data view | `dev-example-project-game-logs` (raw) |
 | X | `date_histogram(@timestamp, 1d)` |
 | Y | `unique_count(data.userId)` label "DAU" |
-| **KQL filter** | `data.userId : * and not data.requestPath : "/api/health" and not data.requestPath : "/api/stats" and data.statusCode < 4` |
+| **KQL filter** | `data.userId : * and not data.requestPath : "/api/health" and not data.requestPath : "/api/stats" and data.statusCode < 400` |
 
 > Only the DAU Trend excludes health-check / stats endpoints and 4xx/5xx responses. NU and Retention already self-isolate because they look at the signup endpoint.
 
@@ -322,7 +324,7 @@ Then a `points` dataset (D+1..D+30) is joined to `es_agg` via a `formula` transf
 | Col 1 | `count(___records___)` — "NU" (number of signups in that cohort) |
 | Cols 2..31 | `average(d1_live)` … `average(d30_live)` — labels `D+1` … `D+30` (`dN_live` are cohort data-view runtime fields) |
 | Time filter | dashboard `now-30d ~ now`, by `first_seen` |
-| Sorting | none (terms order via the data view) |
+| Sorting | the terms column itself sorts `cohort_date` alphabetically descending (newest cohort first) |
 
 One row = one cohort day. Each D+N cell = that cohort's D+N retention rate (0..1, formatted as `%` by Kibana).
 
@@ -334,19 +336,19 @@ Values to substitute for prod:
 
 | Param | dev value | Where it appears | prod example |
 |---|---|---|---|
-| `<RAW_INDEX>` | `dev-example-project-game` | KPI Vega `data.url.index` ×6, Trend Lens data view title, Transform `source.index` | `prod-example-project-game` |
+| `<RAW_INDEX>` | `dev-example-project-game` | KPI Vega `data.url.index` ×7, Trend Lens data view title, Transform `source.index` | `prod-example-project-game` |
 | `<COHORT_INDEX>` | `dev-example-project-game-user-cohort` | Curve Vega `data.url.index`, Table Lens data view title, Transform `dest.index`, Transform id | `prod-example-project-game-user-cohort` |
 | `<RAW_DATA_VIEW_ID>` | `b50c59ea-73c1-4feb-8b42-d642248c8647` | Trend Lens `references[].id` (raw data view) | fresh UUID issued on the prod cluster |
 | `<COHORT_DATA_VIEW_ID>` | `410571c2-5b86-4ba9-a02e-418671d0b8e2` | Table Lens `references[].id` | fresh UUID issued on the prod cluster |
 | `<USER_FIELD>` | `data.userId` | KPI Vega cardinality, Trend Lens unique_count, Transform `group_by.terms.field`, Transform source `exists` | same (if schema matches) |
 | `<SIGNUP_PATH>` | `/users/create` | NU KPI `term` filters, Transform `params.path` | same or game-specific endpoint |
-| `<HEALTH_EXCLUDES>` | `/api/health`, `/api/stats`, `statusCode >= 4` | DAU Trend Lens KQL | adjust to your operational endpoints |
+| `<HEALTH_EXCLUDES>` | `/api/health`, `/api/stats`, `statusCode >= 400` | DAU Trend Lens KQL | adjust to your operational endpoints |
 | `<TIMEZONE>` | `Asia/Seoul` | All Transform `params.tz`, cohort data view `cohort_date` script | `UTC` for global games etc. |
 | `<RETENTION_HORIZONS>` | D+1..D+30 (30 values) | cohort data-view runtime fields `dN_live`, Curve Vega aggs+points, Table Lens columns (the transform is not involved — it only produces `active_dates`) | same, or extend to D+1..D+60 |
 | `<DEFAULT_TIME_RANGE>` | `now-30d ~ now`, `timeRestore: true` | Dashboard `timeFrom` / `timeTo` | same |
 | `<FREQUENCY>` | `5m` | Transform `frequency` | start with `1h` if data volume is high |
 | `<DASHBOARD_ID>` | `<env>-pm-retention-dashboard` | dashboard saved-object id | `prod-pm-retention-dashboard` (namespace separation) |
-| `<PANEL_ID_PREFIX>` | `pm-retention-` | prefix of the 12 panel saved-object ids | `prod-pm-retention-` |
+| `<PANEL_ID_PREFIX>` | `pm-retention-` | saved-object id prefix (Chapter Distribution is `pm-chapter-distribution-v2` — replace separately) | `prod-pm-retention-` |
 
 > The colors (`#16a34a`, `#1ea7fd`, `#2c8a96`, `#7c47ab`) act as intentional prod/dev disambiguation. Pick a different palette for prod so an analyst can never mistake one environment for the other at a glance.
 
@@ -362,7 +364,7 @@ Instead of hand-editing NDJSON and running apply, build a **state-driven Python 
 build-pm-retention.py
   │
   ├─ load config         (env or top-of-file constants — RAW_INDEX, SIGNUP_PATH, TIMEZONE, HORIZONS …)
-  ├─ load/init state     (pm-retention.state.json — UUID cache, preserved across reruns)
+  ├─ load/init state     (pm-retention.{ENV}.state.json — UUID cache, preserved across reruns)
   ├─ ensure transform    (PUT + start; --replace stops+deletes+PUTs when the definition changed)
   ├─ ensure data views   (raw is referenced; cohort is created with the cohort_date runtime field)
   └─ ensure saved objects
@@ -391,7 +393,7 @@ FREQUENCY        = os.environ.get("FREQUENCY", "5m")
 KPI_COLORS       = {"NU": "#16a34a", "DAU": "#1ea7fd", "WAU": "#2c8a96", "MAU": "#7c47ab"}
 ```
 
-The state file (`pm-retention.state.json`) auto-allocates UUIDs on first run; later runs reuse them so the script is idempotent under `overwrite=true`.
+The state file (`pm-retention.{ENV}.state.json`) auto-allocates UUIDs on first run; later runs reuse them so the script is idempotent under `overwrite=true`.
 
 ### Transform builder (HORIZONS loop)
 
@@ -454,8 +456,8 @@ METRICS_KPI = [   # 6 KPI Vega cards on RAW_INDEX
 
 METRICS_TREND = [  # 2 Trend Lenses on RAW_INDEX
     {"key": "nu-trend",  "title": "NU Trend (30d)", "kql": ""},
-    {"key": "dau-trend", "title": "DAU Trend",
-     "kql": 'data.userId : * and not data.requestPath : "/api/health" and not data.requestPath : "/api/stats" and data.statusCode < 4'},
+    {"key": "dau-trend", "title": "DAU Trend (30d)",
+     "kql": 'data.userId : * and not data.requestPath : "/api/health" and not data.requestPath : "/api/stats" and data.statusCode < 400'},
 ]
 ```
 
@@ -501,14 +503,12 @@ Bring the repo's transform / dashboard definitions in line with the live state b
 ```bash
 # Live transform definition → repo JSON
 cd observability/logging/elasticsearch/transforms
-./export.sh --id dev-example-project-game-user-cohort
+./export.sh --context <CTX> --id dev-example-project-game-user-cohort
 git diff -- .
 
 # Live dashboard → repo NDJSON
 cd ../../kibana/dashboards
-# Add a line to manifest.txt:
-#   pm-retention-dashboard  pm-retention-dashboard.ndjson  # Game User Matric & Retention
-./export.sh --id dev-pm-retention-dashboard --out dev-pm-retention-dashboard.ndjson
+./export.sh --context <CTX> --id dev-pm-retention-dashboard --out dev-pm-retention-dashboard.ndjson
 git diff -- .
 ```
 
@@ -528,7 +528,7 @@ Recommended workflow:
 cd observability/logging/elasticsearch/transforms
 # Confirm both files are staged in transforms/
 ls prod-example-project-game-user-cohort*.json
-KUBECONFIG=... NAMESPACE=logging ./apply.sh --file prod-example-project-game-user-cohort.json
+NAMESPACE=logging ./apply.sh --context <CTX> --file prod-example-project-game-user-cohort.json
 ```
 
 * `--preview-only` validates first → confirm the atomic facts (`first_seen`, `last_seen`, `active_dates`, `active_days_count`, `total_events`, `max_cleared_chapter`) match expectations before the real apply.
@@ -539,10 +539,10 @@ KUBECONFIG=... NAMESPACE=logging ./apply.sh --file prod-example-project-game-use
 
 ```bash
 cd observability/logging/kibana/dashboards
-./apply.sh --file pm-retention-dashboard-prod.ndjson
+./apply.sh --context <CTX> --file prod-pm-retention-dashboard.ndjson
 ```
 
-`apply.sh` imports every saved object in the NDJSON (7 visualization + 3 lens + 1 dashboard + 2 data-view) with `overwrite=true`.
+`apply.sh` imports every saved object in the NDJSON (9 visualization + 3 lens + 1 dashboard) with `overwrite=true`.
 
 ### Step 4 — Post-apply verification
 
@@ -551,67 +551,100 @@ cd observability/logging/kibana/dashboards
 | Transform status | `GET /_transform/<COHORT_INDEX>/_stats` → `state: started`, `docs_processed > 0` |
 | Cohort sample doc | `GET /<COHORT_INDEX>/_search?size=1` → `first_seen`, `active_dates`, `active_days_count` fields present |
 | Cohort index mapping | `GET /<COHORT_INDEX>/_mapping` → `properties.active_dates.type == "keyword"` (if `date`, retention breaks) |
-| Dashboard renders | Open the dashboard in Kibana → 6 KPI numbers populated, Curve plots D+1..D+30, Table has cohort-by-cohort rows |
+| Dashboard renders | Open the dashboard in Kibana → 7 KPI numbers populated, Curve plots D+1..D+30, Table has cohort-by-cohort rows |
 | Runtime field | The cohort data view's `cohort_date` resolves to KST local dates (`Stack Management → Data Views`) |
 
 <br/>
 
 ## Timezone change procedure
 
+> ⚠️ **"Switching" and "adding" are different jobs. This section is for switching.**
+>
+> - **Switch a zone** (move the canonical basis wholesale, e.g. KST → JST): **this section**. It overwrites the existing values, so the previous zone's view is gone.
+> - **Add a zone** (keep the existing view and serve one more): **[timezone-toggle-en.md §3](timezone-toggle.md)**. The KST (`default`) + CST (`cst`) two-Space setup in production today works this way.
+>
+> Blindly following this section and bulk-replacing `params.tz` **destroys the `default` Space's KST retention.** If the goal is "also show this to the China team", you want timezone-toggle-en.md §3, not this section.
+
 The cohort D-N boundary and the Daily Cohort Retention row grouping are both timezone-controlled in **two places** — the transform's `params.tz` and the cohort data view's `cohort_date` runtime field `ZoneId`. Patterns:
 
-### Current state (snapshot 2026-05-13)
+### Current state (snapshot 2026-07-16)
 
-| Location | DEV | QA | Source of truth |
+There is **one set per zone** — not a single zone.
+
+The values are **identical across every environment** (the `transforms/` directory is the SSOT for the environment list, so there is no per-environment column here).
+
+| Location | Zone | Value | Source of truth |
 |---|---|---|---|
-| Transform `params.tz` (`active_dates` scripted_metric + `active_days_count` cardinality script) | `Asia/Seoul` | `Asia/Seoul` | live ES + repo `*-example-project-game-user-cohort.json` |
-| Cohort data view runtime fields `dN_live` `ZoneId` (30 fields, D-N judgement) | `Asia/Seoul` | `Asia/Seoul` | live Kibana data view + repo `example-project-game-data-view.ndjson` |
-| Cohort data view `cohort_date` runtime field `ZoneId.of('…')` | `Asia/Seoul` | `Asia/Seoul` | live Kibana data view + repo `example-project-game-data-view.ndjson` (the 4-data-view bootstrap NDJSON includes both env cohort data views) |
+| Transform `params.tz` — `active_dates` / `active_days_count` | KST | `Asia/Seoul` | live ES + **every** repo `transforms/*-example-project-game-user-cohort.json` |
+| Transform `params.tz` — `active_dates_cst` / `active_days_count_cst` | CST | `Asia/Shanghai` | same |
+| `default` Space cohort data view `dN_live` + `cohort_date` `ZoneId` (31 fields) | KST | `Asia/Seoul` | live Kibana + **every** cohort data view in repo `example-project-game-data-view.ndjson` |
+| `cst` Space cohort data view (`-cst`) `ZoneId` (31 fields) | CST | `Asia/Shanghai` | live Kibana + repo `dashboards/cst/example-project-game-data-view-cst.ndjson` (**generated** — `make-cst-variant.sh`) |
 
-All four points across both environments unified at KST. The transform's `first_seen` is timezone-independent (effectively `min(@timestamp)`) and not in scope.
+The transform's `first_seen` is timezone-independent (effectively `min(@timestamp)`) and not in scope.
+
+**When switching, note**: the rules below cover the **KST side only**. On the CST side, the `cst/` variants (NDJSON) are derived from the KST originals by `make-cst-variant.sh`, so after changing KST you must **re-run the generator** for them to follow. The transform's `_cst` aggs are not touched by the generator — they stay pinned to `Asia/Shanghai` and are unaffected by a KST switch.
 
 <br/>
 
-### Four locations to change
+### Locations to change — a rule, not a count
 
-| # | Location | Keyword to replace |
+🔴 **A hand-counted "N locations" list breaks the moment another environment lands** (which is exactly what dev2 did). Do not count; sweep both rules below **exhaustively**.
+
+| # | What to sweep (rule) | Keyword to replace |
 |---|---|---|
-| 1 | `observability/logging/elasticsearch/transforms/dev-example-project-game-user-cohort.json` | every `"tz": "Asia/Seoul"` |
-| 2 | `observability/logging/elasticsearch/transforms/qa-example-project-game-user-cohort.json` | every `"tz": "Asia/Seoul"` |
-| 3 | DEV cohort data view runtime field (live, id `410571c2-5b86-4ba9-a02e-418671d0b8e2`) | `ZoneId.of('Asia/Seoul')` |
-| 4 | QA cohort data view runtime field (live, id `fb7b645e-78ff-4da7-b231-ec2c4165cf98`) | `ZoneId.of('Asia/Seoul')` |
+| 1 | **Every** `*-user-cohort.json` under `observability/logging/elasticsearch/transforms/` — that directory is the SSOT for the environment list | every `"tz": "Asia/Seoul"` in the file |
+| 2 | **Every** cohort data view in `dashboards/example-project-game-data-view.ndjson` (same ids live) — `cohort_date` ×1 + `d1_live..d30_live` ×30 each | `ZoneId.of('Asia/Seoul')` |
 
-After updating the four live points, run `dashboards/export.sh --include-data-view` to refresh the repo bootstrap NDJSON (both cohort data views' runtime fields are captured together).
+The `cst/` variants follow once you re-run `make-cst-variant.sh` after the two above — do not count them separately. (The transform's `_cst` aggs stay pinned to `Asia/Shanghai` and are out of scope.)
+
+After updating the live objects, run `dashboards/export.sh --context <CTX>` to refresh the repo bootstrap NDJSON (the data-view bootstrap is written by default, so every cohort data view's runtime fields are captured together).
 
 <br/>
 
 ### One-shot state check
 
 ```bash
-PASS=$(kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
+PASS=$(kubectl --context <CTX> -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
 
-# Transform (dev + qa) — every params.tz should be the same value
-for tid in dev-example-project-game-user-cohort qa-example-project-game-user-cohort; do
+# Transform — expect exactly one pair per zone. The environment list is owned by the
+# transforms/ directory, so derive the ids from the files instead of hardcoding them
+# (*.mapping.json falls out of the glob naturally).
+# Expected: {'Asia/Seoul': 2, 'Asia/Shanghai': 2}  (2 KST aggs + 2 CST aggs)
+# Only one value means the _cst aggs are missing; zero Seoul means the KST view is broken.
+TRANSFORM_DIR=observability/logging/elasticsearch/transforms
+for f in "$TRANSFORM_DIR"/*-user-cohort.json; do
+  tid=$(basename "$f" .json)
   echo "--- $tid ---"
-  kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+  kubectl --context <CTX> -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
     curl -sk -u "elastic:$PASS" "https://localhost:9200/_transform/$tid" \
     | python3 -c "
 import json,sys,collections
 t=json.load(sys.stdin)['transforms'][0]
 tzs=collections.Counter()
 for k,v in t['pivot']['aggregations'].items():
-    if 'scripted_metric' in v and 'tz' in v['scripted_metric'].get('params',{}):
-        tzs[v['scripted_metric']['params']['tz']] += 1
-ac=t['pivot']['aggregations'].get('active_days_count',{})
-if 'cardinality' in ac and 'script' in ac['cardinality']:
-    tzs[ac['cardinality']['script']['params']['tz']] += 1
+    sm=v.get('scripted_metric',{})
+    if 'tz' in sm.get('params',{}):
+        tzs[sm['params']['tz']] += 1
+    card=v.get('cardinality',{}).get('script',{})
+    if 'tz' in card.get('params',{}):
+        tzs[card['params']['tz']] += 1
 print('  params.tz counts:', dict(tzs))
 "
 done
 
-# Cohort data view (dev + qa) — cohort_date runtime field ZoneId
-for dvid in 410571c2-5b86-4ba9-a02e-418671d0b8e2 fb7b645e-78ff-4da7-b231-ec2c4165cf98; do
-  kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
+# Cohort data view — ZoneId of the cohort_date runtime field.
+# Do not hardcode the UUIDs either: the bootstrap NDJSON is the SSOT for cohort data views.
+BOOTSTRAP=observability/logging/kibana/dashboards/example-project-game-data-view.ndjson
+for dvid in $(python3 -c "
+import json,sys
+for line in open('$BOOTSTRAP'):
+    line = line.strip()
+    if not line: continue
+    o = json.loads(line)
+    if o.get('type') == 'index-pattern' and 'user-cohort' in (o.get('attributes') or {}).get('title',''):
+        print(o['id'])
+"); do
+  kubectl --context <CTX> -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
     curl -s -u "elastic:$PASS" -H 'kbn-xsrf: true' "http://kibana-kb-http.logging.svc:5601/api/data_views/data_view/$dvid" \
     | python3 -c "
 import json,sys,re
@@ -635,11 +668,11 @@ Replace with the IANA `ZoneId` string of the target zone (`UTC`, `America/Los_An
 
 > **Independent of what zone fluentd writes `@timestamp` in**: ES `ZoneId.of(params.tz).toLocalDate()` converts UTC epoch to the target zone internally. You do not need to change fluentd's output zone.
 
-### Two locations to change (must be in lockstep)
+### What to change (transform and data view, every environment in lockstep)
 
-**1) Transform definition (`elasticsearch/transforms/dev-example-project-game-user-cohort.json`)**
+**1) Transform definition (every `*-user-cohort.json` under `elasticsearch/transforms/`)**
 
-Inside `pivot.aggregations` (these two are the only tz-bearing aggs — there is no retention agg):
+Inside `pivot.aggregations`, the KST tz-bearing aggs (the CST twins `active_dates_cst` / `active_days_count_cst` stay pinned to `Asia/Shanghai` and are not switched — there is no retention agg):
 - `active_dates.scripted_metric.params.tz`
 - `active_days_count.cardinality.script.params.tz`
 
@@ -648,9 +681,9 @@ Replace every occurrence with the same value. **Additionally** replace the `Zone
 ```bash
 cd observability/logging/elasticsearch/transforms
 # verify
-./apply.sh --preview-only
+./apply.sh --context <CTX> --preview-only
 # stop + delete + re-PUT + start (discards the checkpoint, retains existing cohort docs and re-aggregates over them)
-./apply.sh --replace
+./apply.sh --context <CTX> --replace
 ```
 
 **2) Cohort Kibana data view runtime fields (`cohort_date` + `d1_live..d30_live`)**
@@ -658,21 +691,18 @@ cd observability/logging/elasticsearch/transforms
 Replace each runtime field script's `ZoneId.of('Asia/Seoul')` with the same target zone (`cohort_date` ×1 + `dN_live` ×30). If the data view is not managed by the bootstrap NDJSON (`example-project-game-data-view.ndjson`) and was added via UI, patch via API:
 
 ```bash
-PASS=$(kubectl -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
+PASS=$(kubectl --context <CTX> -n logging get secret elasticsearch-es-elastic-user -o jsonpath='{.data.elastic}' | base64 -d)
 
 NEW_TZ='UTC'
-kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
+# per-field update API (POST …/runtime_field/<name>) — call it the same way for each of d1_live..d30_live
+kubectl --context <CTX> -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
   curl -s -u "elastic:$PASS" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
-  -X PUT "http://kibana-kb-http.logging.svc:5601/api/data_views/data_view/410571c2-5b86-4ba9-a02e-418671d0b8e2" \
+  -X POST "http://kibana-kb-http.logging.svc:5601/api/data_views/data_view/410571c2-5b86-4ba9-a02e-418671d0b8e2/runtime_field/cohort_date" \
   --data-binary "$(cat <<EOF
 {
-  "data_view": {
-    "runtimeFieldMap": {
-      "cohort_date": {
-        "type": "keyword",
-        "script": {"source": "if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('${NEW_TZ}')).toLocalDate().toString()); }"}
-      }
-    }
+  "runtimeField": {
+    "type": "keyword",
+    "script": {"source": "if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('${NEW_TZ}')).toLocalDate().toString()); }"}
   }
 }
 EOF
@@ -686,7 +716,7 @@ EOF
 | D-N boundary (Transform `params.tz`) | Cohort signup-day (first `/users/create`) and D+N activity-day judged at the new zone |
 | Daily Cohort Retention row grouping (`cohort_date`) | Row labels emitted as date strings in the same zone |
 | KPI / Trend (queries raw index directly) | Driven by the dashboard's `dateFormat:tz` (Kibana Advanced Setting). Change separately. Recommend pinning `dateFormat:tz` to the same zone via Stack Management → Advanced Settings |
-| Retention Curve (Vega) | Curve plots cohort-averaged retention over time. `%timefield%` is `first_seen` (date) so ES is timezone-agnostic at the query level — only the dashboard time range (`now-30d` etc.) is affected |
+| Retention Curve (Vega) | Curve's X axis is D+1 .. D+30 (cohort-averaged). `%timefield%` is `first_seen` (date) so ES is timezone-agnostic at the query level — only the dashboard time range (`now-30d` etc.) is affected |
 | Existing cohort index data | `--replace` keeps existing rows in the destination index untouched, but the transform re-traverses source from the start and overwrites every row consistent with the new zone |
 
 ### Consistency checklist
@@ -694,13 +724,13 @@ EOF
 After the change, verify both locations carry the same zone:
 
 ```bash
-# Transform params.tz (all should be the same value)
-kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
+# Transform aggs that carry a tz (KST aggs must match the data view zone; the `_cst` twins stay Asia/Shanghai)
+kubectl --context <CTX> -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
   curl -sk -u "elastic:$PASS" "https://localhost:9200/_transform/dev-example-project-game-user-cohort" \
-  | python3 -c "import json,sys; t=json.load(sys.stdin)['transforms'][0]; tzs=set(); [tzs.add(v['scripted_metric']['params']['tz']) for k,v in t['pivot']['aggregations'].items() if 'scripted_metric' in v]; tzs.add(t['pivot']['aggregations']['active_days_count']['cardinality']['script']['params']['tz']); print('unique tz values:', tzs)"
+  | python3 -c "import json,sys; a=json.load(sys.stdin)['transforms'][0]['pivot']['aggregations']; print({k: (v.get('scripted_metric',{}).get('params') or v.get('cardinality',{}).get('script',{}).get('params') or {}).get('tz') for k,v in a.items() if 'tz' in json.dumps(v)})"
 
 # Cohort data view runtime field's ZoneId
-kubectl -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
+kubectl --context <CTX> -n logging exec -i elasticsearch-es-default-0 -c elasticsearch -- \
   curl -s -u "elastic:$PASS" -H 'kbn-xsrf: true' "http://kibana-kb-http.logging.svc:5601/api/data_views/data_view/410571c2-5b86-4ba9-a02e-418671d0b8e2" \
   | python3 -c "import json,sys; d=json.load(sys.stdin)['data_view']; print('cohort_date script:', d['runtimeFieldMap']['cohort_date']['script']['source'])"
 ```
@@ -721,7 +751,7 @@ The repo was exported from live on 2026-07-01, so **the previously recorded repo
 | Where retention is computed | transform scripted_metric (`dN_returning`) | cohort data-view runtime fields (`dN_live`) at query time; the transform only produces the `active_dates` atomic fact |
 | `frequency` | `1h` | `5m` |
 | Cohort data view `cohort_date` / `dN_live` runtime fields | not managed in repo | captured in `example-project-game-data-view.ndjson` |
-| Dashboard NDJSON | absent | present in repo (`dev-/qa-pm-retention-dashboard.ndjson`, 12 panels) |
+| Dashboard NDJSON | absent | present in repo (one `<env>-pm-retention-dashboard.ndjson` per environment, 12 panels; `dashboards/manifest.txt` is the SSOT for the list) |
 
 > Because the repo mirrors live accurately, a prod rollout can parameterise the current repo definitions directly — no need to re-run the Step 0 export first.
 
@@ -729,7 +759,7 @@ The repo was exported from live on 2026-07-01, so **the previously recorded repo
 
 ## Related docs
 
-- [dashboards/README-en.md](../dashboards/README.md) — apply.sh / export.sh / build script usage
+- [dashboards/README-en.md](../dashboards/README.md) — apply.sh / export.sh usage
 - [docs/dashboards-saved-objects-en.md](dashboards-saved-objects.md) — NDJSON schema, two flavours of apply.sh, data view policy
 - [docs/user-metrics-catalog-en.md](user-metrics-catalog.md) — this dashboard's 12-panel catalog (definitions + operational caveats)
 - [elasticsearch/transforms/README-en.md](../../elasticsearch/transforms/README.md) — transform management commands

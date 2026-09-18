@@ -1,6 +1,6 @@
 # Kibana (ECK CR, OCI chart consumer)
 
-Manages an ECK-backed Kibana CR deployed via Helmfile. **The chart templates are NOT in this repo** — the release consumes the public OCI chart [`oci://ghcr.io/somaz94/charts/kibana-eck`](https://artifacthub.io/packages/helm/somaz94/kibana-eck).
+Manages an ECK-backed Kibana CR. **The chart templates are NOT in this repo** — the release consumes the public OCI chart [`oci://ghcr.io/somaz94/charts/kibana-eck`](https://artifacthub.io/packages/helm/somaz94/kibana-eck).
 
 Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace lets ECK auto-inject the connection settings (hosts, credentials, CA certificate).
 
@@ -13,17 +13,17 @@ Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace 
 - [eck-operator](../eck-operator/) installed.
 - [elasticsearch](../elasticsearch/) CR deployed and HEALTH=green.
 - `logging` namespace.
-- Helm 3.8+ (OCI chart pull support), helmfile.
+- Helm 3.8+ (OCI chart pull support) — needed for the local render in `upgrade.py --upgrade-chart`. Deployment is done by ArgoCD, so helmfile is not required.
 
 <br/>
 
 ## Apply Order
 
-Operator + CR are split into separate helmfiles (G14). This component is the last CR; follow this order:
+Operator + CR are split into separate releases (G14). All three are separate ArgoCD Applications in the **same sync wave**, so ArgoCD does not enforce ordering between them (the wave is `syncWave` in each `argocd/<release>.yaml`). When bringing them up for the first time, sync them in this order:
 
-1. [eck-operator](../eck-operator/) `helmfile sync` — install CRDs + operator first.
-2. [elasticsearch](../elasticsearch/) `helmfile sync` — deploy Elasticsearch and wait for HEALTH=green.
-3. **kibana** (this component) `helmfile sync` — create the `Kibana` CR; `elasticsearchRef` wires it to the sibling Elasticsearch automatically.
+1. [eck-operator](../eck-operator/) `argocd app sync infra-eck-operator` — install CRDs + operator first.
+2. [elasticsearch](../elasticsearch/) `argocd app sync infra-elasticsearch` — deploy Elasticsearch and wait for HEALTH=green.
+3. **kibana** (this component) `argocd app sync infra-kibana` — create the `Kibana` CR; `elasticsearchRef` wires it to the sibling Elasticsearch automatically.
 4. Destroy in reverse: kibana → elasticsearch → eck-operator.
 
 **Why this order**: the Kibana CR needs a healthy Elasticsearch plus the operator to reconcile both; reverse-order destroy prevents stuck finalizers (operator must still run to clear them).
@@ -34,11 +34,12 @@ Operator + CR are split into separate helmfiles (G14). This component is the las
 
 ```
 kibana/
-├── helmfile.yaml               # chart: oci://ghcr.io/somaz94/charts/kibana-eck, version: <pin>
+├── argocd/
+│   └── kibana.yaml             # ArgoCD marker — `chart.version` is the OCI chart pin SSOT
 ├── values/
 │   └── dev.yaml               # Kibana CR values (`version` = Stack version)
 ├── upgrade.py                  # external-oci-cr-version based Stack version tracker
-├── dashboards/                 # Saved Objects (Lens + Dashboard) NDJSON + apply/export scripts
+├── dashboards/                 # Saved Objects (Lens + Dashboard) NDJSON + apply/export/setup-spaces/make-cst-variant scripts (+ generated cst/)
 │   ├── apply.sh                # repo NDJSON → live Kibana
 │   ├── export.sh               # live Kibana → repo NDJSON
 │   └── *.ndjson                # Saved Object definitions
@@ -64,7 +65,7 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | [Dashboards Saved Objects workflow](docs/dashboards-saved-objects.md) | NDJSON schema, API endpoints, division of responsibility between the two `apply.sh`, data view automation, etc. |
 | [User Metrics Catalog](docs/user-metrics-catalog.md) | 12-panel definitions of `Game User Matric & Retention` (slug `dev-pm-retention-dashboard` / `qa-pm-retention-dashboard`) — NU KPI ×4 (incl. Total) / DAU·WAU·MAU KPI ×3 / NU·DAU Trend / Retention Curve / Daily Cohort Table / Chapter Distribution. Includes small-sample caveat |
 | [pm-retention-dashboard — Prod templating guide](docs/pm-retention-dashboard-template.md) | Structure / data sources / template parameters / qa-example-project-game validation / automation strategy / prod migration recipe |
-| [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `apply.sh --space-id` mechanics, extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
+| [Timezone toggle (Space split, KST / CST)](docs/timezone-toggle.md) | Present the same dashboards as KST + CST(UTC+8) views. `setup-spaces.sh` + `make-cst-variant.sh` + `apply.sh --space-id` mechanics, **the cohort day boundary split per Space** (`active_dates` / `active_dates_cst`), extensibility (adding JST/PST/UTC), live URLs, verification, Kibana API quick reference |
 
 <br/>
 
@@ -75,7 +76,7 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 | Version | Where it lives | How to bump |
 |---|---|---|
 | **Stack version** | `values/dev.yaml` `.version` | `./upgrade.py` |
-| **OCI chart version** | `helmfile.yaml` `.releases[0].version` | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
+| **OCI chart version** | `argocd/kibana.yaml` `chart.version` | `./upgrade.py --check-chart` / `--upgrade-chart` (publisher releases are auto-tracked) |
 
 <br/>
 
@@ -86,7 +87,7 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 ```bash
 ./upgrade.py --dry-run              # show latest only
 ./upgrade.py                         # bump to latest 9.x GA
-./upgrade.py --version 9.1.2        # pin to a specific version
+./upgrade.py --version <X.Y.Z>      # pin to a specific version (the current Stack version lives in the `version` field of values/dev.yaml)
 ./upgrade.py --rollback              # restore from backup (auto webhook handling)
 ```
 
@@ -94,9 +95,10 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 
 Kibana's `upgrade.py` enforces this via `DEPENDENCY_CR_KIND=elasticsearch` — Step 5 reads the ES CR version and **aborts automatically if Kibana target version > ES version**.
 
-Apply the change:
+Apply the change — commit the `values/dev.yaml` edit to master and autoSync picks it up:
 ```bash
-helmfile diff && helmfile apply
+argocd app diff infra-kibana   # review the change before it lands
+argocd app sync infra-kibana   # ⚠️ mutates the cluster — only when it has to happen now
 ```
 
 **Safety features / incident response**: See [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback-en.md](../elasticsearch/docs/upgrade-rollback.md))
@@ -105,7 +107,7 @@ helmfile diff && helmfile apply
 
 ## OCI chart pin bump
 
-On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `version:` (publisher chart release tag):
+On top of Stack version tracking, `upgrade.py` also tracks `chart.version` in `argocd/kibana.yaml` (publisher chart release tag):
 
 ```bash
 # Compare the current pin with the latest publisher release (read-only)
@@ -115,7 +117,7 @@ On top of Stack version tracking, `upgrade.py` also tracks `helmfile.yaml`'s `ve
 # show a unified diff. No files touched.
 ./upgrade.py --upgrade-chart --dry-run
 
-# Apply: review the diff, confirm, back up helmfile.yaml, bump the pin
+# Apply: review the diff, confirm, bump chart.version in argocd/kibana.yaml
 ./upgrade.py --upgrade-chart
 
 # Pin to a specific chart version
@@ -148,11 +150,12 @@ With CR name `kibana`:
 
 ## Quick Start
 
+Deployment is done by ArgoCD. Operate the release through its Application:
+
 ```bash
-helmfile diff
-helmfile sync
-helmfile apply
-helmfile destroy
+argocd app get  infra-kibana   # status
+argocd app diff infra-kibana   # preview pending changes
+argocd app sync infra-kibana   # ⚠️ mutates the cluster — only when autoSync is off or it has to happen now
 ```
 
 <br/>

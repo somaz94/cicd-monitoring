@@ -1,0 +1,12 @@
+# Upstream-style defaults. Environment overrides live in values/dev.yaml.
+dashboards:
+  # Must stay a real boolean. A quoted "false" is a non-empty string and Go
+  # templates treat it as truthy, which silently enables the ConfigMaps.
+  enabled: false
+  # Selector the kube-prometheus-stack Grafana sidecar watches
+  # (LABEL=grafana_dashboard, LABEL_VALUE=1, NAMESPACE=ALL).
+  labelKey: grafana_dashboard
+  labelValue: 1
+  annotations: {}
+  # Empty means .Release.Namespace.
+  namespace: ""

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: grafana-dashboards
+description: Grafana dashboards for the on-prem example-cluster, delivered as
+  labelled ConfigMaps for the kube-prometheus-stack Grafana sidecar to pick up.
+  Pure-local chart — no upstream source, no dependencies.
+type: application
+version: 0.1.0
+keywords:
+- grafana
+- dashboards
+- observability

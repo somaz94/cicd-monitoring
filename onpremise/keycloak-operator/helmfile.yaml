@@ -1,6 +1,6 @@
 # Keycloak Operator install via somaz94/helm-charts OCI chart.
 # Operator only; the actual Keycloak instance is provisioned by the sibling ../keycloak/ component.
-# Chart version pinned. Bump via ./upgrade.sh (external-oci template).
+# Chart version pinned. Bump via ./upgrade.py (external-oci template).
 # Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
 # full rendered manifest, so 10 revisions of a large chart make helm's history query
 # return several MB in a single response and the kube-apiserver stream aborts
@@ -14,7 +14,7 @@ releases:
   - name: keycloak-operator
     namespace: keycloak-system
     chart: oci://ghcr.io/somaz94/charts/keycloak-operator
-    version: "0.2.0"
+    version: "0.2.1"
     values:
       - values/dev.yaml
 

@@ -5,7 +5,25 @@ nameOverride: "elastic-operator"
 fullnameOverride: "elastic-operator"
 
 # managedNamespaces is the set of namespaces that the operator manages. Leave empty to manage all namespaces.
+# Mutually exclusive with managedNamespaceSelector.
 managedNamespaces: []
+
+# managedNamespaceSelector is a Kubernetes label selector that dynamically controls which namespaces the operator manages.
+# The operator watches all namespaces cluster-wide and filters events by matching each namespace's labels against
+# this selector at runtime. When a namespace gains or loses the matching labels the operator automatically
+# starts or stops managing resources in that namespace without a restart.
+# Mutually exclusive with managedNamespaces. Requires createClusterScopedResources: true.
+# Examples:
+#   managedNamespaceSelector:
+#     matchLabels:
+#       eck-managed: "true"
+#
+#   managedNamespaceSelector:
+#     matchExpressions:
+#       - key: environment
+#         operator: In
+#         values: [production, staging]
+managedNamespaceSelector: {}
 
 # installCRDs determines whether Custom Resource Definitions (CRD) are installed by the chart.
 # Note that CRDs are global resources and require cluster admin privileges to install.
@@ -298,6 +316,10 @@ config:
   # Cannot be combined with the containerSuffix value.
   ubiOnly: false
 
+  # restrictWatchedResources restricts resource watching (secrets, services and configmaps) to resources carrying the
+  # eck.k8s.elastic.co/watched=true label. When false (default), the operator watches all resources cluster-wide.
+  restrictWatchedResources: false
+
 # Prometheus PodMonitor configuration
 # Reference: https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#podmonitor
 podMonitor:
@@ -377,11 +399,21 @@ serviceMonitor:
 
 # extraObjects allows injecting additional Kubernetes resources into the chart.
 # These resources will be created/deleted alongside the chart release.
-# The value is a list of strings, each string is a YAML manifest.
+# The value can be a list or a map of strings, each string is a YAML manifest.
 # Helm templating is supported within each manifest.
-# Example:
+# Example (list):
 # extraObjects:
 #   - |
+#     apiVersion: v1
+#     kind: ConfigMap
+#     metadata:
+#       name: {{ include "eck-operator.fullname" . }}-extra-config
+#       namespace: {{ .Release.Namespace }}
+#     data:
+#       key: value
+# Example (map):
+# extraObjects:
+#   myConfigMap: |
 #     apiVersion: v1
 #     kind: ConfigMap
 #     metadata:

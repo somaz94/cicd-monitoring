@@ -1,0 +1,47 @@
+# Per-release ArgoCD metadata consumed by the on-prem infra-LOCAL-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-local-applicationset.yaml) -> Application
+# infra-grafana-dashboards on the on-prem ArgoCD (argocd.example.com). Marker dir is `argocd-local/`
+# (NOT `argocd/`): this chart is VENDORED IN-REPO, so the App needs a single git source with `path:`,
+# which only the local generator emits. Second argocd-local marker in the repo — the pattern is
+# already proven live by observability/logging/fluent-bit/argocd-local/fluent-bit.yaml (autoSync:
+# true), whose key set and types this file mirrors exactly.
+#
+# The AWS sibling (observability/monitoring/grafana-dashboards-aws/argocd-local-aws/) generates an App
+# with the SAME name on a DIFFERENT cluster. That is fine and intentional: the two appsets read
+# disjoint marker dirs (`argocd-local/` vs `argocd-local-aws/`), so each sees only its own metadata.
+# fluent-bit already ships this exact cross-cluster name-sharing shape.
+#
+# GREENFIELD: no helmfile release exists for this component, so this is a fresh install, NOT an
+# adoption. The App's only output is labelled ConfigMaps; the kube-prometheus-stack Grafana sidecar
+# (LABEL=grafana_dashboard, LABEL_VALUE=1, NAMESPACE=ALL) is the actual consumer and pushes them into
+# Grafana over its API. Nothing here restarts or contests an existing workload.
+#
+# WHY THIS COMPONENT EXISTS: kube-prometheus-stack is deployed from a REMOTE chart (see its
+# argocd/ marker: repoURL + chart + version, 2-source with a $values ref). A remote chart cannot carry
+# in-repo templates, so the dashboards/ JSON that used to sit under kube-prometheus-stack/ was inert —
+# loaded by nothing, drifting silently against Grafana. Moving it to this pure-local chart is what puts
+# it on a delivery path.
+#
+# Pure-local chart: no upstream source and therefore no upgrade.py. It sits outside every
+# helmfile-driven scope, surfaces under `sync.py --status` as an unmanaged chart dir (informational
+# only), and is NOT registered in ci/components.yml (that file requires a helmfile.yaml or
+# upgrade.py). Verified on the -aws sibling that this passes lint / lint-governance / readme-check /
+# sync-check.
+#
+# autoSync ENABLED 2026-07-20, after the first manual sync was verified by hand (the gate this block
+# previously described). The sync adopted all 11 uids IN PLACE (meta.provisioned False->True, folder
+# General preserved, no delete/recreate) and every dashboard loaded cleanly — verified via the Grafana
+# API (11/11 present, zero provisioning errors). The pre-sync per-dashboard drift compare was skipped,
+# but the 2026-07-16 inventory already showed panels matching this repo's JSON, so overwrite risk was
+# low (any stray UI-only edit is recoverable from Grafana dashboard version history). The appset now
+# attaches automated{prune,selfHeal}: commit a JSON and it lands. Grafana disables UI Save for these —
+# the workflow is "edit JSON -> commit", permanently. Do NOT set allowUiUpdates to re-open UI saves —
+# that resurrects the drift this migration exists to remove.
+component: grafana-dashboards                   # -> app-name label on the generated App
+releaseName: grafana-dashboards                 # -> App name (infra-grafana-dashboards) AND helm release name
+namespace: monitoring                           # already exists (kube-prometheus-stack lives here)
+syncWave: "4"                                   # observability tier (same as kube-prometheus-stack)
+chartPath: observability/monitoring/grafana-dashboards  # repo-root-relative chart dir (App source `path`)
+valueFile: values/dev.yaml                      # RELATIVE TO chartPath (single git source -> no $values ref)
+createNamespace: false                          # 'monitoring' already exists
+autoSync: true                                  # appset attaches automated{prune,selfHeal}: commit a JSON -> it lands

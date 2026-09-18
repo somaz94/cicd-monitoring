@@ -5,7 +5,7 @@
 #   2. keycloak             — somaz94/keycloak-cr chart, renders Keycloak CR + (optional) HTTPRoute.
 #
 # Operator + CRDs must be installed first via ../keycloak-operator/.
-# Chart versions pinned. Bump via ./upgrade.sh (external-oci template, manages keycloak-cr only;
+# Chart versions pinned. Bump via ./upgrade.py (external-oci template, manages keycloak-cr only;
 # postgresql is bumped via the db-redis cycle).
 
 # Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
@@ -23,7 +23,7 @@ releases:
   - name: keycloak-postgresql
     namespace: keycloak
     chart: oci://ghcr.io/somaz94/charts/postgresql
-    version: "0.1.0"
+    version: "0.1.5"
     values:
       - values/dev-postgresql.yaml
 

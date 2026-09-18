@@ -1,0 +1,399 @@
+# yaml-language-server: $schema=
+# =============================================================================
+# Alert Rules (backup) — recovery-point freshness
+#
+# Every backup Stale/Missing pair in one place, because they share one idiom and one
+# question: is there still a recovery point? Most read
+# kube_cronjob_status_last_successful_time; gitlab-old is the exception (a systemd
+# timer on a non-cluster host, so it reads node_exporter instead).
+# Split out of dev-alerts.yaml; severity levels and field meanings are documented
+# in that file.
+#
+# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
+# it across every values file and each top-level key becomes its own PrometheusRule CR --
+# the file boundary has no effect at runtime, it exists so a 76K file stops being one
+# reviewable unit.
+#
+#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
+#                            control-plane)
+#   dev-alerts-network.yaml  metallb, blackbox
+#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
+#                            elasticsearch, redis, mysql
+#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
+#
+# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
+# key in two files does not combine the two rule lists -- the later file replaces the
+# earlier one wholesale and the dropped rules disappear silently.
+#
+# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
+# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
+# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
+# **/values/*.yaml.
+# =============================================================================
+
+additionalPrometheusRulesMap:
+
+  # ---------------------------------------------------------------------------
+  # Backup — is the disaster-recovery snapshot still being produced?
+  #
+  # KubeJobFailed (kube-prometheus-stack default, enabled) already catches a run
+  # that FAILS. The blind spot these two rules cover is the CronJob that stops
+  # producing anything at all — suspended, deleted, or a schedule that silently
+  # never fires. That is the classic backup failure: nobody notices for weeks,
+  # and the discovery moment is a restore attempt.
+  # ---------------------------------------------------------------------------
+  backup-alerts:
+    groups:
+      - name: backup-alerts
+        rules:
+          # 36h against a daily 02:00 KST schedule = one full run missed plus 12h
+          # of grace, so a single slow or retried run does not page anyone.
+          #
+          # This also covers a SUSPENDED CronJob: suspending stops new runs, so
+          # last_successful_time keeps aging and the rule fires on schedule.
+          #
+          # Note the first-deploy gap: until the very first run succeeds the
+          # series does not exist, so this is a no-data (not firing) window. The
+          # README has the operator run one Job manually right after apply, which
+          # closes it.
+          - alert: EtcdBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="kube-system", cronjob="etcd-backup"} > 129600
+            for: 30m
+            labels:
+              severity: critical
+              group: backup
+            annotations:
+              summary: "etcd snapshot backup has not succeeded in 36h"
+              description: "The etcd-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily schedule — the cluster currently has no fresh recovery point. Every Kubernetes object lives in etcd, so losing it now means rebuilding the cluster by hand. Check `kubectl -n kube-system get cronjob etcd-backup` (is it suspended?) and `kubectl -n kube-system get jobs -l app.kubernetes.io/name=etcd-backup`."
+
+          # The CronJob object itself is gone. kube_cronjob_spec_suspend is used as
+          # the existence probe rather than last_successful_time because it is
+          # published as soon as the object exists, independent of whether any run
+          # has completed — so this does not fire on a freshly applied CronJob.
+          - alert: EtcdBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="kube-system", cronjob="etcd-backup"})
+            for: 30m
+            labels:
+              severity: critical
+              group: backup
+            annotations:
+              summary: "etcd backup CronJob no longer exists"
+              description: "The etcd-backup CronJob is not present in kube-system — no etcd snapshots are being taken at all. Re-apply bootstrap/cluster-maintenance/etcd-backup/manifests/ and confirm with `kubectl -n kube-system get cronjob etcd-backup`."
+
+          # Harbor's database dump. Same 36h-against-a-daily-schedule reasoning as the
+          # etcd pair above, and the same suspended-CronJob note applies — see those
+          # comments rather than repeating them here. The first-deploy no-data window is
+          # already closed: the manual Job run at install time (2026-08-05) populated
+          # last_successful_time, so this rule has real data from the start.
+          #
+          # warning, not the critical the etcd rules carry. The file's own scale puts
+          # critical at "immediate action required", and this is not that: losing the
+          # Harbor database costs a rebuild of projects, robot accounts, replication and
+          # retention policies, which is painful and manual but survivable, whereas
+          # losing etcd means rebuilding the cluster. Harbor being down as a service is
+          # separately covered by harbor-alerts.
+          #
+          # Note what this does NOT cover: the job backs up the database only, never the
+          # 85GB registry blob store (deliberate — images are rebuildable from CI; see
+          # cicd/harbor-helm/manifests/db-backup-pvc.yaml). A green backup here says the
+          # metadata is safe, not the images.
+          - alert: HarborDBBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="harbor", cronjob="harbor-db-backup"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Harbor database backup has not succeeded in 36h"
+              description: "The harbor-db-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 04:00 KST schedule. Harbor keeps every project, user, robot account, replication rule, retention policy and tag-to-manifest mapping in this database — the registry blobs are intentionally not backed up, so without this dump a restore has 85GB of layers and no idea which digest was which tag. Check `kubectl -n harbor get cronjob harbor-db-backup` (is it suspended?) and `kubectl -n harbor get jobs -l app.kubernetes.io/name=harbor-db-backup`."
+
+          - alert: HarborDBBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="harbor", cronjob="harbor-db-backup"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Harbor database backup CronJob no longer exists"
+              description: "The harbor-db-backup CronJob is not present in the harbor namespace — the Harbor database is not being dumped at all. Re-apply cicd/harbor-helm/manifests/db-backup-cronjob.yaml and confirm with `kubectl -n harbor get cronjob harbor-db-backup`."
+
+          # Vaultwarden holds every stored credential for the team, and unlike Harbor
+          # (images rebuildable from CI) or Elasticsearch (logs age out) there is no
+          # second copy of a password anywhere. It was also the last of the six backup
+          # CronJobs to get an alert: added 2026-08-10, after an audit found the job had
+          # been running unwatched for 123 days.
+          #
+          # Note what a green alert does NOT prove. It says the Job exited 0, which since
+          # 2026-08-10 also means `PRAGMA integrity_check` passed on the freshly written
+          # copy — before that date the job did a plain `cp` of a WAL-mode SQLite file and
+          # verified nothing. Restorability itself is only ever proven by an actual
+          # restore drill into a scratch namespace.
+          - alert: VaultwardenBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="vaultwarden", cronjob="vaultwarden-backup"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Vaultwarden backup has not succeeded in 36h"
+              description: "The vaultwarden-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 03:00 KST schedule. This is the only copy of the team's password vault — the data PVC and the backup PVC both live on the same NAS, so a stale backup narrows an already single-point-of-failure story. The job now installs sqlite and runs `VACUUM INTO` plus an integrity check, so a failed fetch of the alpine sqlite package will also land here. Check `kubectl -n vaultwarden get cronjob vaultwarden-backup` (is it suspended?) and `kubectl -n vaultwarden logs job/<latest>`."
+
+          - alert: VaultwardenBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="vaultwarden", cronjob="vaultwarden-backup"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Vaultwarden backup CronJob no longer exists"
+              description: "The vaultwarden-backup CronJob is not present in the vaultwarden namespace — the password vault is not being backed up at all. It is defined in security/vaultwarden/values/dev.yaml under extraObjects, so it disappears if that release is rolled back or re-rendered without the block. Re-apply the release and confirm with `kubectl -n vaultwarden get cronjob vaultwarden-backup`."
+
+          # Keycloak is the IdP the whole platform federates through — ArgoCD, the
+          # example-hub portal and the apps behind it. Losing the realm locks the
+          # recovery tooling out along with everything else, because keycloak-ops
+          # itself sits behind that same login. Kept at warning rather than critical
+          # for the same reason as the others: a stale backup is not an outage, and
+          # paging on one trains people to dismiss the group.
+          - alert: KeycloakDBBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="keycloak", cronjob="keycloak-postgresql-backup"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Keycloak database backup has not succeeded in 36h"
+              description: "The keycloak-postgresql-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 03:00 KST schedule. The dump holds the realm: clients, groups, IdP mappers and every brokered identity. Note the restore path was itself broken for roughly three months before 2026-08-04, so a green backup is not evidence a restore works — that is only proven by a drill. Check `kubectl -n keycloak get cronjob keycloak-postgresql-backup` and `kubectl -n keycloak logs job/<latest>`."
+
+          - alert: KeycloakDBBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="keycloak", cronjob="keycloak-postgresql-backup"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Keycloak database backup CronJob no longer exists"
+              description: "The keycloak-postgresql-backup CronJob is not present in the keycloak namespace — the IdP database is not being dumped at all. It is enabled by `backup.enabled` in security/keycloak/values/dev-postgresql.yaml, so it disappears if that flag is flipped or the release is rolled back. Re-apply and confirm with `kubectl -n keycloak get cronjob keycloak-postgresql-backup`."
+
+          # Ghost is the lowest-stakes of the four app backups — the blog is
+          # rebuildable content, not credentials or identity — but it is also the one
+          # whose restore wipes the content directory before extracting, so a missing
+          # backup turns a recoverable mistake into a permanent one.
+          - alert: GhostBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="blog", cronjob="ghost-backup"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Ghost backup has not succeeded in 36h"
+              description: "The ghost-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 03:00 KST schedule. It produces both the database dump and the content tarball that tools/ghost/scripts/restore.sh consumes. Check `kubectl -n blog get cronjob ghost-backup` and `kubectl -n blog logs job/<latest>`."
+
+          - alert: GhostBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="blog", cronjob="ghost-backup"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "Ghost backup CronJob no longer exists"
+              description: "The ghost-backup CronJob is not present in the blog namespace — neither the database nor the content directory is being backed up. Re-apply the tools/ghost release and confirm with `kubectl -n blog get cronjob ghost-backup`."
+
+          # example-project MySQL runs with disable-log-bin, so there is no binary log and no
+          # point-in-time recovery: this daily mysqldump is the ONLY recovery point,
+          # and the values file says as much (db-redis/mysql/values/dev-example-project.yaml).
+          # Losing a day of it loses a day of player data outright rather than degrading
+          # into a longer replay. This pair completes the set — all seven backup and
+          # retention CronJobs on the cluster are now watched.
+          - alert: ExampleProjectDBBackupStale
+            expr: time() - kube_cronjob_status_last_successful_time{namespace="example-project-db-redis", cronjob="example-project-db-backup"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "example-project database backup has not succeeded in 36h"
+              description: "The example-project-db-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 03:00 KST schedule. With binary logging disabled there is no PITR to fall back on, so every missed run is a day of player data with no recovery point. Check `kubectl -n example-project-db-redis get cronjob example-project-db-backup` and `kubectl -n example-project-db-redis logs job/<latest>`."
+
+          - alert: ExampleProjectDBBackupMissing
+            expr: absent(kube_cronjob_spec_suspend{namespace="example-project-db-redis", cronjob="example-project-db-backup"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "example-project database backup CronJob no longer exists"
+              description: "The example-project-db-backup CronJob is not present in the example-project-db-redis namespace — the player database has no recovery point at all. It is enabled by the `backup` block in db-redis/mysql/values/dev-example-project.yaml. Re-apply and confirm with `kubectl -n example-project-db-redis get cronjob example-project-db-backup`."
+          # gitlab-old runs on server1, a standalone Docker host with no kubelet, so
+          # its nightly copy to the NAS is a systemd timer rather than a CronJob.
+          # That puts it outside the kube_cronjob_status_last_successful_time shape
+          # every rule above uses -- these read server1's node_exporter systemd
+          # collector instead. server1 is already scraped as the physical-servers job
+          # and node_exporter already runs with --collector.systemd, so these three
+          # rules deploy nothing new to the host.
+          #
+          # Stale and Failed are not redundant, and neither subsumes the other:
+          # last_trigger advances when the TIMER FIRES, not when the service
+          # succeeds, so a run that fires and fails every night keeps Stale quiet --
+          # Failed is what catches that. A disabled timer stops firing and leaves the
+          # service 'inactive' rather than 'failed' -- Stale is what catches that one.
+          #
+          # 36h against the daily 04:17 KST schedule is the same grace the rules above
+          # use: one full run missed plus 12h, so a single slow run does not page.
+          #
+          # The "> 0" half of the Stale expression is load-bearing, not defensive
+          # noise. node_exporter publishes last_trigger as 0 -- not as a missing
+          # series -- whenever systemd's LastTriggerUSec is empty, which is the state
+          # of every timer that has not fired yet and of any timer whose stamp file
+          # under /var/lib/systemd/timers was removed. Without the guard, time() - 0
+          # is always greater than any threshold and the rule pages 30 minutes after
+          # install. Measured on gitlab-main-nas-pull, 2026-09-02.
+          # The cost of the guard is that a timer installed and then NEVER fired is
+          # invisible to this rule. That window is covered by the install procedure
+          # (the READMEs have the operator run it by hand first), not by monitoring:
+          # a rule with a for: longer than a day is reset by every Prometheus restart
+          # and would never actually fire.
+          # Component: scripts/gitlab/old-nas-sync/
+          - alert: GitlabOldNasSyncStale
+            expr: time() - node_systemd_timer_last_trigger_seconds{name="gitlab-old-nas-sync.timer"} > 129600 and node_systemd_timer_last_trigger_seconds{name="gitlab-old-nas-sync.timer"} > 0
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-old NAS sync has not run in 36h"
+              description: "gitlab-old-nas-sync.timer last fired {{ $value | humanizeDuration }} ago against a daily schedule, so the NAS copy is aging. server1's single SSD is the only other copy of gitlab-old's repositories. Check `systemctl list-timers gitlab-old-nas-sync.timer` on server1 -- a disabled or removed timer looks like this."
+
+          # A oneshot stays in the failed state until its next run, so this catches a
+          # failure hours after the 04:17 window without needing a run-history metric.
+          - alert: GitlabOldNasSyncFailed
+            expr: node_systemd_unit_state{name="gitlab-old-nas-sync.service", state="failed"} == 1
+            for: 15m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-old NAS sync last run failed"
+              description: "gitlab-old-nas-sync.service is in the failed state, so the last nightly copy did not complete. The script already treats rsync rc=24 (vanished source files, a gitaly repack mid-copy) as success, so this is a real failure -- an unmounted /mnt/nfs_backup is the usual cause. Check `journalctl -u gitlab-old-nas-sync.service -n 50` on server1."
+
+          # The unit is gone from server1, or node_exporter stopped reporting it.
+          # state="active" is the existence probe rather than last_trigger, which is
+          # absent on a timer that has never fired -- the same reasoning as the
+          # kube_cronjob_spec_suspend probes above.
+          - alert: GitlabOldNasSyncMissing
+            expr: absent(node_systemd_unit_state{name="gitlab-old-nas-sync.timer", state="active"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-old NAS sync timer no longer exists"
+              description: "server1's node_exporter reports no gitlab-old-nas-sync.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-old to the NAS while this fires. Re-install from scripts/gitlab/old-nas-sync/ and confirm with `systemctl list-timers gitlab-old-nas-sync.timer`."
+
+          # gitlab-main is the mirror image of gitlab-old and needs the same three
+          # rules for the opposite reason. gitlab-old keeps its repositories on
+          # server1 and copies them TO the NAS; gitlab-main keeps its repositories ON
+          # the NAS (both NFS exports are on volume1) and copies them DOWN to
+          # server1, which is the only second device. ~193G of repositories, LFS and
+          # artifacts, none of which is in the nightly DB tar -- every one of those
+          # categories is on the tar's :skipped: list.
+          # Component: scripts/gitlab/main-nas-pull/
+          - alert: GitlabMainNasPullStale
+            expr: time() - node_systemd_timer_last_trigger_seconds{name="gitlab-main-nas-pull.timer"} > 129600 and node_systemd_timer_last_trigger_seconds{name="gitlab-main-nas-pull.timer"} > 0
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-main NAS pull has not run in 36h"
+              description: "gitlab-main-nas-pull.timer last fired {{ $value | humanizeDuration }} ago against a daily schedule, so server1's copy of gitlab-main is aging. The NAS holds the only other copy of those ~193G, and both NFS exports sit on the same volume1. Check `systemctl list-timers gitlab-main-nas-pull.timer` on server1."
+
+          - alert: GitlabMainNasPullFailed
+            expr: node_systemd_unit_state{name="gitlab-main-nas-pull.service", state="failed"} == 1
+            for: 15m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-main NAS pull last run failed"
+              description: "gitlab-main-nas-pull.service is in the failed state. The script already treats rsync rc=24 (a gitaly repack mid-copy) as success, so this is a real failure -- an unmounted /mnt/gitlab-nfs is the usual cause, and the script exits fatally on that rather than copying nothing and reporting success. Check `journalctl -u gitlab-main-nas-pull.service -n 50` on server1."
+
+          - alert: GitlabMainNasPullMissing
+            expr: absent(node_systemd_unit_state{name="gitlab-main-nas-pull.timer", state="active"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-main NAS pull timer no longer exists"
+              description: "server1's node_exporter reports no gitlab-main-nas-pull.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-main off the NAS while this fires. Re-install from scripts/gitlab/main-nas-pull/."
+
+          # The nightly database dumps, added 2026-09-02. Before that both instances
+          # were backed up only by hand before an upgrade, which left month-long gaps
+          # (gitlab-main went 2026-04-16 -> 2026-05-19 with no recovery point).
+          #
+          # The two instances are alerted through DIFFERENT metrics because their
+          # node_exporters expose different collectors, and neither host's exporter
+          # is worth reconfiguring for this:
+          #   - the gitlab VM runs GitLab's bundled node_exporter, which has
+          #     --collector.textfile.directory but NOT --collector.systemd
+          #   - server1 runs the Ansible-managed one (observability/monitoring/
+          #     node-exporter/), which has --collector.systemd but no textfile dir
+          #
+          # The textfile metric is the better of the two and gitlab-main gets it: it
+          # is written only after a tar actually appears, so it measures SUCCESS. The
+          # systemd timer metric only measures that the timer FIRED -- a job that
+          # fires nightly and fails nightly keeps it fresh. That is why gitlab-old
+          # needs the Failed rule below as well, while gitlab-main does not.
+          #
+          # 36h against a daily schedule: one full run missed plus 12h of grace.
+          # Component: scripts/gitlab/db-backup/
+          - alert: GitlabMainDbBackupStale
+            expr: time() - gitlab_db_backup_last_success_timestamp_seconds{gitlab_instance="main"} > 129600
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-main database backup has not succeeded in 36h"
+              description: "The last successful gitlab-main dump was {{ $value | humanizeDuration }} ago against a daily 01:30 KST schedule. The nightly file copies do not cover the database -- every tar records :skipped: repositories,uploads,artifacts,lfs and the rest, so this is the only recovery point the database has. Check `systemctl status gitlab-main-db-backup.service` on the gitlab VM (192.0.2.60)."
+
+          # Existence probe. Unlike the systemd-based rules there is no "unit is
+          # gone" signal here, so absent() on the metric itself does the job: it goes
+          # missing when the textfile is deleted, when node_exporter stops, or when
+          # the backup has never run on a freshly rebuilt host.
+          - alert: GitlabMainDbBackupMissing
+            expr: absent(gitlab_db_backup_last_success_timestamp_seconds{gitlab_instance="main"})
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-main database backup metric is missing entirely"
+              description: "No gitlab_db_backup_last_success_timestamp_seconds is being reported for gitlab-main. Either the textfile under /var/opt/gitlab/node-exporter/textfile_collector/ was removed, node_exporter on the gitlab VM is down, or the backup has never succeeded since the host was rebuilt."
+
+          # gitlab-old is the systemd-metric half. The "> 0" guard is the same one the
+          # rules above carry: node_exporter reports last_trigger as 0, not as a
+          # missing series, for a timer that has never fired.
+          - alert: GitlabOldDbBackupStale
+            expr: time() - node_systemd_timer_last_trigger_seconds{name="gitlab-old-db-backup.timer"} > 129600 and node_systemd_timer_last_trigger_seconds{name="gitlab-old-db-backup.timer"} > 0
+            for: 30m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-old database backup has not run in 36h"
+              description: "gitlab-old-db-backup.timer last fired {{ $value | humanizeDuration }} ago against a daily 03:30 KST schedule. gitlab-old's nightly NAS sync does not cover the database. Check `systemctl list-timers gitlab-old-db-backup.timer` on server1."
+
+          # Required alongside Stale, not redundant with it: the timer firing is not
+          # the same as the dump succeeding, and this is the half that catches a job
+          # that runs on schedule and fails every time. A oneshot stays 'failed' until
+          # its next run, so a 03:30 failure is still visible hours later.
+          - alert: GitlabOldDbBackupFailed
+            expr: node_systemd_unit_state{name="gitlab-old-db-backup.service", state="failed"} == 1
+            for: 15m
+            labels:
+              severity: warning
+              group: backup
+            annotations:
+              summary: "gitlab-old database backup last run failed"
+              description: "gitlab-old-db-backup.service is in the failed state. The script fails deliberately when the example_git container is not running, and also when gitlab-backup exits 0 without producing a new tar. Check `journalctl -u gitlab-old-db-backup.service -n 50` on server1."

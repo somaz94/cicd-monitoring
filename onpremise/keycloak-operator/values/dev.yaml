@@ -26,6 +26,10 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# Operator metrics Service is on by default — kept enabled for kube-prometheus-stack ServiceMonitor discovery (handled out-of-band).
+# Operator Service, kept enabled. This is NOT a metrics endpoint: the operator image
+# (quay.io/keycloak/keycloak-operator) ships no micrometer/prometheus extension, so :8080
+# answers 404 on both /metrics and /q/metrics — only /q/health responds. There is nothing for
+# a ServiceMonitor to scrape here; do not add one. Keycloak *server* metrics come from the
+# sibling ../keycloak/ component instead (metrics-enabled in values/dev-keycloak.yaml).
 service:
   enabled: true

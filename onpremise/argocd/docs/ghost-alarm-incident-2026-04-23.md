@@ -7,11 +7,11 @@
 Between 06:33 and 06:54 KST on 2026-04-23, a burst of "restarted" / "deploy success" notifications hit the `#argocd-alarm` Slack channel for five `example-project`-family Applications. On investigation:
 
 - **dev-example-project-game / dev-example-project-admin**: A real new image (`b4482c5f`) was deployed. However, the commits landed the previous evening, yet the deploy fired **~11–12 hours later** at this time window.
-- **qa-example-project-game / staging-example-project-game**: **No actual deploy or restart happened.** Pods had been up 8–15 days (RESTARTS=0). The "restarted" + "deploy success" alarms still fired — these are **ghost alarms**.
+- **qa-example-project-game / staging-example-project-game**: **No actual deploy or restart happened.** Pods had been up 8–15 days (RESTARTS=0, or the last restart 15 days ago). The "restarted" + "deploy success" alarms still fired — these are **ghost alarms**.
 
 Three root causes stacked. The **essential one is a design flaw in the notification rules (Cause C)**; A and B are environmental triggers that let the flaw surface.
 
-1. **(Environmental) `argocd-application-controller` reconcile gap**: Some apps had their `reconciledAt` frozen from 2026-04-21 21:11 UTC, others from 2026-04-22 08:54 UTC — **12 to 24 hours of no reconciliation**, all of them released at once on 04-22 21:33 UTC (04-23 06:33 KST).
+1. **(Environmental) `argocd-application-controller` reconcile gap**: Some apps had their `reconciledAt` frozen from 2026-04-21 21:11 UTC, others from 2026-04-22 08:54 UTC — **12 to 24 hours of no reconciliation**. The 08:54 UTC group was released at once on 04-22 21:33 UTC (04-23 06:33 KST); the 21:11 UTC group (4 apps) was still stuck at that point and was left for a manual refresh.
 2. **(Environmental) dedup key reshuffle from a notifications config change**: `dev-notifications.yaml` was upgraded on 2026-04-22 15:27 KST, changing the `oncePer` dedup key formula for every trigger. Existing "already sent" annotations no longer matched the new keys — **previously-sent events became eligible for redelivery**.
 3. **(Essential) Design flaw in the `on-restarted` / `on-deployed` dedup keys**: The dedup key was a **state snapshot** (`reconciledAt`, `images.join(',')`) rather than an **event identifier**. As rolling updates progressed and the polling cadence ticked, the key changed naturally — which **structurally produces duplicate / ghost alarms for the same event**.
 
@@ -23,9 +23,9 @@ All times show UTC and KST. CI commit times are based on the commit date in the 
 
 | UTC | KST | Event |
 |---|---|---|
-| 2026-04-21 08:32 | 2026-04-21 17:32 | **commit `678c8b4`** (`somaz`) — `argo-cd` helm chart `9.5.1 → 9.5.2` upgrade. Backup folder `backup/20260421_173002/` created. `upgrade.py` applied to the cluster at the same time. |
+| 2026-04-21 08:32 | 2026-04-21 17:32 | **commit `678c8b4`** (`admin`) — `argo-cd` helm chart `9.5.1 → 9.5.2` upgrade. Backup folder `backup/20260421_173002/` created. `upgrade.py` applied to the cluster at the same time. |
 | 2026-04-21 21:11 | 2026-04-22 06:11 | `reconciledAt` of `dev1-secondary-project-admin`, `qa-example-project-app-admin`, `staging-example-project-admin`, `qa-example-project-admin` froze here (no further update for 24+ hours). |
-| 2026-04-22 03:03 | 2026-04-22 12:03 | **commit `996e330`** (`somaz`) — `fix: argocd notifiactions rules`. Added `oncePer` dedup keys and buffer conditions to every trigger in `dev-notifications.yaml`. |
+| 2026-04-22 03:03 | 2026-04-22 12:03 | **commit `996e330`** (`admin`) — `fix: argocd notifiactions rules`. Added `oncePer` dedup keys and buffer conditions to every trigger in `dev-notifications.yaml`. |
 | 2026-04-22 06:27 (approx) | 2026-04-22 15:27 | Rerun of `upgrade.py` applied the above change to the `argocd-notifications-cm` in the cluster (based on file mtime). |
 | 2026-04-22 08:34 | 2026-04-22 17:34 | `dev-example-project-game` last healthy sync (rev `412cd4c6`). |
 | 2026-04-22 08:54 | 2026-04-22 17:54 | `dev-example-project-game` sync `18f0cb44` finished → **12 h 39 min reconcile gap begins**. |
@@ -106,7 +106,7 @@ staging-example-project-game:
 
 - `operationState` is **unchanged since 04-17** — no actual sync operation.
 - Only `reconciledAt` advanced to 21:33 UTC (the controller cleared its backlog and reconciled every app at once).
-- Because `on-restarted`'s dedup key is `reconciledAt`, the new value triggered re-evaluation. At that instant, ArgoCD's cached health momentarily read as `Progressing` (or a state reset after config reload), and the alarm fired.
+- Because `on-restarted`'s dedup key is `reconciledAt`, the new value triggered re-evaluation. At that instant, ArgoCD's cached health most likely read as `Progressing` for a moment (or a state reset after config reload did the same), and the alarm fired.
 
 Because the alarm template renders the "restart time" field with `{{.app.status.operationState.startedAt}}`, the raw `2026-04-17T06:57:55Z` (6 days old!) appeared in the Slack message, which was confusing by itself. The `(UTC+9=KST)` label made the timezone interpretation worse.
 
@@ -178,7 +178,7 @@ trigger.on-restarted:
 
 - `reconciledAt` is not a pod-restart event; it updates on **ArgoCD's periodic polling (every 10 min).**
 - If a single pod crash keeps health at `Progressing` for 20 minutes, two or three reconcile ticks happen and each produces a **new `reconciledAt` = new dedup key = new alarm.**
-- The qa/staging ghost alarms fell out of the same mechanic. There was no real restart, but at the moment the 12-hour reconcile gap cleared, `reconciledAt` advanced, the notifications-controller transiently evaluated health as `Progressing`, and the trigger fired.
+- The qa/staging ghost alarms fell out of the same mechanic. There was no real restart, but at the moment the 12-hour reconcile gap cleared, `reconciledAt` advanced, the notifications-controller most likely evaluated health as `Progressing` for a moment, and the trigger fired.
 - The reason dev-example-project-game got a second "restarted" at 06:53 is exactly the same: the rolling update took 20 minutes and `reconciledAt` advanced from `21:33:12Z` to `21:53:53Z` during that time.
 
 **Correct design:**
@@ -254,7 +254,7 @@ Effect:
 | dev-example-project-admin | same | applied | Real deploy + normal alarm (06:54) |
 | qa-example-project-game | stuck | applied | No real change, but on-restarted + on-deployed fired as ghost alarms (06:33) |
 | staging-example-project-game | stuck | applied | Same ghost-alarm pattern (06:33) |
-| qa/staging-example-project-admin etc. | still stuck (24 h) | — | Not yet released (reconcileAt unchanged) |
+| qa/staging-example-project-admin etc. | still stuck (24 h) | — | Not yet released (reconciledAt unchanged) |
 
 <br/>
 
@@ -264,9 +264,9 @@ Git log under `cicd/argo-cd/` in `kuberntes-infra` (newest first):
 
 | Commit | Time (KST) | Author | Summary |
 |---|---|---|---|
-| `996e330` | 2026-04-22 12:03 | `somaz` | `fix: argocd notifiactions rules` — added `oncePer` dedup + post-sync buffers to every trigger |
-| `678c8b4` | 2026-04-21 17:32 | `somaz` | `feat: upgrade argocd 9.5.1 -> 9.5.2` (appVersion v3.3.6 → v3.3.7) |
-| `8b89f73` | 2026-04-16 18:49 | `somaz` | `refactor(cicd/argo-cd): split dev.yaml into core/server/redis/notifications value files` |
+| `996e330` | 2026-04-22 12:03 | `admin` | `fix: argocd notifiactions rules` — added `oncePer` dedup + post-sync buffers to every trigger |
+| `678c8b4` | 2026-04-21 17:32 | `admin` | `feat: upgrade argocd 9.5.1 -> 9.5.2` (appVersion v3.3.6 → v3.3.7) |
+| `8b89f73` | 2026-04-16 18:49 | `admin` | `refactor(cicd/argo-cd): split dev.yaml into core/server/redis/notifications value files` |
 
 Changes relevant to this incident:
 - `996e330` — **the commit that introduced Cause B (dedup key reshuffle)**. The intent in adding `oncePer` was to suppress duplicate alarms; choosing `reconciledAt` / `images.join(',')` — **state snapshots** — directly caused Cause C (design flaw).
@@ -491,9 +491,23 @@ After reviewing two choices (A / B), we picked **Option B** as the most practica
 
 | Component | File | Content |
 |---|---|---|
-| ArgoCD notifications | `cicd/argo-cd/values/dev-notifications.yaml` | Subscription enables 7 triggers (4 sync + 3 health). Comments describe how to switch to Option A. |
-| PrometheusRule | `observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml` | `argocd-alerts` group has **only `ArgoCDControllerReconcileStuck` active**; `ArgoCDAppDegraded/Missing/OutOfSync` are commented. |
+| ArgoCD notifications | `cicd/argo-cd/values/dev-notifications.yaml` | Subscriptions route per channel via each app's `notify-channel` label (see "Channel routing" below). The per-channel active trigger list is owned by `subscriptions` in this file. Comments describe how to switch to Option A. |
+| PrometheusRule | `observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml` | `argocd-alerts` group has **only `ArgoCDControllerReconcileStuck` active**; `ArgoCDAppDegraded/Missing/OutOfSync` are commented. |
 | Alertmanager | `observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml` | ArgoCD inhibit_rule commented (a single alert does not need inhibit; uncomment when enabling Option A). |
+
+<br/>
+
+#### Channel routing
+
+Selectors are positive on both sides — an app with no `notify-channel` label matches no subscription at all and therefore receives no notification. Every appset that generates apps must set `notify-channel`.
+
+| `notify-channel` | Channel | Scope |
+|---|---|---|
+| `server` | `#argocd-alarm` | example-project / secondary-project service apps |
+| `infra` | `#infra-argocd-alarm` | Infrastructure apps. The channel that subscribes to `on-health-restored` |
+| `ignite` | `#ignite-argocd-alarm` | Apps scaffolded by the ignite platform (`ignite-manifests` appset). The app count grows on its own here, so it gets a dedicated channel rather than a share of `#argocd-alarm`. `on-sync-status-out-of-sync` is deliberately excluded — CI rewrites the image tag in `ignite-manifests`, so every app goes OutOfSync on every deploy and would lock the channel. The same deploy is reported by `on-deployed` |
+
+The SSOT for the per-channel active trigger list is `subscriptions` in `values/dev-notifications.yaml`.
 
 <br/>
 
@@ -507,7 +521,7 @@ Uncomment the "Option A" blocks in three files.
     # - on-health-missing
     # - on-health-unknown
     ```
-2. **`observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml`** — uncomment the three alerts under the `# --- Option A rules (disabled by default) ---` block in the `argocd-alerts` group.
+2. **`observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml`** — uncomment the three alerts under the `# --- Option A rules (disabled by default) ---` block in the `argocd-alerts` group.
 3. **`observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml`** — uncomment the ArgoCD inhibit_rule.
 4. Apply:
     ```bash
@@ -709,7 +723,7 @@ Do not forget to add `on-health-recovered` to `subscriptions`.
 - **Trigger name is `on-health-restored`** (not the proposed `on-health-recovered`), with template `app-health-restored`.
 - The only condition is `when: app.status.health.status == 'Healthy'` — **edge-triggered, NO `oncePer`, NO time-window** (deliberately different from the proposal's `finishedAt` + `< 1h` + `oncePer: finishedAt` design).
 - **Reason for the deviation:** the proposal's `finishedAt`+1h+`oncePer` approach is tied to a sync operation, so it would **not** fire for a **drain/crash recovery** (no new sync → `finishedAt` stays old). The pure edge trigger fires on any Degraded/Unknown/Progressing → Healthy transition, which is exactly the node-rollover recovery case that motivated it.
-- **Subscribed to the infra channel (`#infra-argocd-alarm`) only** — deliberately NOT the `server` channel. Server apps deploy frequently, so a real deploy (Progressing→Healthy) also fires this trigger, which would double-message the busy server channel. Infra apps deploy rarely, so the deploy-double there is tolerable.
+- **Subscribed on the infra channel (`#infra-argocd-alarm`) and the ignite channel (`#ignite-argocd-alarm`) — every channel except `server`.** The `server` channel is deliberately excluded. Server apps deploy frequently, so a real deploy (Progressing→Healthy) also fires this trigger, which would double-message the busy server channel. Infra and ignite apps deploy rarely, so the deploy-double there is tolerable.
 - **Applied symmetrically to both clusters:** `cicd/argo-cd/values/dev-notifications.yaml` (onprem-dev) **and** `cicd/argo-cd-aws/values/prod-notifications.yaml` (example-app-prod / AWS EKS).
 - **Known one-time side effect** (matches the playbook's "add a trigger → full re-send to all apps" rule): adding the trigger fired a one-time burst of `Health Restored` (health restored) for every currently-Healthy infra app — 24 on onprem-dev, 7 on example-app-prod. Dedup state persists in the `notified.notifications.argoproj.io` app annotation, so it does not re-burst on controller restart.
 - **Why not Option A (Alertmanager auto-RESOLVED) here:** example-app-prod EKS has no prometheus/alertmanager deployed, so Alertmanager-based recovery alerting is infeasible there without standing up the stack. The notifications-trigger path works identically on both clusters.
@@ -722,7 +736,7 @@ Do not forget to add `on-health-recovered` to `subscriptions`.
 |---|---|---|---|
 | 1 | Improvement A (label fix) | Low | Removes user confusion immediately |
 | 2 | Improvement C (stale-operation guard) | Low | Structurally blocks ghost alarms |
-| 3 | Improvement B (buffer 3 → 10 min) | Low | Fully resolves the dev-example-project-game duplicate |
+| 3 | Improvement B (buffer 3 → 10 min) | Low | Mitigates the dev-example-project-game duplicate (can recur if a rolling update runs past 10 min) |
 | 4 | Improvement D (image / revision display) | Medium | Operational convenience |
 | 5 | Improvement E (recovery alarm) | Medium | Reflects operator request |
 
@@ -816,8 +830,8 @@ The 5-second window (02:11:30 – 02:11:35Z) right before the stall is the key:
 - `Notifying ... settings subscribers` = the controller's **internal settings watch seeing a ConfigMap change**.
 - This 5-second window coincides exactly with `helmfile apply` patching `argocd-cm` / `argocd-notifications-cm` / `argocd-rbac-cm`.
 - The same pattern correlates with the following:
-  - **2026-04-21 17:32 KST**: chart upgrade (9.5.1 → 9.5.2, v3.3.6 → v3.3.7) — right after, 4 apps got stuck at `2026-04-21T21:11Z`.
-  - **2026-04-22 15:27 KST**: notifications rule change applied — right after, the remaining apps got stuck around `2026-04-22T08:54Z`.
+  - **2026-04-21 17:32 KST**: chart upgrade (9.5.1 → 9.5.2, v3.3.6 → v3.3.7) — about 12.5 hours later, 4 apps got stuck at `2026-04-21T21:11Z`.
+  - **2026-04-22 15:27 KST**: notifications rule change applied — about 2.5 hours later, the remaining apps got stuck around `2026-04-22T08:54Z`.
   - **2026-04-23 02:11 UTC (11:11 KST)**: today's helmfile apply — observed live.
 
 <br/>
@@ -870,11 +884,11 @@ A chronological digest of everything done that day. In subsequent operation, thi
 |---|---|---|
 | ~06:33 ~ 06:54 | Multiple ghost/duplicate alarms received (qa/staging/dev) | Investigation begins |
 | ~10:00 | Cause A/B/C analysis complete | Swap `oncePer` keys to `finishedAt` |
-| ~11:11 | First stall detected (`Goroutines=1446`) | helmfile apply followed by controller restart |
-| ~11:32 | Stall recurs (~11 min after the restart) | Restart again |
+| ~11:11 | Stall begins right after the helmfile apply (~11:12) | — |
+| ~11:32 | Stall detected via the Alertmanager critical alert (`Goroutines=1446`) | Controller restart → recovered at 11:32:28 |
 | ~11:46 | Add pprof env + restart | `ARGOCD_APPLICATION_CONTROLLER_PPROF=true` |
 | ~11:58 | pprof dump attempt failed (port 6060 refused, 8082 timeout) | Port / endpoint verification becomes a follow-up |
-| ~11:59 | Stall recurs again (`Goroutines=1446`) — 4th time that day | Decide to roll back |
+| ~11:59 | Stall recurs again (`Goroutines=1446`) | Decide to roll back |
 | ~12:03 | **Rollback v3.3.7 → v3.3.6** (chart 9.5.2 → 9.5.1) | Restored from `backup/20260421_173002/` (Chart.yaml / helmfile.yaml) |
 | ~12:04 | 3 post-rollback alerts (stale instance) | `time() - timestamp(...) < 300` filter added — cleared naturally |
 | ~12:05 | **Stability confirmed** (all reconciledAt within 1 min, logs active) | Transition to monitoring phase |
@@ -891,7 +905,7 @@ A chronological digest of everything done that day. In subsequent operation, thi
 | `trigger.on-deployed.oncePer` | `app.status.operationState.finishedAt` | 1 sync = 1 alarm |
 | `trigger.on-restarted.oncePer` | `app.status.operationState.finishedAt` | Same principle |
 | `trigger.on-health-degraded.oncePer` | `app.status.operationState.finishedAt` | Role split with Alertmanager (Option B) — still active in subscriptions |
-| `trigger.on-health-restored` (new, 2026-07-02) | `when: health == 'Healthy'` (edge, no oncePer) | Recovery alarm. Subscribed to the infra channel only (server excluded). Applied on both onprem-dev and example-app-prod. See "Improvement E" above for details |
+| `trigger.on-health-restored` (new, 2026-07-02) | `when: health == 'Healthy'` (edge, no oncePer) | Recovery alarm. Subscribed on the infra and ignite channels (every channel except `server`). Applied on both onprem-dev and example-app-prod. See "Improvement E" above for details |
 | `controller.env` — `ARGOCD_APPLICATION_CONTROLLER_PPROF` | `true` | For pprof capture on the next stall. Endpoint verification is open |
 
 **Alertmanager / PrometheusRule (`observability/monitoring/kube-prometheus-stack/`):**
@@ -907,7 +921,7 @@ A chronological digest of everything done that day. In subsequent operation, thi
 - `docs/ghost-alarm-incident-2026-04-23-en.md` (this document) — full analysis
 - `docs/notification-rule-change-playbook-en.md` — procedure for future rule changes
 - `docs/ghost-alarm-followup-prompt-en.md` — prompt for asking Claude on recurrence
-- `docs/upstream-issue-template-en.md` — upstream issue template (English)
+- `docs/upstream-issue-template-en.md` — upstream issue template (English, filed · archived)
 - `scripts/notify-rule-change.sh` — rule change / health-check helper
 
 <br/>
@@ -961,13 +975,13 @@ cd cicd/argo-cd
 kubectl rollout restart statefulset/argocd-application-controller -n argocd
 kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=120s
 
-# 3) If a stall reappears on v3.3.8, roll back to a known-good version:
-#    - First choice: v3.3.6 (chart 9.5.1). Originals preserved in backup/20260421_173002/.
-#    - Or roll back to the pre-v3.3.8 snapshot via ./upgrade.py --rollback
-#      (restores backup/20260424_111248/, the upgrade-time snapshot).
-#    cp backup/20260421_173002/Chart.yaml .
-#    cp backup/20260421_173002/helmfile.yaml .
+# 3) If a stall reappears, roll back to a known-good version:
+#    ./upgrade.py --list-backups      # see which snapshots still exist
+#    ./upgrade.py --rollback          # restore the most recent snapshot
 #    helmfile apply
+#    # Note: the 2026-04-23 rollback target was v3.3.6 (chart 9.5.1). That backup directory
+#    #       has since been reaped by --cleanup-backups (which keeps the last 5), so pulling a
+#    #       specific old version means fetching Chart.yaml / helmfile.yaml from git history.
 #    # Capture a pprof goroutine dump during the stall and report the regression on upstream #27516.
 ```
 
@@ -1005,7 +1019,7 @@ After maintainer `@blakepettersson` responded on upstream #27516 with "Try 3.3.8
 | Active alerts | Only `Watchdog` firing (normal) | `ArgoCDControllerReconcileStuck` critical |
 | Application state | Synced / Healthy (10/10) | Several apps with `reconciledAt` stuck for hours |
 
-On v3.3.7 the stall landed **~11 min** after a settings reload. Clearing **~23 min + three extra reload bursts** is decisive evidence that the fix is effective.
+On v3.3.7 the stall landed **~11 min** after a settings reload. Clearing **~23 min + three extra reload bursts** is strong evidence that the fix is effective (the confirmation bar of 24h stable running is separate).
 
 <br/>
 
@@ -1013,7 +1027,7 @@ On v3.3.7 the stall landed **~11 min** after a settings reload. Clearing **~23 m
 
 From the v3.3.8 release notes, the commits directly related to this regression:
 
-- **PR [#27400](https://github.com/argoproj/argo-cd/pull/27400)** — "Revert prevent automatic refreshes from informer resync and status updates" (= the revert of #27230). This is exactly the PR we flagged as the **most likely stall cause** during the original diagnosis; the revert clears the work-queue stall.
+- **PR [#27400](https://github.com/argoproj/argo-cd/pull/27400)** — "Revert prevent automatic refreshes from informer resync and status updates" (= the revert of #27230). This is one of the **two suspected stall causes** we flagged during the original diagnosis; the revert clears the work-queue stall.
 - PR [#27396](https://github.com/argoproj/argo-cd/pull/27396) — stale-cache fix in the RevisionMetadata handler (secondary possibility).
 
 <br/>
@@ -1024,7 +1038,7 @@ With the stall risk gone on v3.3.8, the post-`helmfile apply` check surface simp
 
 1. Run `./scripts/notify-rule-change.sh status` and confirm **"completed reconciles in the last 10m" > 0**. The `Goroutines` value is informational — 1446 is the normal baseline for this cluster.
 2. Keep the `ArgoCDControllerReconcileStuck` alert as a regression canary. If v3.3.8 ever regresses, this alert is the first signal.
-3. Stall recurrence procedure: capture a pprof dump (port 6060) → roll back immediately → report the regression on upstream #27516.
+3. Stall recurrence procedure: capture a pprof dump (endpoint still unverified — nothing listens on 6060; see § 4. Open follow-ups) → roll back immediately → report the regression on upstream #27516.
 
 <br/>
 

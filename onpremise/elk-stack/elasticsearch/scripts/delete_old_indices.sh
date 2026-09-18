@@ -28,7 +28,13 @@ source "${SCRIPT_DIR}/lib/es-helpers.sh"
 # es_curl applies `-k`, so the ECK self-signed HTTPS cert is accepted. To hit a
 # different endpoint directly, export ELASTIC_HOST (e.g. http://elasticsearch.example.com).
 ELASTIC_USER="${ELASTIC_USER:-elastic}"
-ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-exampleAdminPassword}"
+# Deliberately EMPTY by default — resolved from the target cluster's own secret
+# after the kube-context gate runs (see below). It used to default to a hardcoded
+# on-prem password, which became actively wrong once --context made these scripts
+# usable against the AWS cluster: every request would have shipped the on-prem
+# admin credential to prod and left failed-auth entries in that cluster's audit log.
+# Reading the secret through kctl keeps the credential and the target in lockstep.
+ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-}"
 ELASTIC_HOST="${ELASTIC_HOST:-https://localhost:9200}"
 
 # Index names to clean (array)
@@ -71,6 +77,15 @@ Usage: $(basename "$0") [OPTIONS] [INDEX_NAMES...]
 Delete old documents from specified Elasticsearch indices based on retention period.
 
 Options:
+  --context CTX           REQUIRED. kube-context the port-forward targets. No
+                          default and no fallback to the current context — both
+                          clusters expose logging/elasticsearch-es-http, so an
+                          implicit context would delete indices on the wrong one.
+                          Enforced for --dry-run and for -l / -s too. The name is
+                          a LOCAL kubeconfig alias with no fixed value — list
+                          yours with \`kubectl config get-contexts -o name\`, and
+                          confirm the cluster= line printed at startup (that is
+                          the stable id, not the alias).
   -h, --help              Show this help message
   -d, --days DAYS         Number of days to retain data (default: ${RETENTION_DAYS}, minimum: ${MIN_RETENTION_DAYS})
   -i, --indices LIST      Comma-separated list of index names to clean
@@ -84,20 +99,20 @@ Options:
                           _delete_by_query / _forcemerge) without executing.
                           Auto-skips the confirm prompt.
 
-Examples:
-  $(basename "$0") index1 index2                       # Clean specified indices (${RETENTION_DAYS} days retention)
-  $(basename "$0") -d 60 index1 index2                 # Clean specified indices (60 days retention)
-  $(basename "$0") -i "index1,index2" -d 60            # Clean indices using comma-separated list
-  $(basename "$0") -l                                  # List all available indices
-  $(basename "$0") -s                                  # Show current status of all indices
-  $(basename "$0") -f index1                           # Clean and force merge index1
-  $(basename "$0") -d 60 -f index1 index2              # Clean with 60 days retention and force merge
-  $(basename "$0") -c index1                           # Check index1 settings
-  $(basename "$0") -c -i "index1,index2"               # Check multiple index settings
-  $(basename "$0") -u 2000 index1                      # Update total_fields.limit to 2000
-  $(basename "$0") -u 2000 -i "index1,index2"          # Update limit for multiple indices
-  $(basename "$0") --delete-index index1               # Delete entire index1
-  $(basename "$0") --delete-index -i "index1,index2"   # Delete multiple indices
+Examples (--context is REQUIRED):
+  $(basename "$0") --context <ctx> index1 index2              # Clean specified indices (${RETENTION_DAYS} days retention)
+  $(basename "$0") --context <ctx> -d 60 index1 index2        # Clean specified indices (60 days retention)
+  $(basename "$0") --context <ctx> -i "index1,index2" -d 60   # Clean indices using comma-separated list
+  $(basename "$0") --context <ctx> -l                         # List all available indices
+  $(basename "$0") --context <ctx> -s                         # Show current status of all indices
+  $(basename "$0") --context <ctx> -f index1                  # Clean and force merge index1
+  $(basename "$0") --context <ctx> -d 60 -f index1 index2     # Clean with 60 days retention and force merge
+  $(basename "$0") --context <ctx> -c index1                  # Check index1 settings
+  $(basename "$0") --context <ctx> -c -i "index1,index2"      # Check multiple index settings
+  $(basename "$0") --context <ctx> -u 2000 index1             # Update total_fields.limit to 2000
+  $(basename "$0") --context <ctx> -u 2000 -i "idx1,idx2"     # Update limit for multiple indices
+  $(basename "$0") --context <ctx> --delete-index index1      # Delete entire index1
+  $(basename "$0") --context <ctx> --delete-index -i "a,b"    # Delete multiple indices
 
 Notes:
 - You must specify at least one index to clean
@@ -108,19 +123,82 @@ EOF
   exit 0
 }
 
-# Auto port-forward to the in-cluster ES when ELASTIC_HOST is localhost (default).
-# Honors the current kubectl context; torn down automatically on exit. Skipped for
-# --help (no ES access needed) and when ELASTIC_HOST points elsewhere or ES_PF=off.
-case " $* " in
-  *" -h "*|*" --help "*) ;;
-  *) es_ensure_port_forward || exit 1 ;;
-esac
+# The kube-context gate must run BEFORE the argument loop, not inside it: the loop's
+# own -l / -s / -c actions hit Elasticsearch as they are parsed, and the port-forward
+# below has to be up by then. So pre-scan argv for --context (the loop still accepts
+# the flag, which simply assigns the same value again).
+#
+# Enforced even for --dry-run and for the read-only actions: a wrong-cluster --list
+# is harmless in itself, but it is the step an operator reads before choosing which
+# index to delete, so it must describe the same cluster the deletion will hit.
+#
+# The flag WINS over the environment. Written the other way round
+# (`${KUBE_CONTEXT:-$(prescan)}`), an exported KUBE_CONTEXT would silently beat an
+# explicit `--context` — the banner would name the cluster you asked for while the
+# deletion went somewhere else, which is the exact failure this gate exists to stop.
+_ctx_arg="$(kube_context_prescan "$@")"
+KUBE_CONTEXT="${_ctx_arg:-${KUBE_CONTEXT:-}}"
+unset _ctx_arg
+
+# Scan argv element by element rather than matching against " $* ": `$*` joins on
+# the first character of IFS (set to newline on line 9), so the pattern is both
+# fragile and value-sensitive — `-i "weird -h name"` would look like a help request
+# and skip the gate entirely, while `-l -h` only fails to match by accident.
+_want_help=0
+for _a in "$@"; do
+  case "$_a" in -h|--help) _want_help=1 ;; esac
+done
+if [ "$_want_help" -eq 0 ]; then
+  require_kube_context
+  # Auto port-forward to the in-cluster ES when ELASTIC_HOST is localhost (default);
+  # torn down automatically on exit. Skipped when ELASTIC_HOST points elsewhere or
+  # ES_PF=off.
+  #
+  # Report what actually routes the traffic. When the port-forward is bypassed the
+  # kube-context is NOT what the requests follow, so claiming a cluster there would
+  # be the same false assurance the stale-tunnel guard in es-helpers.sh removes.
+  if [ "${ES_PF:-auto}" = "off" ]; then
+    echo "▸ Target: ${ELASTIC_HOST} (ES_PF=off — your own tunnel routes this, NOT --context ${KUBE_CONTEXT})" >&2
+  else
+    case "${ELASTIC_HOST}" in
+      *localhost*|*127.0.0.1*)
+        echo "▸ Target: --context ${KUBE_CONTEXT}  cluster=$(kube_context_cluster)" >&2
+        ;;
+      *)
+        echo "▸ Target: ${ELASTIC_HOST} (direct — --context ${KUBE_CONTEXT} is NOT what routes this)" >&2
+        ;;
+    esac
+  fi
+  es_ensure_port_forward || exit 1
+
+  # Resolve the admin password from the TARGET cluster's own secret, so the
+  # credential always matches whatever --context selected. An explicit
+  # ELASTIC_PASSWORD still wins, for endpoints that are not this ECK cluster.
+  if [ -z "$ELASTIC_PASSWORD" ]; then
+    ELASTIC_PASSWORD=$(es_fetch_password_from_k8s "${ES_PF_NS:-logging}" \
+      "${ES_SECRET:-elasticsearch-es-elastic-user}" "${ELASTIC_USER}") || {
+      echo "  Pass ELASTIC_PASSWORD explicitly if this endpoint is not the ECK cluster." >&2
+      exit 1
+    }
+  fi
+fi
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
             show_help
+            ;;
+        --context)
+            # Re-assign rather than discard, so the loop agrees with the pre-scan
+            # above instead of leaving two sources of truth. The guarded double
+            # shift keeps a trailing bare `--context` from aborting under `set -e`.
+            shift
+            if [[ $# -gt 0 ]]; then KUBE_CONTEXT="$1"; shift; fi
+            ;;
+        --context=*)
+            KUBE_CONTEXT="${1#--context=}"
+            shift
             ;;
         -d|--days)
             RETENTION_DAYS="$2"
@@ -200,6 +278,10 @@ if [ "$CHECK_SETTINGS" = true ]; then
         fi
 
         # Extract main settings (flat_settings=true response: { "<index>": { "settings": { ... } } })
+        command -v jq >/dev/null 2>&1 || {
+            echo "ERROR: --check-settings needs jq, which is not installed." >&2
+            exit 1
+        }
         TOTAL_FIELDS=$(echo "$SETTINGS" | jq -r '.[].settings."index.mapping.total_fields.limit" // empty')
         SHARDS=$(echo "$SETTINGS" | jq -r '.[].settings."index.number_of_shards" // empty')
         REPLICAS=$(echo "$SETTINGS" | jq -r '.[].settings."index.number_of_replicas" // empty')
@@ -219,7 +301,7 @@ if [ "$CHECK_SETTINGS" = true ]; then
 
         # Count mapped fields
         FIELD_COUNT=$(es_curl "$ELASTIC_USER" "$ELASTIC_PASSWORD" \
-            "$ELASTIC_HOST/$INDEX/_mapping?pretty" | grep '"type"' | wc -l | tr -d ' ')
+            "$ELASTIC_HOST/$INDEX/_mapping?pretty" | grep '"type"' | wc -l | tr -d ' ' || true)
         echo "  mapped fields      : ~${FIELD_COUNT}"
         echo "---"
     done
@@ -267,7 +349,7 @@ if [ -n "$UPDATE_LIMIT" ]; then
 
         if [[ "$DRY_RUN" == "1" ]]; then
             echo "    (dry-run) PUT $ELASTIC_HOST/$INDEX/_settings -d '{\"index.mapping.total_fields.limit\": $UPDATE_LIMIT}'"
-            ((SUCCESS_COUNT++))
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             echo "---"
             continue
         fi
@@ -278,11 +360,11 @@ if [ -n "$UPDATE_LIMIT" ]; then
 
         if echo "$RESPONSE" | grep -q '"acknowledged":true'; then
             echo "✓ $INDEX: total_fields.limit → $UPDATE_LIMIT updated"
-            ((SUCCESS_COUNT++))
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
         else
             echo "✗ $INDEX: Failed to update settings"
             echo "  Response: $RESPONSE"
-            ((FAIL_COUNT++))
+            FAIL_COUNT=$((FAIL_COUNT + 1))
         fi
         echo "---"
     done
@@ -340,7 +422,7 @@ if [ "$DELETE_INDEX" = true ]; then
 
         if [[ "$DRY_RUN" == "1" ]]; then
             echo "    (dry-run) DELETE $ELASTIC_HOST/$INDEX"
-            ((SUCCESS_COUNT++))
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             echo "---"
             continue
         fi
@@ -351,11 +433,11 @@ if [ "$DELETE_INDEX" = true ]; then
         # Check if deletion was successful
         if echo "$RESPONSE" | grep -q '"acknowledged":true'; then
             echo "✓ Successfully deleted index: $INDEX"
-            ((SUCCESS_COUNT++))
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
         else
             echo "✗ Failed to delete index: $INDEX"
             echo "Response: $RESPONSE"
-            ((FAIL_COUNT++))
+            FAIL_COUNT=$((FAIL_COUNT + 1))
         fi
         echo "---"
     done
@@ -426,13 +508,38 @@ fi
 for INDEX in "${INDEX_NAMES[@]}"; do
     echo "Processing index: $INDEX"
 
-    # Delete documents older than threshold date
+    # Delete documents older than the threshold date MINUS the cohort anchor.
+    #
+    # The must_not clause is not optional and must stay in step with the scheduled
+    # counterpart in index-retention/manifests/cronjob.yaml. The cohort transform
+    # (transforms/dev-example-project-game-user-cohort.json) derives first_seen from a
+    # scripted_metric over the /users/create docs in THIS raw index. Age one of
+    # those out and the continuous transform re-triggers, recomputes first_seen as
+    # null, and silently corrupts a cohort record that cannot be reconstructed.
+    # The anchors cost almost nothing to keep — one doc per registration.
+    #
+    # This guard was missing here while the CronJob had it, so running the manual
+    # script "to do the same thing by hand" destroyed anchors the scheduled job
+    # deliberately preserves (found 2026-08-10).
     DELETE_QUERY='{
         "query": {
-            "range": {
-                "@timestamp": {
-                    "lt": "'$THRESHOLD_DATE'"
-                }
+            "bool": {
+                "filter": [
+                    {
+                        "range": {
+                            "@timestamp": {
+                                "lt": "'$THRESHOLD_DATE'"
+                            }
+                        }
+                    }
+                ],
+                "must_not": [
+                    {
+                        "term": {
+                            "data.requestPath.keyword": "/users/create"
+                        }
+                    }
+                ]
             }
         }
     }'

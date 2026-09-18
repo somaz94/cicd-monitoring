@@ -7,15 +7,26 @@
 # is the kubelet-managed symlink directory; this DaemonSet uses the standard
 # cri parser to read CRI-formatted container output.
 #
-# Coverage (3 INPUTs):
+# Coverage (5 INPUTs):
 #   - dev game    (ns dev-example-project)     → log_source dev-example-project-game
 #   - dev battle  (ns dev-example-project)     → log_source dev-example-project-battle
+#   - dev2 game   (ns dev2-example-project)    → log_source dev2-example-project-game
+#   - dev2 battle (ns dev2-example-project)    → log_source dev2-example-project-battle
 #   - qa game     (ns qa-example-project)      → log_source qa-example-project-game
 #
+# dev2 is a clone of the dev environment added 2026-09-15. Each INPUT is a
+# namespace+app glob, so a new environment is NOT picked up automatically --
+# adding one means an INPUT + a matching modify filter here, plus its index in
+# the elasticsearch/index-retention CronJob's INDICES allow-list. Miss the
+# second and the new indices grow without bound.
+#
+# A Kibana data view is a separate, manual step — logs reach ES without one, but
+# nothing shows in Discover until it exists.
+#
 # Each INPUT carries its own tag and DB file so state is independent and one
-# pod's tail position cannot mask another. The 3 modify filters set the same
+# pod's tail position cannot mask another. The modify filters set the same
 # log_source values the previous NFS aggregator used, so existing ES indices
-# (dev-example-project-game-*, dev-example-project-battle-*, qa-example-project-game-*) keep
+# (one per log_source above) keep
 # receiving — fluentd routing is unchanged. The historical stg INPUT was
 # removed 2026-05-19 (staging-example-project namespace has zero pods); to bring it
 # back, re-add an INPUT + modify filter and tag with example-project.stdout.stg.game.*.
@@ -117,7 +128,18 @@ config:
         Path /var/log/containers/dev-example-project-game-*_dev-example-project_*.log
         Path_Key filepath
         Tag example-project.stdout.dev.game.*
-        Parser cri
+        # containerd splits any stdout line over 16KB into several CRI entries flagged
+        # P(artial) / F(inal). `Parser cri` reads each physical line on its own and hands
+        # downstream a JSON fragment nothing can recover — the record reaches ES with
+        # data=null, so even fluentd's Authorization redaction is skipped. Only the
+        # built-in `cri` MULTILINE parser rejoins the chain. It does the same CRI field
+        # extraction, so it REPLACES `Parser cri` rather than accompanying it.
+        multiline.parser cri
+        # Sized for the REJOINED record, which can exceed the 32KB tail default that
+        # Skip_Long_Lines enforces. Raw file lines never reach it — containerd caps those
+        # at 16KB before fluent-bit reads them. Matches the prod-example-app values.
+        Buffer_Chunk_Size 1M
+        Buffer_Max_Size 5M
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
@@ -137,7 +159,10 @@ config:
         Path /var/log/containers/dev-example-project-battle-*_dev-example-project_*.log
         Path_Key filepath
         Tag example-project.stdout.dev.battle.*
-        Parser cri
+        # See the dev game INPUT above — rejoin containerd's >16KB P/F line splits.
+        multiline.parser cri
+        Buffer_Chunk_Size 1M
+        Buffer_Max_Size 5M
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
@@ -148,13 +173,56 @@ config:
         DB.sync normal
         storage.type filesystem
 
+    # Dev2 ExampleProject Game stdout
+    [INPUT]
+        Name tail
+        Path /var/log/containers/dev2-example-project-game-*_dev2-example-project_*.log
+        Path_Key filepath
+        Tag example-project.stdout.dev2.game.*
+        # See the dev game INPUT above — rejoin containerd's >16KB P/F line splits.
+        multiline.parser cri
+        Buffer_Chunk_Size 1M
+        Buffer_Max_Size 5M
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head false
+        DB /fluent-bit/state/tail-dev2-game.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
+
+    # Dev2 ExampleProject Battle stdout
+    [INPUT]
+        Name tail
+        Path /var/log/containers/dev2-example-project-battle-*_dev2-example-project_*.log
+        Path_Key filepath
+        Tag example-project.stdout.dev2.battle.*
+        # See the dev game INPUT above — rejoin containerd's >16KB P/F line splits.
+        multiline.parser cri
+        Buffer_Chunk_Size 1M
+        Buffer_Max_Size 5M
+        Mem_Buf_Limit 50MB
+        Skip_Long_Lines On
+        Skip_Empty_Lines On
+        Refresh_Interval 10
+        Read_from_Head false
+        DB /fluent-bit/state/tail-dev2-battle.db
+        DB.locking true
+        DB.sync normal
+        storage.type filesystem
+
     # QA ExampleProject Game stdout
     [INPUT]
         Name tail
         Path /var/log/containers/qa-example-project-game-*_qa-example-project_*.log
         Path_Key filepath
         Tag example-project.stdout.qa.game.*
-        Parser cri
+        # See the dev game INPUT above — rejoin containerd's >16KB P/F line splits.
+        multiline.parser cri
+        Buffer_Chunk_Size 1M
+        Buffer_Max_Size 5M
         Mem_Buf_Limit 50MB
         Skip_Long_Lines On
         Skip_Empty_Lines On
@@ -167,7 +235,7 @@ config:
 
   filters: |
     # Enrich with Kubernetes metadata (namespace, pod, labels, annotations) for
-    # all 3 INPUTs. Adds a nested "kubernetes" object — useful for Kibana
+    # every INPUT. Adds a nested "kubernetes" object — useful for Kibana
     # filtering.
     [FILTER]
         Name kubernetes
@@ -177,9 +245,9 @@ config:
         K8S-Logging.Parser Off
         K8S-Logging.Exclude Off
 
-    # Raw-JSON parser — all 3 components emit valid JSON as the first character
-    # of stdout (dev.game = Pino NDJSON, dev.battle = Serilog JSON, qa.game =
-    # Pino NDJSON since 2026-05-22). Parse straight from `message` (the cri
+    # Raw-JSON parser — every component emits valid JSON as the first character
+    # of stdout: the game components are Pino NDJSON (qa.game since 2026-05-22),
+    # the battle components emit a .NET structured-logging shape. Parse straight from `message` (the cri
     # parser key). The Match uses a single wildcard pattern example-project.stdout.*
     # because fluent-bit's [FILTER] Match is a single-pattern string (unlike
     # [OUTPUT] routing) — space-separated multi-patterns silently match nothing.
@@ -213,6 +281,26 @@ config:
         Match example-project.stdout.dev.battle.*
         Set log_source dev-example-project-battle
         Set environment dev
+        Set app example-project
+        Set component battle
+        Set label battle
+        Set collection_path stdout
+
+    [FILTER]
+        Name modify
+        Match example-project.stdout.dev2.game.*
+        Set log_source dev2-example-project-game
+        Set environment dev2
+        Set app example-project
+        Set component game
+        Set label game
+        Set collection_path stdout
+
+    [FILTER]
+        Name modify
+        Match example-project.stdout.dev2.battle.*
+        Set log_source dev2-example-project-battle
+        Set environment dev2
         Set app example-project
         Set component battle
         Set label battle

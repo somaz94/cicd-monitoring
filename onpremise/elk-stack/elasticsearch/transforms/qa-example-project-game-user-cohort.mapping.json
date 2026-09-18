@@ -1,21 +1,23 @@
 {
   "settings": {
     "number_of_shards": 1,
-    "number_of_replicas": 1
+    "auto_expand_replicas": "0-1"
   },
   "mappings": {
     "_meta": {
       "managed_by": "kuberntes-infra observability/logging/elasticsearch/transforms",
-      "purpose": "Explicit mapping for the dest index of transform 'qa-example-project-game-user-cohort'. Pinning active_dates as keyword (not date) is required so the Kibana data view runtime fields d1_live..d30_live can do String == String comparison. Without this, the transform falls back to dynamic mapping and infers active_dates as date from the ISO-date strings it emits, which breaks every retention runtime field (always emits 0)."
+      "purpose": "Explicit mapping for the dest index of transform 'qa-example-project-game-user-cohort'. Pinning active_dates as keyword (not date) is required so the Kibana data view runtime fields d1_live..d30_live can do String == String comparison. Without this, the transform falls back to dynamic mapping and infers active_dates as date from the ISO-date strings it emits, which breaks every retention runtime field (always emits 0). The *_cst pair (active_dates_cst / active_days_count_cst) is the Asia/Shanghai twin of the same facts and carries the identical keyword constraint for the identical reason — it feeds the CST data view's runtime fields, which the cst Space's retention panels read. Both zones are precomputed here because a cohort day-boundary cannot be re-derived at query time once the date string is written: a Space's dateFormat:tz only re-renders timestamps, it cannot re-bucket a date string that was already written in the other zone."
     },
     "properties": {
-      "user_id":             { "type": "keyword" },
-      "first_seen":          { "type": "date" },
-      "last_seen":           { "type": "date" },
-      "active_dates":        { "type": "keyword" },
-      "active_days_count":   { "type": "long" },
-      "total_events":        { "type": "long" },
-      "max_cleared_chapter": { "type": "float" }
+      "user_id":               { "type": "keyword" },
+      "first_seen":            { "type": "date" },
+      "last_seen":             { "type": "date" },
+      "active_dates":          { "type": "keyword" },
+      "active_days_count":     { "type": "long" },
+      "active_dates_cst":      { "type": "keyword" },
+      "active_days_count_cst": { "type": "long" },
+      "total_events":          { "type": "long" },
+      "max_cleared_chapter":   { "type": "float" }
     }
   }
 }

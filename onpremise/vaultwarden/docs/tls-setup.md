@@ -1,11 +1,24 @@
 # TLS Setup for Vaultwarden
 
 Vaultwarden Web Vault requires HTTPS (Secure Context) for the browser's SubtleCrypto API.
-This document covers the self-signed certificate approach used in this deployment.
+This document covers where TLS is terminated today, plus the self-signed certificate approach on the Ingress path that was retired on 2026-04-17.
 
 <br/>
 
-## Self-Signed Certificate (Current Setup)
+## Current TLS Termination (NGF Gateway)
+
+HTTPS is terminated by the NGF `ngf` Gateway in the `nginx-gateway` namespace using the `wildcard-example-tls` certificate.
+vaultwarden only attaches to that Gateway through an HTTPRoute — **this component owns no certificate.**
+
+- `ingress.enabled: false` in `values/dev.yaml` — the Ingress path is disabled
+- The self-signed `vaultwarden-tls` Secret was removed on 2026-04-17 as unused
+- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see [TLS Wildcard Setup](../../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md)
+
+Renewing the self-signed certificate below therefore changes nothing in the actual request path.
+
+<br/>
+
+## Self-Signed Certificate (Legacy — Ingress path, retired 2026-04-17)
 
 ### Generate and Apply
 

@@ -6,6 +6,14 @@ Kibana and Elasticsearch share the same ECK operator/webhook and are managed by 
 
 <br/>
 
+> 🔴 **Read this first — ES / Kibana / eck-operator are ArgoCD pull-managed.**
+>
+> None of the three has a `helmfile.yaml`. The version SSOT is each `argocd/<release>.yaml`, and the Applications run `autoSync: true` with selfHeal. So `helmfile apply` has nothing to apply, and `./upgrade.py --rollback` rewrites local files only — **the cluster never sees it.** The only real rollback path is a revert commit landing on master, and an ES downgrade is still blocked by the admission webhook; the main guide above carries the full version of this note.
+>
+> The dependency and ordering constraints in "Kibana-specific notes" below are unaffected by the migration and still hold — only the commands were updated for ArgoCD.
+
+<br/>
+
 ## Kibana-specific notes
 
 ### Dependency CR constraint
@@ -23,13 +31,13 @@ This means **Elasticsearch must be upgraded first** before Kibana can be upgrade
 
 ### Upgrade order
 
-1. In `observability/logging/elasticsearch/`: `./upgrade.py && helmfile apply`
+1. In `observability/logging/elasticsearch/`: `./upgrade.py`, then commit the change to master (autoSync applies it; `argocd app sync infra-elasticsearch` if it has to happen now)
 2. Wait for ES CR to become Ready on the new version
-3. In `observability/logging/kibana/`: `./upgrade.py && helmfile apply`
+3. In `observability/logging/kibana/`: `./upgrade.py`, then commit the same way (`argocd app sync infra-kibana`)
 
 ### Rollback order
 
-No specific order required. Run `./upgrade.py --rollback` independently in each component. The auto-handler (webhook, helm failed release, operator management) works identically for downgrades.
+No specific order is required, but **`./upgrade.py --rollback` alone does not roll anything back** — it rewrites local files only, so each component's result has to land on master as a revert commit before the cluster follows. For downgrades, the role of the auto-handlers (webhook release and so on) is described in the main guide's rollback section.
 
 <br/>
 

@@ -1,0 +1,166 @@
+# Harbor database backup CronJob.
+#
+# The upstream goharbor/harbor chart ships no backup job, unlike the somaz94 charts behind
+# ghost / keycloak-postgresql / example-project-db, which render their own. So this lives here as a
+# raw manifest alongside httproutes.yaml, the other thing the upstream chart does not render.
+#
+# Scope is the database only — see db-backup-pvc.yaml for why the 85G registry blob store is
+# deliberately NOT backed up.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: harbor-db-backup
+  namespace: harbor
+  labels:
+    app.kubernetes.io/name: harbor-db-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: harbor
+spec:
+  # 04:00 KST daily. The other backups in this cluster already cluster around the small
+  # hours — etcd-backup at 02:00 KST, and ghost / vaultwarden / keycloak / example-project-db all at
+  # "0 18 * * *" with no timeZone, which is 03:00 KST — and they share one NFS server. 04:00
+  # keeps this off both slots. timeZone is set explicitly rather than relying on the UTC
+  # default so the schedule reads as the time it actually runs.
+  schedule: "0 4 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  # 3 matches every other backup CronJob in this cluster (ghost, vaultwarden,
+  # etcd-backup, example-project-db, es-index-retention). Job history is only the log
+  # trail — the dumps themselves live on the backup PVC with their own retention.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 604800   # Clean up finished Job after 7d
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: harbor-db-backup
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              # postgres:18-alpine matches the server: harbor-db v2.15.2 reports
+              # server_version 18.3. pg_dump refuses to run against a server NEWER than
+              # itself, and a dump taken by a newer client can emit syntax the older server
+              # cannot restore — so the client major version tracks the server, and this tag
+              # must be revisited whenever the Harbor chart bumps its bundled postgres.
+              #
+              # That revisit was missed once: chart 1.19.2 moved harbor-db from postgres 15
+              # to 18, and every run from 2026-08-13 died on "server version mismatch" until
+              # this pin caught up. Treat a harbor-db image change as a change to this line.
+              #
+              # Pulled from docker.io rather than the Harbor mirror the rest of this cluster
+              # uses. Harbor runs in this cluster and this job exists for the case where
+              # Harbor is broken; a backup that has to pull its own image through the thing
+              # it is backing up is not a backup.
+              image: postgres:18-alpine
+              imagePullPolicy: IfNotPresent
+              env:
+                # Same Secret the harbor-database StatefulSet reads, so a credential
+                # rotation cannot leave this job authenticating with a stale password.
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: harbor-database
+                      key: POSTGRES_PASSWORD
+                - name: DB_HOST
+                  value: harbor-database
+                - name: DB_PORT
+                  value: "5432"
+                - name: DB_USER
+                  value: postgres
+                # Harbor 2.x keeps everything in one database. Verified 2026-08-05: the
+                # server holds only `registry` plus postgres/template0/template1.
+                - name: TARGET_DB
+                  value: registry
+                - name: BACKUP_DIR
+                  value: /backup-data
+                - name: RETENTION_DAYS
+                  value: "30"
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  # pipefail matters: pg_dump's output is redirected to a file, and without
+                  # it a failing pg_dump still leaves a zero-exit shell and a truncated file.
+                  set -eu
+                  set -o pipefail
+                  DATE=$(date +%Y%m%d)
+                  OUT="${BACKUP_DIR}/harbor-${TARGET_DB}-${DATE}.sql"
+
+                  # The redirect below creates $OUT before pg_dump has written anything, so a
+                  # pg_dump that fails outright — version mismatch, bad credentials, refused
+                  # connection — leaves an empty file on the volume while `set -e` exits past
+                  # the verification block that would have removed it. That is exactly how a
+                  # 0-byte harbor-registry-20260813.sql ended up sitting in the inventory
+                  # listing looking like a real dump. The trap owns cleanup on every failure
+                  # path; the verified path disarms it below.
+                  trap 'rm -f "$OUT"' EXIT
+
+                  echo "[$(date)] Dumping ${TARGET_DB} from ${DB_HOST}:${DB_PORT} -> $(basename "$OUT")"
+                  pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" \
+                    --clean --if-exists --no-owner --no-acl \
+                    "$TARGET_DB" > "$OUT"
+
+                  # Verify before trusting it.
+                  #
+                  # A dump cut short by a dropped connection or a full volume looks like a
+                  # valid .sql file on disk, and the discovery moment would otherwise be a
+                  # restore attempt during an outage. pg_dump writes a terminating marker
+                  # only after it has written everything, so its presence is what separates
+                  # a complete dump from a plausible-looking prefix.
+                  echo "[$(date)] Verifying ${OUT}"
+                  if ! tail -n 5 "$OUT" | grep -q "PostgreSQL database dump complete"; then
+                    echo "  FAILED: end-of-dump marker missing — the dump is truncated." >&2
+                    exit 1
+                  fi
+                  echo "  OK: $(du -h "$OUT" | cut -f1)"
+
+                  # Verified complete, so it must now survive every later exit path. Disarming
+                  # here rather than at the end of the script is deliberate: retention and the
+                  # inventory listing below must never be able to delete the dump just taken.
+                  trap - EXIT
+
+                  # Retention. -mtime is whole days, so +30 keeps roughly a month of dailies.
+                  DEL=$(find "$BACKUP_DIR" -name "harbor-*.sql" -mtime "+${RETENTION_DAYS}" -delete -print | wc -l)
+                  echo "[$(date)] Retention: deleted ${DEL} dump(s) older than ${RETENTION_DAYS} days"
+
+                  # The log doubles as the inventory a restore starts from.
+                  echo
+                  echo "=== Dumps on volume ==="
+                  ls -lh "$BACKUP_DIR"/harbor-*.sql 2>/dev/null || echo "  (none)"
+              securityContext:
+                # The postgres image's own unprivileged user. Nothing here reads host paths,
+                # so unlike etcd-backup this needs no root and no added capabilities. The
+                # sibling keycloak-postgresql-backup runs as root only because it declares no
+                # securityContext at all — overriding `command` skips the entrypoint that
+                # would otherwise drop privileges.
+                #
+                # 70, not 999: the alpine variant of the postgres image numbers postgres as
+                # uid/gid 70, while the Debian-based `postgres:18` uses 999. Re-verified
+                # against postgres:18-alpine on 2026-08-14 — the image still does
+                # `addgroup -g 70` / `adduser -u 70`, so the 15 -> 18 bump did not move it.
+                # Changing the image variant means changing these two numbers.
+                runAsUser: 70
+                runAsGroup: 70
+                runAsNonRoot: true
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup-data
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: harbor-db-backup

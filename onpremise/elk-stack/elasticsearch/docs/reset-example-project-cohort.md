@@ -15,7 +15,7 @@ Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/res
 | 0 | Pre-flight — confirm transform exists |
 | 1 | `POST /_transform/<env>-example-project-game-user-cohort/_stop?wait_for_completion=true&force=true` |
 | 2 | `DELETE /<env>-example-project-game-user-cohort` (cohort destination index) |
-| 2a | `PUT /<env>-example-project-game-user-cohort` with the explicit mapping from `../transforms/<env>-example-project-game-user-cohort.mapping.json` — pinning `active_dates` as `keyword` so the dashboard retention runtime fields (`d1_live..d30_live`) keep working. Skipped (with a warning) when the mapping file is absent — falling back to ES dynamic mapping would infer `active_dates` as `date` and silently zero every retention metric. |
+| 2a | `PUT /<env>-example-project-game-user-cohort` with the explicit mapping from `../transforms/<env>-example-project-game-user-cohort.mapping.json` — pinning `active_dates` **and its CST twin `active_dates_cst`** as `keyword` so the retention runtime fields (`d1_live..d30_live`) keep working in both Spaces (`default` KST / `cst` CST). Skipped (with a warning) when the mapping file is absent — falling back to ES dynamic mapping would infer them as `date` and silently zero every retention metric. The mapping file is the single source of truth, so this step needs no change as more zones are added. |
 | 3 | `DELETE /<env>-example-project-game` (raw index) |
 | 4 | `kubectl -n logging rollout restart daemonset/fluent-bit` + `rollout status` (skip with `--skip-fluent-bit-restart`) |
 | 5 | Poll `_count > 0` until the raw index has been auto-recreated (default 10s). On timeout, PUT an empty raw index as a placeholder — step 6/7's transform reset/start require the source to exist. fluent-bit populates it via dynamic mapping when the first doc arrives. |
@@ -100,16 +100,16 @@ kubectl -n logging exec elasticsearch-es-default-0 -c elasticsearch -- \
 cd observability/logging/elasticsearch/scripts
 
 # Help
-./reset-example-project-cohort.sh -h
+./reset-example-project-cohort.sh --context onprem-dev -h
 
 # Default — typed-word prompt 'reset qa' required to proceed
-./reset-example-project-cohort.sh --env qa
+./reset-example-project-cohort.sh --context onprem-dev --env qa
 
 # Options
-./reset-example-project-cohort.sh --env dev --yes                # skip prompt (CI / automation)
-./reset-example-project-cohort.sh --env qa --dry-run --yes       # print steps without touching cluster
-./reset-example-project-cohort.sh --env qa --skip-fluent-bit-restart # fluent-bit already rotated manually
-./reset-example-project-cohort.sh --env qa --wait-data-seconds 60    # raw repopulation polling timeout (default 10)
+./reset-example-project-cohort.sh --context onprem-dev --env dev --yes                # skip prompt (CI / automation)
+./reset-example-project-cohort.sh --context onprem-dev --env qa --dry-run --yes       # print steps without touching cluster
+./reset-example-project-cohort.sh --context onprem-dev --env qa --skip-fluent-bit-restart # fluent-bit already rotated manually
+./reset-example-project-cohort.sh --context onprem-dev --env qa --wait-data-seconds 60    # raw repopulation polling timeout (default 10)
 ```
 
 <br/>

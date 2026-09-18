@@ -1,6 +1,6 @@
 # Deploy Vaultwarden (Bitwarden-compatible password manager) via helmfile.
 # Consume upstream guerzon/vaultwarden chart.
-# Chart version pinned. Bump via ./upgrade.sh after verifying the new release.
+# Chart version pinned. Bump via ./upgrade.py after verifying the new release.
 
 repositories:
   - name: guerzon
@@ -19,7 +19,7 @@ releases:
   - name: vaultwarden
     chart: guerzon/vaultwarden
     namespace: vaultwarden
-    version: 0.43.1
+    version: 0.46.0
     values:
       - values/dev.yaml
 

@@ -2,8 +2,12 @@
 # =============================================================================
 # Node Exporter Installation Playbook
 #
-# Installs Prometheus node_exporter as a systemd service on target hosts.
-# Supports physical servers and VMs via inventory groups.
+# Installs Prometheus node_exporter on target hosts: a systemd service on
+# Linux, a launchd LaunchDaemon on macOS. Supports physical servers, VMs and
+# build machines via inventory groups.
+#
+# The OS split lives in group_vars/all.yml — every derived variable resolves on
+# Linux to the literal it replaced, so the Linux path is unchanged.
 #
 # Usage:
 #   ansible-playbook -i inventory.ini playbook.yml            # Install
@@ -22,7 +26,7 @@
     # 0. Pre-check: Verify port is available
     # ------------------------------------------------------------------
     - name: Check if port {{ node_exporter_port }} is already in use
-      shell: ss -tlnp | grep ':{{ node_exporter_port }} ' || true
+      shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check
       changed_when: false
 
@@ -39,12 +43,17 @@
     # ------------------------------------------------------------------
     # 1. Create system user
     # ------------------------------------------------------------------
+    # macOS has no portable way to create a nologin service account through the
+    # `user` module (it needs dscl plus manual UID allocation), so darwin hosts
+    # run the exporter as an existing unprivileged login instead — see
+    # node_exporter_run_user in group_vars/all.yml.
     - name: Create node_exporter system user
       user:
         name: node_exporter
         system: true
         shell: /usr/sbin/nologin
         create_home: no
+      when: ansible_facts.system != 'Darwin'
 
     # ------------------------------------------------------------------
     # 2. Download and install binary
@@ -61,14 +70,26 @@
         src: "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
         dest: /tmp
         remote_src: yes
+      when: ansible_facts.system != 'Darwin'
+      tags: [update]
+
+    # macOS ships bsdtar as /usr/bin/tar and the unarchive module refuses it
+    # ("GNU tar required"), even though bsdtar handles this .tar.gz correctly.
+    # Shelling out keeps the host free of a gnu-tar dependency; `creates` is
+    # what makes the task idempotent.
+    - name: Extract node_exporter (bsdtar)
+      command: "tar -xzf /tmp/node_exporter-{{ node_exporter_version }}.tar.gz -C /tmp"
+      args:
+        creates: "/tmp/{{ node_exporter_dist }}/node_exporter"
+      when: ansible_facts.system == 'Darwin'
       tags: [update]
 
     - name: Install node_exporter binary
       copy:
-        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+        src: "/tmp/{{ node_exporter_dist }}/node_exporter"
         dest: "{{ node_exporter_bin }}"
-        owner: node_exporter
-        group: node_exporter
+        owner: "{{ node_exporter_run_user }}"
+        group: "{{ node_exporter_run_group }}"
         mode: "0755"
         remote_src: yes
       notify: Restart node_exporter
@@ -80,20 +101,21 @@
         state: absent
       loop:
         - "/tmp/node_exporter-{{ node_exporter_version }}.tar.gz"
-        - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+        - "/tmp/{{ node_exporter_dist }}"
       tags: [update]
 
     # ------------------------------------------------------------------
-    # 3. Configure systemd service
+    # 3. Configure the service (systemd on Linux, launchd on macOS)
     # ------------------------------------------------------------------
     - name: Deploy systemd unit file
       template:
         src: templates/node_exporter.service.j2
-        dest: /etc/systemd/system/node_exporter.service
+        dest: "{{ node_exporter_systemd_unit }}"
         owner: root
         group: root
         mode: "0644"
       notify: Restart node_exporter
+      when: ansible_facts.system != 'Darwin'
 
     - name: Enable and start node_exporter
       systemd:
@@ -101,10 +123,93 @@
         state: started
         enabled: true
         daemon_reload: yes
+      when: ansible_facts.system != 'Darwin'
+
+    # launchd opens StandardOutPath as the job's UserName, so an unprivileged
+    # run user cannot create it under root-owned /var/log — the job then fails
+    # to spawn with no diagnostic beyond "connection refused" on the port.
+    # Pre-creating the file with the right owner is what makes the daemon start.
+    - name: Ensure launchd log file exists and is writable by the run user
+      file:
+        path: "{{ node_exporter_launchd_log }}"
+        state: touch
+        owner: "{{ node_exporter_run_user }}"
+        group: "{{ node_exporter_run_group }}"
+        mode: "0644"
+        modification_time: preserve
+        access_time: preserve
+      when: ansible_facts.system == 'Darwin'
+
+    - name: Deploy launchd LaunchDaemon plist
+      template:
+        src: templates/node_exporter.plist.j2
+        dest: "{{ node_exporter_launchd_plist }}"
+        owner: root
+        group: wheel
+        mode: "0644"
+      notify: Restart node_exporter
+      when: ansible_facts.system == 'Darwin'
+
+    # Re-running `bootstrap` on a loaded daemon fails with rc 5 ("Input/output
+    # error" — launchd does not say "already loaded"), so the load is guarded by
+    # an explicit state check rather than by pattern-matching stderr.
+    - name: Check whether node_exporter LaunchDaemon is loaded
+      command: "launchctl print system/{{ node_exporter_launchd_label }}"
+      register: launchd_loaded
+      changed_when: false
+      failed_when: false
+      when: ansible_facts.system == 'Darwin'
+
+    - name: Load node_exporter LaunchDaemon
+      command: "launchctl bootstrap system {{ node_exporter_launchd_plist }}"
+      when:
+        - ansible_facts.system == 'Darwin'
+        - launchd_loaded.rc | default(1) != 0
+
+    # launchd holds the plist it read at bootstrap time, so a daemon loaded
+    # before an edit keeps running the old arguments while the template task
+    # reports `ok` — the file on disk is already correct. Nothing else in the
+    # play can see that, which is how an interrupted run leaves a monitoring
+    # agent silently running a stale config. Comparing the loaded arguments
+    # against the rendered plist is what closes the gap.
+    - name: Detect drift between the loaded LaunchDaemon and the plist on disk
+      shell: |
+        want=$(/usr/libexec/PlistBuddy -c "Print :ProgramArguments" \
+                 "{{ node_exporter_launchd_plist }}" | tr -d ' ' | grep '^-' || true)
+        have=$(launchctl print system/{{ node_exporter_launchd_label }} 2>/dev/null | tr -d ' \t')
+        for arg in $want; do
+          printf '%s' "$have" | grep -qF -- "$arg" || { echo DRIFT; exit 0; }
+        done
+        echo MATCH
+      register: launchd_drift
+      changed_when: false
+      failed_when: false
+      when:
+        - ansible_facts.system == 'Darwin'
+        - launchd_loaded.rc | default(1) == 0
+
+    - name: Reload LaunchDaemon when the loaded job does not match the plist
+      shell: |
+        launchctl bootout system/{{ node_exporter_launchd_label }} 2>/dev/null || true
+        launchctl bootstrap system {{ node_exporter_launchd_plist }}
+      when:
+        - ansible_facts.system == 'Darwin'
+        - "'DRIFT' in (launchd_drift.stdout | default(''))"
+
+    - name: Enable node_exporter LaunchDaemon at boot
+      command: "launchctl enable system/{{ node_exporter_launchd_label }}"
+      changed_when: false
+      when: ansible_facts.system == 'Darwin'
 
     # ------------------------------------------------------------------
     # 4. Verify
     # ------------------------------------------------------------------
+    # Handlers normally fire after the last task, which would leave the check
+    # below testing the pre-restart process. Flushing first makes the
+    # verification describe the state the play actually leaves behind.
+    - name: Apply pending service restarts before verifying
+      meta: flush_handlers
+
     - name: Verify node_exporter is responding
       uri:
         url: "http://localhost:{{ node_exporter_port }}/metrics"
@@ -119,9 +224,23 @@
       debug:
         msg: "node_exporter v{{ node_exporter_version }} is running on {{ inventory_hostname }} ({{ ansible_host }}:{{ node_exporter_port }})"
 
+  # Two handlers share one `listen` topic so callers keep notifying the single
+  # name "Restart node_exporter" regardless of the target OS.
   handlers:
-    - name: Restart node_exporter
+    - name: Restart node_exporter (systemd)
+      listen: Restart node_exporter
       systemd:
         name: node_exporter
         state: restarted
         daemon_reload: yes
+      when: ansible_facts.system != 'Darwin'
+
+    # `kickstart -k` only respawns the process — launchd keeps the plist it read
+    # at bootstrap time, so an edited plist (a new flag, a changed path) would
+    # never take effect. A changed plist needs a full unload/load.
+    - name: Restart node_exporter (launchd)
+      listen: Restart node_exporter
+      shell: |
+        launchctl bootout system/{{ node_exporter_launchd_label }} 2>/dev/null || true
+        launchctl bootstrap system {{ node_exporter_launchd_plist }}
+      when: ansible_facts.system == 'Darwin'

@@ -13,6 +13,14 @@ fi
 set -euo pipefail
 
 TRANSFORMS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Target kube-context. REQUIRED — no default, no fallback to the current
+# context. The on-prem and AWS clusters both expose logging/elasticsearch-es-
+# default-0, so a bare kubectl succeeds against whichever context is current.
+# Here that means PUT/_start of a transform on the wrong cluster, and with
+# --replace it also STOPS and DELETES the existing transform of that id first.
+# See observability/logging/kibana-aws/dashboards/apply.sh for the incident that
+# prompted this (2026-08-03, wrong-cluster apply clobbered on-prem data views).
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 NAMESPACE="${NAMESPACE:-logging}"
 ES_POD="${ES_POD:-elasticsearch-es-default-0}"
 ES_CONTAINER="${ES_CONTAINER:-elasticsearch}"
@@ -34,12 +42,17 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--file PATH]... [--preview-only] [--replace] [--no-start] [--dry-run]
+Usage: $(basename "$0") --context CTX [--file PATH]... [--preview-only] [--replace]
+                 [--no-start] [--dry-run]
 
 Registers (PUT) and starts ES Transform jobs from JSON definitions in this directory.
 Default: every "<name>.json" → transform id="<name>", PUT (skip if exists) + start.
 
 Options:
+  --context CTX       REQUIRED. kube-context for every kubectl call. No default
+                      and no fallback to the current context — the on-prem and
+                      AWS clusters have identically named logging pods, so an
+                      implicit context targets the wrong cluster.
   --file PATH         Apply only the given JSON. May be repeated.
   --preview-only      Call _preview only (no PUT, no start). Useful for validation.
   --replace           Stop + delete + re-PUT existing transforms (use after definition changes).
@@ -47,6 +60,7 @@ Options:
   --dry-run           Print actions without contacting ES.
 
 Env overrides:
+  KUBE_CONTEXT=$KUBE_CONTEXT
   NAMESPACE=$NAMESPACE  ES_POD=$ES_POD
   ES_SVC=$ES_SVC  ES_PORT=$ES_PORT  ES_SCHEME=$ES_SCHEME
   ES_SECRET=$ES_SECRET  ES_USER=$ES_USER
@@ -60,6 +74,10 @@ NO_START=0
 EXPLICIT_FILES=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --file)
       shift; [ $# -gt 0 ] || { err "--file requires PATH"; exit 2; }
       EXPLICIT_FILES+=("$1")
@@ -73,6 +91,17 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run / --preview-only: stating the target cluster is
+# the point, and a preview whose context is only supplied on the real run has
+# verified nothing.
+KUBE_CONTEXT_HINT="${NAMESPACE}/${ES_POD}"
+_KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
+require_kube_context
 
 resolve_files() {
   if [ ${#EXPLICIT_FILES[@]} -gt 0 ]; then
@@ -106,7 +135,7 @@ if [ ${#FILES[@]} -eq 0 ]; then
 fi
 
 if [ "$DRY_RUN" != "1" ]; then
-  PASS=$(kubectl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
+  PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   [ -z "$PASS" ] && { err "Failed to read elastic password"; exit 1; }
 fi
 
@@ -119,16 +148,22 @@ es_curl() {
     log "    (dry-run) curl $method ${ES_URL}${path}"
     return 0
   fi
-  kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -H 'Content-Type: application/json' \
       -X "$method" "${ES_URL}${path}" "$@"
 }
 
+# `-i` ONLY when something is actually piped in (the `--data-binary @- < file`
+# calls below). With an idle stdin, kubectl tears the connection down mid-response
+# and the reply arrives TRUNCATED at a varying offset ("connection reset by peer")
+# — measured 2026-08-03 on the sibling kibana-aws export.sh: 10021 / 17137 bytes
+# across two runs vs a consistent 32321 without `-i`. A piped file closes stdin at
+# EOF, so those three calls are safe.
 transform_exists() {
   local id="$1"
   if [ "$DRY_RUN" = "1" ]; then return 1; fi
   local code
-  code=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  code=$(kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       "${ES_URL}/_transform/${id}")
   [ "$code" = "200" ]
@@ -145,7 +180,7 @@ index_exists() {
   local idx="$1"
   if [ "$DRY_RUN" = "1" ]; then return 1; fi
   local code
-  code=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  code=$(kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       "${ES_URL}/${idx}")
   [ "$code" = "200" ]
@@ -174,7 +209,7 @@ apply_dest_mapping_if_any() {
     return 0
   fi
   local resp
-  resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  resp=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -H 'Content-Type: application/json' \
       -X PUT "${ES_URL}/${dest}" --data-binary @- < "$mapping_file")
   echo "$resp" | python3 -c "
@@ -201,7 +236,7 @@ apply_one() {
       return 0
     fi
     local resp
-    resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    resp=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
       curl -sk -u "${ES_USER}:${PASS}" -H 'Content-Type: application/json' \
         -X POST "${ES_URL}/_transform/_preview" --data-binary @- < "$file")
     echo "$resp" | python3 -c "
@@ -221,9 +256,9 @@ for row in preview[:3]:
   if transform_exists "$id"; then
     if [ "$REPLACE" = "1" ]; then
       log "  existing → stop + delete (--replace)"
-      kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+      kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
         curl -sk -u "${ES_USER}:${PASS}" -X POST "${ES_URL}/_transform/${id}/_stop?wait_for_completion=true&force=true" > /dev/null
-      kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+      kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
         curl -sk -u "${ES_USER}:${PASS}" -X DELETE "${ES_URL}/_transform/${id}?force=true" > /dev/null
     else
       log "  exists → skip PUT (use --replace to redefine)"
@@ -241,7 +276,7 @@ for row in preview[:3]:
     log "    (dry-run)"
   else
     local put_resp
-    put_resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+    put_resp=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
       curl -sk -u "${ES_USER}:${PASS}" -H 'Content-Type: application/json' \
         -X PUT "${ES_URL}/_transform/${id}" --data-binary @- < "$file")
     echo "$put_resp" | python3 -c "
@@ -268,7 +303,7 @@ _start_if_needed() {
     return 0
   fi
   local start_resp
-  start_resp=$(kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  start_resp=$(kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -X POST "${ES_URL}/_transform/${id}/_start")
   echo "$start_resp" | python3 -c "
 import json, sys
@@ -280,6 +315,7 @@ print('  START ok:', d.get('acknowledged', d))
 }
 
 log "ES Transforms apply"
+log "  context=${KUBE_CONTEXT}  cluster=$(kube_context_cluster)"
 log "  namespace=$NAMESPACE  pod=$ES_POD  es=$ES_URL"
 log "  preview-only=$PREVIEW_ONLY  replace=$REPLACE  no-start=$NO_START  dry-run=$DRY_RUN"
 log "  files (${#FILES[@]}):"

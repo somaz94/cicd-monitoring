@@ -79,7 +79,7 @@ So the link and the apiserver are both fine; only helm's 7 MB full-object list b
 Both helmfiles now set `historyMax: 3`. Helm prunes old revisions on every upgrade, keeping the history query around 2 MB.
 
 - `cicd/argo-cd/helmfile.yaml`
-- `cicd/argo-cd-aws/helmfile.yaml`
+- `cicd/argo-cd-aws/helmfile.yaml.gotmpl`
 
 **The standard form is the top-level `helmDefaults`** (see "Repo-wide standardization" below). It was originally added per-release, but that form has a trap: a release added to the same helmfile later silently misses the cap. It was therefore converted to `helmDefaults`.
 
@@ -110,7 +110,7 @@ helmDefaults:
   historyMax: 3
 ```
 
-This block replaces the earlier per-release form on `cicd/argo-cd/helmfile.yaml` and `cicd/argo-cd-aws/helmfile.yaml`.
+This block replaces the earlier per-release form on `cicd/argo-cd/helmfile.yaml` and `cicd/argo-cd-aws/helmfile.yaml.gotmpl`.
 With a per-release `historyMax`, a release added to that helmfile later would silently miss the cap.
 `helmDefaults` applies to every release in the file, including releases added in the future.
 

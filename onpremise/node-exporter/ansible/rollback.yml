@@ -51,14 +51,22 @@
       systemd:
         name: node_exporter
         state: stopped
+      when: ansible_facts.system != 'Darwin'
+
+    - name: Unload node_exporter LaunchDaemon
+      command: "launchctl bootout system/{{ node_exporter_launchd_label }}"
+      register: launchd_bootout
+      changed_when: launchd_bootout.rc == 0
+      failed_when: false
+      when: ansible_facts.system == 'Darwin'
 
     - name: Restore backup binary
       copy:
         src: "{{ node_exporter_bin }}.bak"
         dest: "{{ node_exporter_bin }}"
         remote_src: true
-        owner: node_exporter
-        group: node_exporter
+        owner: "{{ node_exporter_run_user }}"
+        group: "{{ node_exporter_run_group }}"
         mode: "0755"
 
     - name: Start node_exporter
@@ -66,6 +74,13 @@
         name: node_exporter
         state: started
         daemon_reload: true
+      when: ansible_facts.system != 'Darwin'
+
+    - name: Load node_exporter LaunchDaemon
+      command: "launchctl bootstrap system {{ node_exporter_launchd_plist }}"
+      register: launchd_bootstrap
+      changed_when: launchd_bootstrap.rc == 0
+      when: ansible_facts.system == 'Darwin'
 
     # ------------------------------------------------------------------
     # 4. Verify

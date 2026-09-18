@@ -2,7 +2,7 @@
 # (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
 # One file per helmfile release: the generator emits one Application named `infra-<releaseName>`.
 #
-# Phase 3-2 target. Adopts the live helmfile release 'fluentd' (logging ns, chart 0.5.3) in place.
+# Phase 3-2 target. Adopts the live helmfile release 'fluentd' (logging ns, at the chart.version pinned below) in place.
 # ⚠️ FIRST real StatefulSet adoption in this migration: the workload is a StatefulSet (fluentd-0)
 # with a volumeClaimTemplate 'fluentd-buffer' (nfs-client-server, 10Gi RWO, PVC bound 75d). The STS
 # .spec.selector and .spec.volumeClaimTemplates are IMMUTABLE — a sync that tries to change them

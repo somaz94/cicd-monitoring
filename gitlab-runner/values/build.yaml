@@ -128,13 +128,20 @@ runners:
   #
   # tpl: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
   # runner configuration: https://docs.gitlab.com/runner/configuration/advanced-configuration.html
+  # `request_concurrency` below is a CEILING, not the limit that is actually enforced. Runner 19.x
+  # also computes an adaptive request-concurrency limit and enforces the LOWER of the two, and on
+  # this fleet the adaptive one measured lower — so raising the number below does not by itself
+  # widen poll concurrency, and a burst can still serialize. Live figures and the full analysis sit
+  # next to the GitLabRunnerConcurrentLimitReached rule in
+  # observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml; that alert used to
+  # be justified by this setting and no longer reads the request-concurrency counter at all.
+  # This note lives ABOVE `config:` on purpose: comments inside the block are literal TOML, so they
+  # land in the rendered ConfigMap and every edit rolls the runner managers. Out here they are free.
   config: |
     [[runners]]
-      # New-job requests this manager acquires concurrently from GitLab. Default 1
-      # serializes pickups; raised to 2 so a burst does not trip request-concurrency
-      # rejection. Kept just below `concurrent: 3` (request_concurrency must not exceed
-      # the run capacity) and modest since 3 replicas already spread pickups. Must sit
-      # above the [runners.kubernetes] sub-table header (TOML binds keys to the last table).
+      # Ceiling only, NOT the limit actually enforced — see the note above `config:`. Kept just
+      # below `concurrent` (request_concurrency must not exceed the run capacity). Must sit above
+      # the [runners.kubernetes] sub-table header (TOML binds keys to the last table).
       request_concurrency = 2
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"

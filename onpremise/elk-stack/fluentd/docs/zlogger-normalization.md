@@ -6,6 +6,19 @@ Scope: `dev-example-project-battle` index only. `dev-example-project-game` (Pino
 
 <br/>
 
+> 🔴 **Read this first — the apply procedure below predates the ArgoCD migration.**
+>
+> fluentd is now **ArgoCD pull-managed** and has no `helmfile.yaml` (retired in `7a61f16`). The chart-version SSOT is `argocd/fluentd.yaml`, and the Application (`infra-fluentd`) runs `autoSync: true` with selfHeal. That breaks the assumptions below:
+>
+> - `helmfile diff` → use `argocd app diff infra-fluentd` instead. The pre-apply preview now comes from ArgoCD.
+> - `helmfile apply` → there is no `helmfile.yaml` to apply. An `02_filters.conf` change **only takes effect through a commit on master**, and a manual helm apply is reverted immediately by selfHeal.
+>
+> The effect of a filter change — ConfigMap update plus a `fluentd-0` rolling restart — is unchanged; only the trigger moved from `helmfile apply` to an ArgoCD sync. With autoSync on, a commit landing on master applies itself; use `argocd app sync infra-fluentd` only when it has to happen right now.
+>
+> (Confirmed 2026-09-18. The body below is preserved from the helmfile era.)
+
+<br/>
+
 ## Background
 
 The ELK pipeline (fluent-bit → fluentd → Elasticsearch) was originally built around two log schemas.

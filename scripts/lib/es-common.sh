@@ -11,6 +11,8 @@
 #   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 #   # shellcheck source=../../../../scripts/lib/es-common.sh
 #   source "${_SCRIPT_DIR}/../../../../scripts/lib/es-common.sh"
+#   ...                          # argument loop, incl. a --context CTX flag
+#   require_kube_context         # MANDATORY — see the kube-context section below
 #
 # Conventions:
 #   - All defaults use `${VAR:-...}` so the caller can override by simply
@@ -62,6 +64,26 @@ warn() { log "${C_WARN}!${C_RST} $*"; }
 err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 step() { log ""; log "${C_DIM}[step $1]${C_RST} $2"; }
 
+# --- kube-context ---------------------------------------------------------------
+
+# The mandatory --context gate (KUBE_CONTEXT / require_kube_context / kctl /
+# kube_context_cluster / kube_context_prescan) lives in a sibling lib so that the
+# on-prem scripts under observability/logging/elasticsearch/scripts/ — which use a
+# port-forward instead of `kubectl exec` and therefore cannot source this ES lib —
+# share ONE definition rather than growing a second copy.
+#
+# Name the collision that makes the gate necessary, so the failure message is
+# concrete rather than abstract.
+KUBE_CONTEXT_HINT="${KUBE_CONTEXT_HINT:-${NAMESPACE_ES}/${ES_POD}}"
+_ES_COMMON_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ ! -f "${_ES_COMMON_LIB_DIR}/kube-context.sh" ]; then
+  err "es-common.sh: cannot find sibling scripts/lib/kube-context.sh (looked in ${_ES_COMMON_LIB_DIR})"
+  exit 2
+fi
+# shellcheck source=./kube-context.sh
+# shellcheck disable=SC1091
+source "${_ES_COMMON_LIB_DIR}/kube-context.sh"
+
 # --- ES helpers ---------------------------------------------------------------
 
 # Read the admin password from the Kubernetes secret and stash it in ADMIN_PASS.
@@ -69,7 +91,7 @@ step() { log ""; log "${C_DIM}[step $1]${C_RST} $2"; }
 load_admin_pass() {
   if [ "$DRY_RUN" = "1" ]; then return 0; fi
   [ -n "$ADMIN_PASS" ] && return 0
-  ADMIN_PASS=$(kubectl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
+  ADMIN_PASS=$(kctl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
     -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   [ -n "$ADMIN_PASS" ] || { err "failed to read elastic password from secret/$ES_SECRET"; exit 1; }
 }
@@ -86,7 +108,8 @@ es_call() {
     printf "    (dry-run) curl -X %s %s%s (auth=%s)\n" "$method" "$ES_URL" "$path" "$auth_user" >&2
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  # `-i` is correct here — curl reads the request body from stdin (--data-binary @-).
+  kctl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${auth_user}:${auth_pass}" \
       -H 'Content-Type: application/json' \
       -X "$method" "${ES_URL}${path}" --data-binary @-
@@ -100,36 +123,41 @@ es_status() {
     echo "000"
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  # No `-i` — nothing is piped in (curl sends no body and writes to /dev/null).
+  # An idle stdin makes kubectl truncate large responses with "connection reset by
+  # peer" at a variable offset; only attach stdin when something is actually fed in.
+  kctl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${ADMIN_PASS}" -o /dev/null -w '%{http_code}' \
       -X "$method" "${ES_URL}${path}"
 }
 
 # --- generic utilities --------------------------------------------------------
 
-# csv_to_json_array CSV — turn 'a,b,c' into '["a","b","c"]'. Globbing is
-# disabled so a bare '*' does not expand to cwd contents.
+# csv_to_json_array CSV — turn 'a,b,c' into '["a","b","c"]'.
+#
+# Split with parameter expansion rather than `IFS=, ; for part in $csv`: zsh does
+# NOT word-split unquoted expansions, so the loop form yielded a single element
+# ('["a,b,c"]') there. That fails SILENTLY and lands in a live cluster — the value
+# feeds index_patterns for the ILM policy, the cohort ILM exemption and the SLM
+# index set, so a one-element array is a glob that matches nothing and the policy
+# just never applies. Every caller is behind a bash re-exec guard today, but this
+# lib advertises zsh support, so the split must not depend on the shell.
+#
+# No `set -f` dance is needed either: nothing here is ever glob-expanded, so a
+# pattern like 'prod-example-app-*' passes through untouched.
 csv_to_json_array() {
-  local csv="$1"
+  local rest="$1"
   local out="["
   local first=1
   local part
-  local restore_glob="set +f"
-  case "$-" in *f*) restore_glob="set +f; set -f" ;; esac
-  set -f
-  # Intentional unquoted expansion for word-splitting on IFS=','.
-  # shellcheck disable=SC2086
-  {
-    local IFS=,
-    for part in $csv; do
-      [ -z "$part" ] && continue
-      if [ "$first" = "1" ]; then first=0; else out+=","; fi
-      out+="\"${part}\""
-    done
-  }
-  eval "$restore_glob"
-  out+="]"
-  printf '%s' "$out"
+  while [ -n "$rest" ]; do
+    part="${rest%%,*}"
+    if [ "$part" = "$rest" ]; then rest=""; else rest="${rest#*,}"; fi
+    [ -z "$part" ] && continue
+    if [ "$first" = "1" ]; then first=0; else out="${out},"; fi
+    out="${out}\"${part}\""
+  done
+  printf '%s]' "$out"
 }
 
 # json_escape STR — escape backslash + double-quote for safe inclusion inside

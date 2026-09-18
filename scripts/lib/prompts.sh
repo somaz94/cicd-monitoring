@@ -28,7 +28,7 @@ __SCRIPTS_LIB_PROMPTS_LOADED=1
 : "${YELLOW:=}" "${RED:=}" "${GREEN:=}" "${NC:=}"
 
 # y/N confirmation prompt. Default answer is No.
-# Args:    $1 = message to display (e.g., "정말 삭제하시겠습니까?")
+# Args:    $1 = message to display (e.g., "Really delete?")
 # Returns: 0 = yes, 1 = no/cancel
 confirm_yes_no() {
   local message="${1:-계속하시겠습니까?}"
@@ -51,9 +51,9 @@ confirm_typed_word() {
   [[ "${reply}" == "${expected}" ]]
 }
 
-# 필수 명령어 일괄 존재 확인.
-# 인자: 명령어 이름들을 가변 인자로
-# 동작: 누락된 명령이 있으면 stderr 로 안내 후 exit 1
+# Assert that every required command is present.
+# Args:    command names, variadic
+# Returns: 1 after listing the missing commands on stderr
 require_commands() {
   local missing=()
   local cmd
@@ -68,9 +68,9 @@ require_commands() {
   fi
 }
 
-# 바이트를 사람이 읽기 쉬운 단위로 변환 (B / KiB / MiB / GiB).
-# 인자: $1 = 바이트 (정수)
-# 출력: stdout 으로 변환된 문자열
+# Convert a byte count to a human-readable unit (B / KiB / MiB / GiB).
+# Args:    $1 = bytes (integer)
+# Output:  the converted string on stdout
 format_human_size() {
   local bytes="${1:-0}"
   if (( bytes >= 1073741824 )); then

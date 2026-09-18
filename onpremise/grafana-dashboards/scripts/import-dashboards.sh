@@ -14,11 +14,21 @@ SCRIPT_NAME="Grafana Dashboard Import"
 DEFAULT_URL="http://grafana.example.com"
 DEFAULT_USER="admin"
 DEFAULT_SECRET_NS="monitoring"
-DEFAULT_SECRET_NAME="kube-prometheus-stack-grafana"
+# kube-prometheus-stack/values/dev.yaml sets grafana.admin.existingSecret, so the
+# chart creates NO kube-prometheus-stack-grafana secret — reading that name returns NotFound.
+DEFAULT_SECRET_NAME="grafana-auth"
 DEFAULT_SECRET_KEY="admin-password"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CHART_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Mandatory --context gate, used ONLY by --from-secret: the dashboards themselves are
+# POSTed to $URL, so a kube-context does not route them. But both clusters run a
+# Grafana in `monitoring`, and this script reads its admin password from a secret
+# there — an implicit context would read the other cluster's credential.
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/../../../../scripts/lib/kube-context.sh"
 DASHBOARDS_DIR="${DASHBOARDS_DIR:-$CHART_DIR/dashboards}"
 
 # Replace $HOME with ~ for display purposes only
@@ -42,6 +52,12 @@ Connection:
   -u, --url <URL>             Grafana base URL
   -U, --user <USER>           Grafana user
   -p, --password <PASS>       Grafana password (or GRAFANA_PASSWORD env)
+      --context CTX           kube-context for --from-secret. Required whenever the
+                              password is read from a secret; there is no fallback to
+                              the current context, because both clusters hold a
+                              Grafana admin secret in the same namespace. The name is
+                              a LOCAL kubeconfig alias — list yours with
+                              \`kubectl config get-contexts -o name\`.
       --from-secret           Fetch password via kubectl from the configured secret
       --secret-namespace <NS> Kubernetes namespace for --from-secret
       --secret-name <NAME>    Secret name for --from-secret
@@ -104,6 +120,7 @@ while [[ $# -gt 0 ]]; do
     -u|--url)           URL="$2"; shift 2 ;;
     -U|--user)          GRAFANA_USER="$2"; shift 2 ;;
     -p|--password)      PASSWORD="$2"; shift 2 ;;
+    --context)          KUBE_CONTEXT="$2"; shift 2 ;;
     --from-secret)      FROM_SECRET=1; shift ;;
     --secret-namespace) SECRET_NS="$2"; shift 2 ;;
     --secret-name)      SECRET_NAME="$2"; shift 2 ;;
@@ -143,9 +160,14 @@ done
 
 # Fetch password from secret if asked (skip during dry-run — no POST will be sent)
 if [[ $FROM_SECRET -eq 1 && $DRY_RUN -eq 0 ]]; then
-  if ! PASSWORD="$(kubectl get secret -n "$SECRET_NS" "$SECRET_NAME" \
+  # The secret read is this script's only cluster call, so the gate lives here — a
+  # run that passes --password never touches a cluster and should not need a context.
+  KUBE_CONTEXT_HINT="${SECRET_NS}/${SECRET_NAME} (the Grafana admin password)"
+  require_kube_context
+  echo "▸ Reading the Grafana password from ${KUBE_CONTEXT} (cluster=$(kube_context_cluster))" >&2
+  if ! PASSWORD="$(kctl get secret -n "$SECRET_NS" "$SECRET_NAME" \
                     -o jsonpath="{.data.$SECRET_KEY}" 2>/dev/null | base64 --decode)"; then
-    die "failed to read $SECRET_NS/$SECRET_NAME:$SECRET_KEY (check kubectl context / RBAC)"
+    die "failed to read $SECRET_NS/$SECRET_NAME:$SECRET_KEY from --context $KUBE_CONTEXT (check RBAC)"
   fi
   [[ -z "$PASSWORD" ]] && die "secret $SECRET_NS/$SECRET_NAME returned empty $SECRET_KEY"
 fi

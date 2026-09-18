@@ -2,8 +2,8 @@
 
 The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev-cluster configuration. **Using the same settings in prod risks log loss on restart**, so this document captures the recommended prod values.
 
-> **Current dev state (2026-05-13~ )**: Tier 1 / Phase 1a + buffer hardening applied.
-> - fluent-bit: `DB` checkpoints, `storage.type filesystem`, state PVC (`fluent-bit-state-pvc`, declared 5Gi / actual 2Gi, `nfs-client-server1`), `updateStrategy: Recreate`, OUTPUT `storage.total_limit_size 2G`.
+> **Current dev state**: Tier 1 / Phase 1a + buffer hardening applied. Note that the 2026-05-19 move from the NFS-aggregator Deployment to a per-node stdout DaemonSet replaced the RWO state PVC with a **node hostPath** (see [deployment-to-daemonset-en.md](./deployment-to-daemonset.md)).
+> - fluent-bit: `DB` checkpoints, `storage.type filesystem`, a node hostPath state volume (`persistentVolumeClaims.enabled: false`), OUTPUT `storage.total_limit_size 2G`. `values/dev.yaml` is the SSOT for the values actually applied.
 > - fluentd: buffer `queue_limit_length 128` + `total_limit_size 4GB` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule with 7 alerts.
 > - Only `Read_from_Head` remains `false` (awaiting Phase 1b promotion).
 > - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure.md).
@@ -12,7 +12,7 @@ The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev
 
 ## ⚠️ RWO state PVC + SQLite — `updateStrategy: Recreate` required
 
-The Phase 1a state PVC is `ReadWriteOnce` and contains four SQLite databases. With the chart's default `RollingUpdate`:
+Putting the state on a single shared `ReadWriteOnce` PVC collects one SQLite database per tail INPUT onto that PVC. With the chart's default `RollingUpdate`:
 
 1. The new pod is created first (maxSurge=1)
 2. While the old pod is still alive, the new pod tries to open the SQLite DBs → **`error=database is locked`**
@@ -20,7 +20,9 @@ The Phase 1a state PVC is `ReadWriteOnce` and contains four SQLite databases. Wi
 
 → Setting `updateStrategy: { type: Recreate }` terminates the old pod before starting the new one. Trade-off: ~tens of seconds of ingest downtime during rolling restarts (Phase 1a's DB + filesystem chunk buffer absorbs NFS appends during that window, so no data is lost).
 
-Recommend the same pattern in prod: RWO state PVC + DB checkpoint + `updateStrategy: Recreate`. Exposed as the `updateStrategy` values key in fluent-bit chart 0.57.x.
+When prod keeps its state on a shared RWO PVC, recommend the same pattern: RWO state PVC + DB checkpoint + `updateStrategy: Recreate`. Exposed as the `updateStrategy` values key in fluent-bit chart 0.57.x.
+
+> dev no longer has this constraint at all, having moved to a DaemonSet with a node hostPath — it sets no `updateStrategy` and keeps the chart's default rolling update. The dev column of the comparison below reflects that state.
 
 <br/>
 
@@ -117,10 +119,10 @@ Combine with filesystem storage in the `[SERVICE]` section:
 | Option | dev (current, Phase 1a applied) | prod recommended | Why |
 |---|---|---|---|
 | `Read_from_Head` | `false` | `true` (Phase 1b) | Combined with DB checkpoint → zero loss, zero duplication. dev will promote to Phase 1b after stabilization |
-| `DB` checkpoint | **4 files on state PVC (.db)** ✅ | persisted on PV (PVC) | Resume reads across restarts |
+| `DB` checkpoint | **one `.db` per tail INPUT on the node hostPath** ✅ | persisted on PV (PVC) | Resume reads across restarts |
 | `DB.locking` | `true` ✅ | `true` | Safe under NFS / concurrency |
 | `DB.sync` | `normal` ✅ | `normal` | sqlite WAL fsync cadence |
-| `Ignore_Older` | `7d` | `7d`~`90d` (align with NFS retention) | Prevent NFS backfill spike on first install. Aligning with retention widens the re-ingest window |
+| `Ignore_Older` | not set (disabled by default) | `7d`~`90d` (align with NFS retention) | Prevent NFS backfill spike on first install. Aligning with retention widens the re-ingest window |
 | `storage.type` | `filesystem` ✅ | `filesystem` | Disk spill on memory pressure, buffer survives ES/fluentd outages |
 | `storage.path` (SERVICE) | `/fluent-bit/state/storage/` ✅ | path on PV | Persist filesystem chunk buffer |
 | `storage.backlog.mem_limit` | `50M` ✅ | `256M+` | Prod traffic |
@@ -128,7 +130,7 @@ Combine with filesystem storage in the `[SERVICE]` section:
 | `Refresh_Interval` | `10` | `10` (keep) | New-file detection cadence (s). 5–30s is reasonable on NFS |
 | OUTPUT `Retry_Limit` | `no_limits` ✅ | `no_limits` | Survive transient fluentd outages |
 | OUTPUT `storage.total_limit_size` | `2G` ✅ | `5G+` | Disk-buffer cap (scale for prod throughput) |
-| `updateStrategy.type` | `Recreate` ✅ | `Recreate` | Avoid multi-pod SQLite lock clash on RWO state PVC |
+| `updateStrategy.type` | not set — chart default rolling | `Recreate` (when using a shared RWO state PVC) | Avoid multi-pod SQLite lock clash on a shared RWO PVC. dev has a per-node hostPath, so nothing contends |
 
 <br/>
 

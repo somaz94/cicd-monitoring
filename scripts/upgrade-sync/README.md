@@ -2,7 +2,7 @@
 
 Canonical templates and a sync tool for the per-component `upgrade.{sh,py}` scripts.
 
-Each component directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, `observability/monitoring/node-exporter/`, etc.) has an upgrade script for version upgrades. **Mixed mode (Phase 4 / MR-K6+)**: `external-standard` + `ansible-github-release` template consumers (14) ship `upgrade.py`; the other 6 templates still ship `upgrade.py`. Most components are Helm charts, but Ansible-deployed components (e.g. node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.py](sync.py).
+Each component directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, `observability/monitoring/node-exporter/`, etc.) has an `upgrade.py` for version upgrades. Every consumer is Python regardless of the template it uses (the `.sh` → `.py` flip is complete). Most components are Helm charts, but Ansible-deployed components (e.g. node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.py](sync.py).
 
 To survey which charts have an upstream upgrade available before touching any `upgrade.py`, use [check-versions.py](check-versions.py) (read-only).
 
@@ -18,34 +18,34 @@ To inspect or bulk-clean the `backup/` directories across every chart at once, u
 4. [Canonical templates](#canonical-templates)
 5. [sync.py usage](#syncpy-usage)
 6. [check-versions.py usage](#check-versionspy-usage)
-7. [How it works (internals)](#how-it-works-internals)
-8. [Adding a new chart](#adding-a-new-chart)
-9. [Adding a new canonical variant](#adding-a-new-canonical-variant)
-10. [Worked examples](#worked-examples)
-11. [Troubleshooting](#troubleshooting)
-12. [Compatibility](#compatibility)
-13. [Safety guards](#safety-guards)
-14. [FAQ](#faq)
+7. [manage-backups.py usage](#manage-backupspy-usage)
+8. [How it works (internals)](#how-it-works-internals)
+9. [Adding a new chart](#adding-a-new-chart)
+10. [Adding a new canonical variant](#adding-a-new-canonical-variant)
+11. [Worked examples](#worked-examples)
+12. [Troubleshooting](#troubleshooting)
+13. [Compatibility](#compatibility)
+14. [Safety guards](#safety-guards)
+15. [FAQ](#faq)
+16. [See also](#see-also)
 
 <br/>
 
 ## Directory layout
 
+Three tools — `sync.py` · `check-versions.py` · `manage-backups.py` — plus the `templates/` canonical directory (docs are `README.md` in Korean + `README-en.md`, this file).
+
 ```
-scripts/upgrade-sync/
-├── README.md                          # Korean docs
-├── README-en.md                       # this file
-├── sync.py                            # sync tool (cross-platform)
-├── check-versions.py                  # preflight upgrade scan (read-only)
-├── manage-backups.py                  # bulk backup management (list/cleanup/purge)
-└── templates/
-    ├── external-standard.py           # external chart (helm repo) + default flow
-    ├── external-with-image-tag.py     # external + values image tag auto-update
-    ├── external-oci.py                # external OCI chart + GitHub Releases tracking
-    ├── external-oci-cr-version.py     # external OCI chart consumer (CR wrapper) + values.version tracking
-    ├── local-with-templates.py        # local chart (Chart.yaml in repo) + custom templates
-    ├── local-cr-version.py            # local chart (CR wrapper) + values.version + Chart.yaml.appVersion
-    └── ansible-github-release.py     # Ansible-deployed component + GitHub Releases tracking
+scripts/upgrade-sync/templates/
+├── external-standard.py           # external chart (helm repo) + default flow
+├── external-with-image-tag.py     # external + values image tag auto-update
+├── external-oci.py                # external OCI chart + GitHub Releases tracking
+├── external-oci-cr-version.py     # external OCI chart consumer (CR wrapper) + values.version tracking
+├── external-oci-with-mirror.py    # external OCI chart + Harbor image mirror (library base)
+├── local-with-templates.py        # local chart (Chart.yaml in repo) + custom templates
+├── local-cr-version.py            # local chart (CR wrapper) + values.version + Chart.yaml.appVersion
+├── ansible-github-release.py     # Ansible-deployed component + GitHub Releases tracking
+└── argocd-pin.py                  # bumps chart.version in the ArgoCD metadata file (delegates to a base template)
 ```
 
 > All canonicals are Python (Phase 4 K6~K13 sequence completed). The body lives in `scripts/python/upgrade_core/<template>.py`; each `templates/<name>.py` canonical is a thin wrapper around the placeholder dict + ancestor walk.
@@ -62,29 +62,42 @@ Previously, 16 chart directories each carried a near-identical copy of `upgrade.
 
 Each chart's `upgrade.py` is split into two regions:
 
-```bash
-#!/bin/bash
-# upgrade-template: external-standard       <-- header: declares which canonical to follow
-set -euo pipefail
+```python
+#!/usr/bin/env python3
+# upgrade-template: external-standard   <-- header: declares which canonical to follow
 
 # ============================================================
-# Configuration (per-chart)
+# Configuration (ONLY section that differs between scripts)
+# To reuse this script for other Helm charts, copy this file
+# and modify ONLY the variables below.
 # ============================================================
-SCRIPT_NAME="ArgoCD Helm Chart Upgrade Script"  # ┐
-HELM_REPO_NAME="argo"                            # │
-HELM_REPO_URL="..."                              # │ ★ user-owned (CONFIG block)
-HELM_CHART="argo/argo-cd"                        # │   preserved by sync
-CHANGELOG_URL="..."                              # │
-CHART_TYPE="external"                            # ┘
+CONFIG = {
+    "SCRIPT_NAME":    "ArgoCD Helm Chart Upgrade Script",
+    "HELM_REPO_NAME": "argo",
+    "HELM_REPO_URL":  "https://argoproj.github.io/argo-helm",
+    "HELM_CHART":     "argo/argo-cd",
+    "CHANGELOG_URL":  "https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd",
+    "CHART_TYPE":     "local",  # "local" or "external"
+}
 # ============================================================
 
-CHART_DIR="$(cd "$(dirname "$0")" && pwd)"      # ┐
-BACKUP_DIR="$CHART_DIR/backup"                   # │
-...                                              # │ ★ canonical-owned
-[7-step main flow]                               # │   overwritten by sync --apply
-...                                              # │
-echo " Upgrade complete!"                        # ┘
+# ── canonical body (sync-managed, do not edit below) ────────
+import sys
+from pathlib import Path
+
+_here = Path(__file__).resolve().parent
+for _anc in [_here, *_here.parents]:
+    if (_anc / "scripts" / "python" / "upgrade_core").is_dir():
+        sys.path.insert(0, str(_anc / "scripts" / "python"))
+        break
+
+from upgrade_core.external_standard import run  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(run(CONFIG, sys.argv[1:], script_path=__file__))
 ```
+
+That is the **whole** of `cicd/argo-cd/upgrade.py` (32 lines, nothing elided). The bash-era `set -euo pipefail` and the inline 7-step flow are gone — every consumer is Python, the real upgrade logic is owned by `scripts/python/upgrade_core/external_standard.py`, and the consumer is a thin entry point that calls its `run()`.
 
 - **CONFIG block** (between the three `# ===` markers): per-chart, hand-edited
 - **Body** (after the third `# ===`): shared across all charts, propagated from canonical via sync
@@ -106,7 +119,7 @@ echo " Upgrade complete!"                        # ┘
 |---|---|---|
 | Add a new chart | User | Copy canonical → **fill in the CONFIG block variables only** |
 | Chart version upgrade | `upgrade.py` automatically | Run `./upgrade.py` or `./upgrade.py --version X.Y.Z` |
-| Common logic change (e.g., usage text) | User edits once + sync propagates | `vim canonical → ./scripts/upgrade-sync/sync.py --apply` |
+| Common logic change (e.g., usage text) | User edits once + sync propagates | `vim canonical → commit → ./scripts/upgrade-sync/sync.py --apply` |
 | Add a per-chart placeholder | User edits both canonical and each chart's CONFIG | Add placeholder to canonical + real value to each chart |
 | Edit body directly | ❌ Don't | Will be overwritten by next sync (see [FAQ](#faq)) |
 
@@ -135,58 +148,60 @@ echo " Upgrade complete!"                        # ┘
         ↓         ↓          ↓        ↓          ↓          ↓
    argo-cd/   gitlab-    harbor-   valkey/   fluent-     kube-prom-
    upgrade.py runner/    helm/     upgrade   bit/        stack/
-              upgrade    upgrade   .sh       upgrade     upgrade
-              .sh        .sh                 .sh         .sh
+              upgrade    upgrade   .py       upgrade     upgrade
+              .py        .py                 .py         .py
 ```
 
 ### Per-file sync flow
 
 ```
    target file: cicd/argo-cd/upgrade.py
-   ┌──────────────────────────────────┐
-   │ #!/bin/bash                       │     1. read line 2 → "external-standard"
-   │ # upgrade-template: external-     │ ──────────────────────┐
-   │   standard                        │                       │
-   │ set -euo pipefail                 │                       │
-   │                                   │                       │
-   │ # ============================    │     2. extract CONFIG │
-   │ # Configuration                   │ ───┐  (markers 1~3)   │
-   │ # ============================    │    │                  │
-   │ SCRIPT_NAME="ArgoCD Helm..."      │    │                  │
-   │ HELM_REPO_NAME="argo"             │    │                  │
-   │ ...                               │    │                  │
-   │ # ============================    │ ───┘                  │
-   │                                   │                       │
-   │ CHART_DIR=...                     │     3. body (replaced)│
-   │ ... (440 lines)                   │                       │
-   │ echo "complete!"                  │                       │
-   └──────────────────────────────────┘                       │
-                                                                ↓
-                  ┌─────────────────────────────────────────────┘
+   ┌────────────────────────────────────────┐
+   │ #!/usr/bin/env python3                 │     1. read line 2 → "external-standard"
+   │ # upgrade-template: external-standard  │ ───────────────────────┐
+   │                                        │                        │
+   │ # ============================         │     2. extract CONFIG  │
+   │ # Configuration                        │ ───┐  (markers 1~3)    │
+   │ # ============================         │    │                   │
+   │ CONFIG = {                              │    │                   │
+   │     "SCRIPT_NAME":    "ArgoCD ...",    │    │                   │
+   │     "HELM_REPO_NAME": "argo",          │    │                   │
+   │     ...                                │    │                   │
+   │ }                                       │    │                   │
+   │ # ============================         │ ───┘                   │
+   │                                        │                        │
+   │ import sys                             │     3. body (replaced) │
+   │ ... (ancestor walk)                    │                        │
+   │ from upgrade_core.external_standard    │                        │
+   │     import run                         │                        │
+   └────────────────────────────────────────┘                        │
+                                                                     ↓
+                  ┌──────────────────────────────────────────────────┘
                   │
                   ↓
    canonical: scripts/upgrade-sync/templates/external-standard.py
-   ┌──────────────────────────────────┐
-   │ #!/bin/bash                       │
-   │ # CANONICAL TEMPLATE — DO NOT...  │
-   │ set -euo pipefail                 │
-   │                                   │
-   │ # ============================    │
-   │ # Configuration (placeholders)    │
-   │ # ============================    │
-   │ SCRIPT_NAME="__SCRIPT_NAME__"     │     ★ placeholders only, not used
-   │ ...                               │
-   │ # ============================    │
-   │                                   │
-   │ CHART_DIR=...                     │     ★ this body is copied to target
-   │ ... (440 lines)                   │
-   │ echo "complete!"                  │
-   └──────────────────────────────────┘
+   ┌────────────────────────────────────────┐
+   │ #!/usr/bin/env python3                 │
+   │ # CANONICAL TEMPLATE — DO NOT RUN ...  │
+   │                                        │
+   │ # ============================         │
+   │ # Configuration (placeholders)         │
+   │ # ============================         │
+   │ CONFIG = {                              │
+   │     "SCRIPT_NAME": "__SCRIPT_NAME__",  │     ★ placeholders only, not used
+   │     ...                                │
+   │ }                                       │
+   │ # ============================         │
+   │                                        │
+   │ import sys                             │     ★ this body is copied to target
+   │ ... (ancestor walk)                    │
+   │ from upgrade_core.external_standard    │
+   │     import run                         │
+   └────────────────────────────────────────┘
 
-   build_expected(target):
-     header  := "#!/bin/bash"
+   build_expected(target):                          # scripts/python/upgrade_sync/extract.py
+     header  := "#!/usr/bin/env python3"            # .py branch — no set -euo pipefail
               + "# upgrade-template: external-standard"
-              + "set -euo pipefail"
               + ""
      CONFIG  := extract_config_block(target)        # from target
      body    := extract_body(canonical)             # from canonical
@@ -196,19 +211,26 @@ echo " Upgrade complete!"                        # ┘
    --apply  : write build_expected(target) → target
 ```
 
+> The body above is not the upgrade logic — it is the entry point that imports `scripts/python/upgrade_core/external_standard.py`, which owns the 7-step flow.
+>
+> `build_expected()` still carries a `.sh` branch that emits a `#!/bin/bash` + `set -euo pipefail` header (kept for forward-compat), but with zero `.sh` consumers it is currently unreachable.
+
 ### 3-marker layout
 
 Each `upgrade.py` and canonical uses the same 3-marker structure:
 
-```bash
+```python
 # ============================================================  ← marker 1: doc opens
 # Configuration (per-chart, sync-managed body below)
-# ============================================================  ← marker 2: doc closes / vars opens
-SCRIPT_NAME=...
-HELM_REPO_NAME=...
-...
-# ============================================================  ← marker 3: vars closes / body starts
-CHART_DIR="$(cd ...)"
+# ============================================================  ← marker 2: doc closes / CONFIG opens
+CONFIG = {
+    "SCRIPT_NAME":    "...",
+    "HELM_REPO_NAME": "...",
+    ...
+}
+# ============================================================  ← marker 3: CONFIG closes / body opens
+import sys
+from pathlib import Path
 ...
 ```
 
@@ -232,21 +254,14 @@ CHART_DIR="$(cd ...)"
 
 New variants must follow the same convention (e.g., `external-multi-release.py`, `local-bare.py`).
 
-### Current canonicals (see table below)
+### Current canonicals (see the sections below)
 
 #### 1. [external-standard.py](templates/external-standard.py) — external helm repo chart (most common, Python)
 
 - **Use**: Receives a chart from an external helm repo and deploys via helmfile
 - **Language**: Python (.sh → .py flip in Phase 4 / MR-K6). Body lives in `scripts/python/upgrade_core/external_standard.py`; the canonical is a thin wrapper.
 - **Flow**: 7 steps (current → fetch latest → download → diff Chart → diff values → check breaking → apply + backup)
-- **13 charts** (at MR-K6, source: `sync.py --status`):
-  - cicd: `argo-cd`, `gitlab-runner`
-  - db-redis: `valkey`
-  - network: `metallb`, `nginx-gateway-fabric/cr-chart`
-  - observability/logging: `eck-operator`, `fluentd`
-  - observability/monitoring: `kube-prometheus-stack`, `prometheus-elasticsearch-exporter`, `prometheus-mysql-exporter`
-  - security: `vaultwarden`
-  - storage: `nfs-subdir-external-provisioner`, `static-file-server`
+- **Consumers**: the `external-standard` row of `sync.py --status` is the SSOT for the count; the `[external-standard]` rows of `sync.py --check` are the SSOT for the list. Representative consumers: `cicd/argo-cd`, `network/metallb`, `security/vaultwarden`.
 
 #### 2. [external-with-image-tag.py](templates/external-with-image-tag.py) — external + image tag auto-update
 
@@ -264,7 +279,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
     done
   fi
   ```
-- **1 chart**: `harbor-helm`
+- **Consumers**: `harbor-helm` (count/list per `sync.py --status`)
 
 #### 3. [local-with-templates.py](templates/local-with-templates.py) — local chart + custom templates
 
@@ -274,7 +289,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Two upstream source modes** (selected via CONFIG block):
   - **helm repo mode** (default): set `HELM_REPO_NAME`/`HELM_REPO_URL`/`HELM_CHART`, leave `CHART_GIT_REPO` empty
   - **git source mode**: set `CHART_GIT_REPO`/`CHART_GIT_PATH` (for charts not published to any helm repo). Latest version is auto-detected from git tags and the chart is fetched via git clone.
-- **2 charts**:
+- **Consumers** (per `sync.py --status`):
   - `fluent-bit`, `fluent-bit-aws` (helm repo mode)
 
 #### 4. [local-cr-version.py](templates/local-cr-version.py) — local chart (CR wrapper) + version field tracking
@@ -283,7 +298,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Flow**: 6 steps (read current version from values → fetch latest from source feed → **verify container image exists** → compatibility reminder → backup → update values + Chart.yaml appVersion)
 - **Extra variables**:
   - `COMPONENT_LABEL`: label shown in output (e.g., `elasticsearch`, `kibana`)
-  - `VERSION_SOURCE`: version feed type (currently supported: `elastic-artifacts`)
+  - `VERSION_SOURCE`: version feed type (supported values listed below)
   - `VALUES_FILE`: path to the values file holding the version (e.g., `values/dev.yaml`)
   - `VERSION_KEY`: top-level YAML key name (usually `version`)
   - `MAJOR_PIN`: major line lock (e.g., `"9"` → track 9.x only). Empty = track all majors
@@ -299,7 +314,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
   - `elastic-artifacts`: queries `https://artifacts-api.elastic.co/v1/versions`. All Elastic Stack components (Elasticsearch, Kibana, APM Server, Logstash, Beats) share a single Stack version. `VERSION_SOURCE_ARG` not needed.
   - `github-releases`: queries the GitHub Releases API (`api.github.com/repos/<owner>/<repo>/releases`). Excludes prereleases/drafts, strips leading `v`, then keeps only strict `X.Y.Z`. Requires `VERSION_SOURCE_ARG="<owner>/<repo>"` (e.g. `cloudnative-pg/cloudnative-pg`).
   - `docker-hub-tags`: queries the Docker Hub API (`hub.docker.com/v2/repositories/<namespace>/<repository>/tags`). Strips leading `v`, then keeps only strict `X.Y.Z` (suffixed tags like `-debian` are not matched). Requires `VERSION_SOURCE_ARG="<namespace>/<repository>"` (e.g. `library/redis`).
-  - Adding a new source: extend the `case` block inside `fetch_ga_versions()` in the canonical.
+  - Adding a new source: the implementation is split in two, so a new backend needs a branch in **both** — `fetch_ga_versions_source()` in `scripts/python/upgrade_sync/fetchers.py` (the check-versions.py path) and `fetch_ga_versions()` in `scripts/python/upgrade_core/_common_cr.py` (the consumer `upgrade.py` path). The canonical templates contain neither (they are placeholders + an import).
 - **Extending to other operators**: `local-cr-version` is not ECK-specific. Populating `CR_WEBHOOK_NAME`, `CR_OPERATOR_NS`, `CR_OPERATOR_STS`, and `CR_OPERATOR_CHART_DIR` correctly enables reuse for CloudNativePG, Strimzi Kafka, Redis Operator, and others. Example: for CNPG use `CR_OPERATOR_CHART_DIR="cnpg-operator"`, `VERSION_SOURCE="github-releases"`, `VERSION_SOURCE_ARG="cloudnative-pg/cloudnative-pg"`.
 - **Differences vs other templates**:
   - Does not fetch Chart.yaml from upstream (we are the sole owner)
@@ -336,20 +351,19 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **`--check-chart`**: compares current pin with the latest publisher release (read-only). Prints release notes URL and suggests next commands if an update is available.
 - **`--upgrade-chart [--chart-version X.Y.Z] [--dry-run]`**: `helm pull`s both the current and target charts into a scratch directory, runs `helm template` on each with the active values file, and shows a unified diff of the rendered manifests. On confirmation, backs up `helmfile.yaml` to `backup/<TIMESTAMP>-chart/` and bumps the pin. Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched.
 - **Chart vs Stack backups**: Stack upgrades write `backup/<TIMESTAMP>/<values-file>`; chart upgrades write `backup/<TIMESTAMP>-chart/helmfile.yaml`. `--rollback` auto-detects the backup type and restores only the relevant file. Chart-pin rollback skips the operator webhook handling path since no live CR version changes.
-- **2 charts**: `observability/logging/elasticsearch` (elasticsearch-eck OCI chart consumer), `observability/logging/kibana` (kibana-eck OCI chart consumer)
+- **Consumers** (per `sync.py --status`): `observability/logging/elasticsearch` + `elasticsearch-aws` (elasticsearch-eck OCI chart consumer), `observability/logging/kibana` + `kibana-aws` (kibana-eck OCI chart consumer)
 
 #### 6. [external-oci.py](templates/external-oci.py) — external OCI chart + GitHub Releases tracking
 
 - **Use**: OCI-registry-distributed charts where the chart version itself needs tracking. Bumps `helmfile.yaml.version` via GitHub Releases API.
 - **Differences vs external-standard**: `helm search repo` is unavailable for OCI → use GitHub Releases instead.
 - **Extra variables**: `HELM_CHART` (oci://... URL), `GITHUB_REPO` (owner/repo), `GITHUB_TAG_PREFIX`
-- **2 charts**: `network/nginx-gateway-fabric` (NGF OCI chart), `storage/local-path-provisioner` (Rancher upstream OCI chart)
+- **Consumers** (per `sync.py --status`): `compute/karpenter`, `network/nginx-gateway-fabric` (NGF OCI chart), `security/keycloak`, `security/keycloak-operator`, `storage/local-path-provisioner` (Rancher upstream OCI chart)
 
 #### 7. [ansible-github-release.py](templates/ansible-github-release.py) — Ansible-deployed (non-Helm) component + GitHub Releases tracking (Python)
 
-- **Language**: Python (Phase 4 / MR-K7 .sh → .py flip). Body lives in `scripts/python/upgrade_core/ansible_github_release.py`; the canonical is a thin wrapper.
-
 - **Use**: Components **deployed via Ansible**, not Helm, where the version lives in a single YAML file (e.g. `group_vars/all.yml`) and the upstream source is a GitHub Releases feed. No `Chart.yaml` / `helmfile.yaml`.
+- **Language**: Python (Phase 4 / MR-K7 .sh → .py flip). Body lives in `scripts/python/upgrade_core/ansible_github_release.py`; the canonical is a thin wrapper.
 - **Flow**: 5 steps (current → fetch latest from GitHub → diff preview + major-bump warning → backup → update VERSION_FILE)
 - **Specific variables**:
   - `COMPONENT_NAME`: human-readable name (e.g. `node_exporter`)
@@ -363,7 +377,28 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
   - No Helm concepts (`Chart.yaml`, `helmfile.yaml`, `values/`)
   - Backup target: just `$VERSION_FILE`
   - Does not apply upstream — prints `ansible-playbook upgrade.yml` as the next-step hint (same pattern as Helm templates pointing at `helmfile apply`)
-- **1 chart**: `observability/monitoring/node-exporter`
+- **Consumers**: `observability/monitoring/node-exporter` (count/list per `sync.py --status`)
+
+#### 8. [argocd-pin.py](templates/argocd-pin.py) — component migrated to the ArgoCD app-of-apps (version-pin write target redirected)
+
+- **Use**: Components migrated to the ArgoCD app-of-apps, where the chart-version SSOT moved out of `helmfile.yaml` (retired to `backup/`) and into the nested `chart.version` field of the per-release ArgoCD metadata file `<component>/argocd[-aws]/<release>.yaml`. The infra-applicationset git-files generator reads that field and ArgoCD syncs it, so **bumping that field IS the cluster upgrade**.
+- **How it works**: A thin dispatcher. It reuses the fetch / diff / breaking-change logic of `external_standard` (helm repo charts) or `external_oci_with_mirror` (OCI charts + Harbor image mirror) as-is, and swaps **only the version-pin write target** through the `pin_write_hook` extension point — writing `chart.version` into the ArgoCD metadata file instead of a helmfile.
+- **Specific variables** (**in addition to** the chosen base template's keys):
+  - `BASE`: `"standard"` (helm repo — wraps external-standard) or `"oci"` (OCI + Harbor mirror — wraps external-oci-with-mirror)
+  - `ARGOCD_PIN_FILES`: list of ArgoCD metadata files to bump, each path relative to the component directory (where `upgrade.py` lives), e.g. `["argocd/build-image.yaml", "argocd/deploy-image.yaml"]`. Lists **only the tracked releases**; deliberately pinned releases are omitted so they are never auto-bumped (e.g. `argocd/old-build-deploy-image.yaml` in `cicd/gitlab-runner`).
+  - The base template's keys are still required: `BASE="standard"` → `HELM_REPO_NAME` / `HELM_REPO_URL` / `HELM_CHART` / `CHANGELOG_URL` / `CHART_TYPE`; `BASE="oci"` → `GITHUB_REPO` / `GITHUB_TAG_PREFIX` / `HELM_CHART` (+ optional `do_mirror` / `print_values_summary`).
+- **The local `Chart.yaml` is an optional derived mirror, not the SSOT**:
+  - Components that ship a mirror (22) have it refreshed by the base flow.
+  - **Pin-only** components that ship none (`security/cert-manager-aws`, `observability/tracing/tempo-aws`, `observability/tracing/opentelemetry-operator-aws` — 3) keep none going forward: the `skip_missing_chart_mirror` flag suppresses mirror creation.
+  - For pin-only components, Step 1 resolves the current version through `current_version_hook`, which reads the ArgoCD marker file directly — so it agrees with `check-versions.py`, which reads the same file. (Introduced in commit `18a09bd`; before that the current version came back empty, silently disabling the values diff and the breaking-change scan.)
+- **Consumers**: the most consumers of any canonical. For the exact count see `sync.py --status`; for the list see the `[argocd-pin]` rows of `sync.py --check`.
+
+#### 9. [external-oci-with-mirror.py](templates/external-oci-with-mirror.py) — external OCI chart + Harbor image mirror (library base)
+
+- **Use**: OCI charts whose upstream images must be mirrored to a private registry (Harbor) **before** the chart upgrade is applied. An 8-step flow that thinly extends `external-oci`.
+- **Differences (vs external-oci)**: `pre_apply_hook` runs as `[Step 7/8]` and drives the mirror stage; a non-zero return aborts the upgrade with no files modified (SKIPPED in dry-run). `values_summary_hook` surfaces per-values-file `image.tag` overrides at the tail of Step 1.
+- **Specific variables**: `do_mirror` (per-chart mirror function — calls `crane copy`), `print_values_summary` (optional)
+- **0 charts — this is not a dead template.** No `upgrade.py` declares this canonical in its `# upgrade-template:` header, but it is the **library base wrapped by `argocd-pin` with `BASE="oci"`**. Deleting it breaks those argocd-pin consumers.
 
 <br/>
 
@@ -378,17 +413,18 @@ Run `./scripts/upgrade-sync/sync.py --help` for the full inline help.
 ```
 
 ```
-Managed upgrade.{sh,py} files: 25
+Managed upgrade.{sh,py} files: 49
   ansible-github-release:  1
-  external-oci:            4
-  external-oci-cr-version: 2
-  external-oci-with-mirror: 3
-  external-standard:       13
+  argocd-pin:              25
+  external-oci:            5
+  external-oci-cr-version: 4
+  external-standard:       11
   external-with-image-tag: 1
-  local-with-templates:    1
+  local-with-templates:    2
 
 Available canonicals:
   ansible-github-release
+  argocd-pin
   external-oci
   external-oci-cr-version
   external-oci-with-mirror
@@ -398,11 +434,13 @@ Available canonicals:
   local-with-templates
 
 Unmanaged chart directories (have Chart.yaml but no upgrade.{sh,py}):
-  - observability/logging/_deprecated/elasticsearch-helm-8.5.1
-  - observability/logging/_deprecated/kibana-helm-8.5.1
+  - observability/monitoring/grafana-dashboards
+  - ...
 ```
 
-**Unmanaged charts** are directories that have `Chart.yaml` but no `upgrade.{sh,py}`. They can be onboarded with the [Adding a new chart](#adding-a-new-chart) procedure.
+> The output above is an example — it goes stale as components are added or removed. **Every number in every pasted output in this README — including the managed total (`Managed: N`) — is illustrative and drifts the moment a component is added. Always confirm the current values with `sync.py --status`.** The distribution list shows only canonicals with at least one consumer; zero-consumer canonicals (`external-oci-with-mirror`, `local-cr-version`) appear under `Available canonicals` only.
+
+**Unmanaged charts** are directories that have `Chart.yaml` but no `upgrade.{sh,py}`. The list changes as components are added or removed, so it is not maintained here — read the current one off `sync.py --status`. They can be onboarded with the [Adding a new chart](#adding-a-new-chart) procedure.
 
 <br/>
 
@@ -423,7 +461,7 @@ Verifies that every file matches its canonical bytewise. Exits non-zero on drift
 
 <br/>
 
-### `--apply` — propagate canonical → 16 files
+### `--apply` — propagate canonical → all files
 
 ```bash
 # Working tree must be clean (safety guard)
@@ -457,7 +495,7 @@ Useful for debugging when a single file shows drift.
 
 <br/>
 
-> **Note**: The bash `sync.sh` once shipped a one-shot migration command `--insert-headers` and a verification mode `--check --no-header`. Both were retired in Phase 5 P5-A (resolute-bison) — every one of the 25 consumers now carries the `# upgrade-template:` header, so the commands were dead code. If you need content-based template auto-detection, call `detect_template()` from `scripts/python/upgrade_sync/detect.py` directly.
+> **Note**: The bash `sync.sh` once shipped a one-shot migration command `--insert-headers` and a verification mode `--check --no-header`. Both were retired in Phase 5 P5-A (resolute-bison) — every consumer now carries the `# upgrade-template:` header (see `sync.py --status` for the current count), so the commands were dead code. If you need content-based template auto-detection, call `detect_template()` from `scripts/python/upgrade_sync/detect.py` directly.
 
 <br/>
 
@@ -474,7 +512,9 @@ Each template uses the same upstream lookup logic its `upgrade.py` already relie
 | `local-with-templates` (git mode, `CHART_GIT_REPO` set) | `Chart.yaml` → `version` | Highest semver tag from `git ls-remote --tags` |
 | `local-cr-version` | `<VALUES_FILE>` → `<VERSION_KEY>` | `VERSION_SOURCE` feed (e.g. elastic-artifacts), respecting `MAJOR_PIN` |
 | `external-oci-cr-version` | `<VALUES_FILE>` → `<VERSION_KEY>` (plus `helmfile.yaml.version` chart pin, shown in a separate table) | `VERSION_SOURCE` feed, respecting `MAJOR_PIN` (no Chart.yaml). Chart pin looked up against `CHART_SOURCE_REPO`'s GitHub Releases filtered by `<CHART_NAME>-X.Y.Z` prefix |
+| `external-oci` / `external-oci-with-mirror` | `Chart.yaml` → `version` | GitHub Releases API (`<GITHUB_REPO>`), stripping `<GITHUB_TAG_PREFIX>` (the mirror stage runs at apply time only) |
 | `ansible-github-release` | `<VERSION_FILE>` → `<VERSION_KEY>` | GitHub Releases API (`<GITHUB_REPO>`), respecting `MAJOR_PIN` |
+| `argocd-pin` | `argocd[-aws]/<release>.yaml` → `chart.version` (first pin in filename sort order) | Selected by `BASE` — `"oci"` uses the GitHub Releases API (`<GITHUB_REPO>`, stripping `<GITHUB_TAG_PREFIX>`), anything else uses `helm search repo <HELM_CHART>` (top entry) |
 
 <br/>
 
@@ -486,7 +526,7 @@ Each template uses the same upstream lookup logic its `upgrade.py` already relie
 
 ```
 Collecting managed upgrade.py configs...
-  Managed: 22  Skipped (no header): 0
+  Managed: 49  Skipped (no header): 0
 Registering 13 helm repo(s)...
 Running 'helm repo update'...
 
@@ -498,7 +538,7 @@ Running 'helm repo update'...
   UPDATE   external-oci-cr-version   9.0.0            9.4.0            observability/logging/elasticsearch/upgrade.py
   ...
 
-Summary: OK=15  UPDATE=7  ERROR=0  (total=22)
+Summary: OK=42  UPDATE=7  ERROR=0  (total=49)
 Upgrades are available. Run 'cd <path> && ./upgrade.py --dry-run' in each directory above.
 
 OCI chart pin status (external-oci-cr-version consumers):
@@ -510,6 +550,8 @@ OCI chart pin status (external-oci-cr-version consumers):
 
 Chart summary: OK=2  UPDATE=0  ERROR=0  (total=2)
 ```
+
+> The output above is an example — it drifts as components are added or removed and as upstreams cut releases. **Always run `check-versions.py` yourself for the current values.**
 
 STATUS column (main table = Stack/component version):
 - `OK`: current version matches the upstream latest
@@ -553,13 +595,13 @@ The following tools must be on `PATH` (CI runner installs them automatically via
 
 | Tool | Purpose | Used by |
 |---|---|---|
-| `bash` (>= 3.2 / 4+) **or** `zsh` | every sync/upgrade script (interactive shell either way) | always |
+| `bash` (>= 3.2 / 4+) **or** `zsh` | the interactive shell you type commands into (the scripts themselves are all Python) | always |
 | `helm` | helm-repo lookups, OCI chart pull | `check-versions.py` + every helm-based `upgrade.py` |
 | `helmfile` | helmfile sync/diff/apply | component deploys (CI `apply-components.py`, local `helmfile apply`) |
 | `kubectl` | cluster apply / context management | invoked by helmfile, CI `helmfile-apply-component.py` |
 | `git` | git-tags lookups, automated commit/push | `local-with-templates` (git mode), CI `auto-upgrade.py` |
 | `curl` | upstream metadata fetch | `check-versions.py`, every version-source template |
-| `python3` | JSON parsing (helm search / GitHub releases / Docker Hub tags responses) | `check-versions.py`, `local-cr-version`, `external-oci-cr-version`, `ansible-github-release`, `external-oci-with-mirror`, ... |
+| `python3` (>= 3.10) | runs every sync/upgrade script (`sync.py`, `check-versions.py`, `manage-backups.py`, each `upgrade.py`) | always |
 | `jq` | JSON processing | some helm plugins (auto-upgrade's `jq` usage was replaced with python stdlib `json` in MR-K4) |
 | `yq` | YAML processing | CI `helmfile-apply-component.py`, `apply-components.py` |
 | `crane` | OCI image mirror (upstream → private registry) | `external-oci-with-mirror` template Step 7 mirror stage |
@@ -636,6 +678,8 @@ Each chart's `upgrade.py` copies current files to `<chart>/backup/<TIMESTAMP>/` 
   Total: 23 backup(s) across all charts, 1.7M
 ```
 
+Shows the backup count, total size, and oldest/newest timestamp per chart.
+
 <br/>
 
 ### `--cleanup [--keep N]` — bulk prune across all charts
@@ -649,6 +693,17 @@ Each chart's `upgrade.py` copies current files to `<chart>/backup/<TIMESTAMP>/` 
 
 # Keep 3
 ./scripts/upgrade-sync/manage-backups.py --cleanup --keep 3
+```
+
+Example output:
+```
+Pruning backups across all charts (keep last 1 per chart)...
+
+  cicd/argo-cd                         removed=1, freed=184K
+  observability/logging/elasticsearch  removed=1, freed=8K
+  ...
+
+Removed 9 backup(s) total, freed 712K.
 ```
 
 <br/>
@@ -702,7 +757,7 @@ Requires typing `PURGE` verbatim — `y` is not accepted. All rollback snapshots
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `cli.py` | sync entry point (argparse + dispatch) | `main()` |
+| `cli.py` | sync entry point — hand-written parser + dispatch (deliberately not argparse, to keep byte parity with the bash usage text; the usage banner is the `_USAGE` literal) | `main()` |
 | `commands.py` | `--check` / `--apply` / `--status` / `--print-expected` implementations | `cmd_check()`, `cmd_apply()`, `cmd_status()`, `cmd_print_expected()` |
 | `discovery.py` | repo walker — managed + unmanaged chart discovery | `find_managed_files()`, `find_unmanaged_charts()`, `parse_template_header()` |
 | `detect.py` | auto-detect the canonical type for headerless files | `detect_template()` |
@@ -712,6 +767,7 @@ Requires typing `PURGE` verbatim — `y` is not accepted. All rollback snapshots
 | `table.py` | check-versions result table rendering | `Row`, `ChartRow`, `resolve_row()`, `print_main_table()`, `print_chart_table()` |
 | `yaml_helpers.py` | values.yaml / helmfile.yaml value extraction (stdlib-only mini parser) | `read_yaml_value()`, `read_helmfile_chart_pin()` |
 | `manage_backups.py` | `backup/` directory list/cleanup/purge implementation | `cmd_list()`, `cmd_cleanup()`, `cmd_purge()` |
+| `paths.py` | target repo-root resolution — precedence chain over the embedded layout / `$UPGRADE_SYNC_REPO_ROOT` / git root. Owns the `--repo-root` contract all three entry points expose | `resolve_repo_root()`, `extract_repo_root_flag()`, `is_embedded()` |
 
 `scripts/upgrade-sync/{sync.py, check-versions.py, manage-backups.py}` are launchers that import the modules above and dispatch.
 
@@ -760,14 +816,16 @@ chmod +x storage/new-chart/upgrade.py
 vim storage/new-chart/upgrade.py
 ```
 
-What to edit:
-```bash
-SCRIPT_NAME="New Chart Helm Upgrade Script"
-HELM_REPO_NAME="vendor"
-HELM_REPO_URL="https://charts.vendor.example/stable"
-HELM_CHART="vendor/new-chart"
-CHANGELOG_URL="https://github.com/vendor/new-chart/releases"
-CHART_TYPE="external"
+What to edit (the `CONFIG` dict):
+```python
+CONFIG = {
+    "SCRIPT_NAME":    "New Chart Helm Upgrade Script",
+    "HELM_REPO_NAME": "vendor",
+    "HELM_REPO_URL":  "https://charts.vendor.example/stable",
+    "HELM_CHART":     "vendor/new-chart",
+    "CHANGELOG_URL":  "https://github.com/vendor/new-chart/releases",
+    "CHART_TYPE":     "external",
+}
 ```
 
 ```bash
@@ -780,33 +838,36 @@ cd storage/new-chart && ./upgrade.py --dry-run
 
 <br/>
 
-### Case 2: local chart + custom templates (e.g., elasticsearch, kibana)
+### Case 2: local chart + custom templates (e.g., fluent-bit)
 
 ```bash
 cp scripts/upgrade-sync/templates/local-with-templates.py \
-   observability/logging/elasticsearch/upgrade.py
-chmod +x observability/logging/elasticsearch/upgrade.py
-vim observability/logging/elasticsearch/upgrade.py
+   observability/logging/new-chart/upgrade.py
+chmod +x observability/logging/new-chart/upgrade.py
+vim observability/logging/new-chart/upgrade.py
 ```
 
-What to edit:
-```bash
-SCRIPT_NAME="Elasticsearch Helm Chart Upgrade Script (Local Chart)"
-HELM_REPO_NAME="elastic"
-HELM_REPO_URL="https://helm.elastic.co"
-HELM_CHART="elastic/elasticsearch"
-CHANGELOG_URL="https://github.com/elastic/helm-charts/releases"
-
-# Custom templates to preserve (not in upstream)
-CUSTOM_TEMPLATES=("pv.yaml" "pvc.yaml")
-
-# _pod.tpl patch (PVC volume injection — same as fluent-bit, or modify as needed)
-CUSTOM_POD_PATCH='...'
+What to edit (the `CONFIG` dict — see `observability/logging/fluent-bit/upgrade.py` for a real one):
+```python
+CONFIG = {
+    "SCRIPT_NAME":      "New Chart Helm Upgrade Script (Local Chart)",
+    "HELM_REPO_NAME":   "vendor",
+    "HELM_REPO_URL":    "https://charts.vendor.example/stable",
+    "HELM_CHART":       "vendor/new-chart",
+    "CHANGELOG_URL":    "https://github.com/vendor/new-chart/releases",
+    # helm repo mode — leave the git source empty
+    "CHART_GIT_REPO":   "",
+    "CHART_GIT_PATH":   "",
+    # Custom templates to preserve (not in upstream)
+    "CUSTOM_TEMPLATES": ["pv.yaml", "pvc.yaml"],
+    # _pod.tpl patch (PVC volume injection) — define it as a module constant above CONFIG, inside the marker region, as fluent-bit does
+    "CUSTOM_POD_PATCH": CUSTOM_POD_PATCH,
+}
 ```
 
 ```bash
 ./scripts/upgrade-sync/sync.py --check
-cd observability/logging/elasticsearch && ./upgrade.py --dry-run
+cd observability/logging/new-chart && ./upgrade.py --dry-run
 ```
 
 <br/>
@@ -833,20 +894,20 @@ chmod +x new-chart/upgrade.py
 vim new-chart/upgrade.py
 ```
 
-What to edit:
-```bash
-SCRIPT_NAME="My Chart Upgrade Script (git source)"
-HELM_REPO_NAME=""              # ★ leave empty
-HELM_REPO_URL=""               # ★ leave empty
-HELM_CHART=""                  # ★ leave empty
-CHANGELOG_URL="https://github.com/owner/repo/releases"
-
-# git source mode (this triggers git clone instead of helm pull)
-CHART_GIT_REPO="https://github.com/owner/repo.git"
-CHART_GIT_PATH="path/to/chart"  # e.g., "deploy/chart/my-chart"
-
-CUSTOM_TEMPLATES=("custom1.yaml" "custom2.yaml")
-CUSTOM_POD_PATCH=''  # empty if not used
+What to edit (the `CONFIG` dict):
+```python
+CONFIG = {
+    "SCRIPT_NAME":      "My Chart Upgrade Script (git source)",
+    "HELM_REPO_NAME":   "",  # ★ leave empty
+    "HELM_REPO_URL":    "",  # ★ leave empty
+    "HELM_CHART":       "",  # ★ leave empty
+    "CHANGELOG_URL":    "https://github.com/owner/repo/releases",
+    # git source mode (this triggers git clone instead of helm pull)
+    "CHART_GIT_REPO":   "https://github.com/owner/repo.git",
+    "CHART_GIT_PATH":   "path/to/chart",  # e.g., "deploy/chart/my-chart"
+    "CUSTOM_TEMPLATES": ["custom1.yaml", "custom2.yaml"],
+    "CUSTOM_POD_PATCH": "",  # empty if not used
+}
 ```
 
 ```bash
@@ -871,16 +932,20 @@ chmod +x new-chart/upgrade.py
 vim new-chart/upgrade.py
 ```
 
-What to edit:
-```bash
-SCRIPT_NAME="My OCI Chart Upgrade Script"
-HELM_REPO_NAME="vendor"                          # informational only for OCI
-HELM_REPO_URL="oci://ghcr.io/vendor/charts"      # informational only for OCI
-HELM_CHART="oci://ghcr.io/vendor/charts/my-chart"
-GITHUB_REPO="vendor/my-chart"                    # for Releases API (latest tag)
-GITHUB_TAG_PREFIX="${GITHUB_TAG_PREFIX:-v}"      # tags: vX.Y.Z -> X.Y.Z
-CHANGELOG_URL="https://github.com/vendor/my-chart/releases"
-CHART_TYPE="external"                            # set "local" to compare against local Chart.yaml + values.yaml as source of truth
+What to edit (the `CONFIG` dict):
+```python
+CONFIG = {
+    "SCRIPT_NAME":            "My OCI Chart Upgrade Script",
+    "HELM_REPO_NAME":         "vendor",                                 # informational only for OCI
+    "HELM_REPO_URL":          "oci://ghcr.io/vendor/charts",            # informational only for OCI
+    "HELM_CHART":             "oci://ghcr.io/vendor/charts/my-chart",
+    "GITHUB_REPO":            "vendor/my-chart",                        # for Releases API (latest tag)
+    "GITHUB_TAG_PREFIX":      "v",                                      # tags: vX.Y.Z -> X.Y.Z
+    "CHANGELOG_URL":          "https://github.com/vendor/my-chart/releases",
+    "CHART_TYPE":             "external",                               # set "local" to compare against local Chart.yaml + values.yaml as source of truth
+    "WRAPPER_CHART_YAML":     False,                                    # the default is fine
+    "HELMFILE_TRACKED_CHART": "",                                       # the default is fine
+}
 ```
 
 ```bash
@@ -891,13 +956,13 @@ cd new-chart && ./upgrade.py --dry-run
 Behavior:
 - Step 2: latest tag is read from `api.github.com/repos/$GITHUB_REPO/releases/latest` and `GITHUB_TAG_PREFIX` is stripped
 - Step 3: chart metadata is fetched via `helm show chart/values` + `helm pull --untar`
-- Apply: refreshes `Chart.yaml` + `values.yaml` (+ `values.schema.json` if present) from upstream and bumps `helmfile.yaml.version` via sed
+- Apply: refreshes `Chart.yaml` + `values.yaml` (+ `values.schema.json` if present) from upstream and bumps `helmfile.yaml.version`
 
 <br/>
 
 ## Adding a new canonical variant
 
-When the existing 3 canonicals don't cover a new pattern.
+When the existing canonicals don't cover a new pattern.
 
 ### Example scenarios
 
@@ -915,41 +980,17 @@ cp scripts/upgrade-sync/templates/external-standard.py \
 # 2. Modify the new canonical's body (keep CONFIG block placeholders)
 vim scripts/upgrade-sync/templates/external-multi-release.py
 
-# 3. Add a detection branch to detect_template()
-vim scripts/python/upgrade_sync/detect.py
-```
-
-```python
-# scripts/python/upgrade_sync/detect.py — add a regex at the top of the module
-_MULTI_RELEASE_RE = re.compile(r"^MULTI_RELEASE=", re.MULTILINE)  # ← new variant
-
-def detect_template(upgrade_script: Path) -> str:
-    body = upgrade_script.read_text(encoding="utf-8")
-    if _MULTI_RELEASE_RE.search(body):              # ← insert branch at the right cascade slot
-        return "external-multi-release"
-    if _OCI_CHART_RE.search(body):
-        ...  # existing logic preserved
-    if _VERSION_SOURCE_RE.search(body):
-        if _MIRROR_CHART_VERSION_RE.search(body):
-            return "local-cr-version"
-        return "external-oci-cr-version"
-    if _CUSTOM_TEMPLATES_RE.search(body):
-        return "local-with-templates"
-    if _IMAGE_TAG_RE.search(body):
-        return "external-with-image-tag"
-    return "external-standard"
-```
-
-```bash
-# 4. Update the chart's upgrade.py header to the new variant
+# 3. Update the chart's upgrade.py header to the new variant
+#    sync.py resolves templates/<name>.py from this header, so there is no separate registration step
+#    (detect_template() in detect.py is a diagnostic helper for headerless files and plays no part in sync)
 vim path/to/chart/upgrade.py
 # line 2: # upgrade-template: external-multi-release
 
-# 5. Verify
+# 4. Verify
 ./scripts/upgrade-sync/sync.py --check
 ./scripts/upgrade-sync/sync.py --status
 
-# 6. Update the "Canonical templates" table in this README
+# 5. Update the "Canonical templates" table in this README
 vim scripts/upgrade-sync/README-en.md
 ```
 
@@ -974,46 +1015,47 @@ vim scripts/upgrade-sync/templates/local-with-templates.py
 
 # 2. Preview impact
 ./scripts/upgrade-sync/sync.py --check
-# Should show DRIFT for all 16 files
+# Should show DRIFT for every file following that canonical
 
-# 3. Propagate
+# 3. Propagate — --apply refuses a dirty working tree, so commit the edit first
+git commit -am "<message>"
 ./scripts/upgrade-sync/sync.py --apply
 
 # 4. Verify
 ./scripts/upgrade-sync/sync.py --check
-# All 25 managed file(s) are in sync.
+# All managed file(s) are in sync.
 
 # 5. Verify behavior in one chart
 cd cicd/argo-cd && ./upgrade.py --help
 ```
 
-### Example 2: Onboard a new chart (elasticsearch)
+### Example 2: Onboard a new chart (local-with-templates)
 
 ```bash
-# 0. Precondition: elasticsearch should be unmanaged
-./scripts/upgrade-sync/sync.py --status | grep elasticsearch
-#   - observability/logging/elasticsearch
+# 0. Precondition: the chart should be unmanaged
+./scripts/upgrade-sync/sync.py --status | grep new-chart
+#   - observability/logging/new-chart
 
 # 1. Copy the canonical
 cp scripts/upgrade-sync/templates/local-with-templates.py \
-   observability/logging/elasticsearch/upgrade.py
-chmod +x observability/logging/elasticsearch/upgrade.py
+   observability/logging/new-chart/upgrade.py
+chmod +x observability/logging/new-chart/upgrade.py
 
 # 2. Fill the CONFIG block
-vim observability/logging/elasticsearch/upgrade.py
+vim observability/logging/new-chart/upgrade.py
 # - SCRIPT_NAME, HELM_REPO_NAME, HELM_REPO_URL, HELM_CHART, CHANGELOG_URL
 # - CUSTOM_TEMPLATES, CUSTOM_POD_PATCH (as needed)
 
 # 3. Verify drift
 ./scripts/upgrade-sync/sync.py --check
-# All 17 managed file(s) are in sync.   ← 16 → 17
+# All N managed file(s) are in sync.   ← N goes up by one
 
 # 4. Confirm it disappeared from unmanaged
-./scripts/upgrade-sync/sync.py --status | grep elasticsearch
+./scripts/upgrade-sync/sync.py --status | grep new-chart
 # (none)
 
 # 5. Dry-run
-cd observability/logging/elasticsearch && ./upgrade.py --dry-run
+cd observability/logging/new-chart && ./upgrade.py --dry-run
 ```
 
 ### Example 3: Debug when drift is detected
@@ -1029,11 +1071,13 @@ cd observability/logging/elasticsearch && ./upgrade.py --dry-run
 ./scripts/upgrade-sync/sync.py --print-expected cicd/argo-cd/upgrade.py \
   | diff - cicd/argo-cd/upgrade.py
 
-# 3a. If the change was intentional → reflect it in the canonical and propagate
+# 3a. If the change was intentional → reflect it in the canonical, commit, and propagate
 vim scripts/upgrade-sync/templates/external-standard.py
+git commit -am "<message>"
 ./scripts/upgrade-sync/sync.py --apply
 
 # 3b. If the change was a mistake → revert via sync
+#     (an uncommitted drift trips the dirty-tree guard → just git checkout -- <file>)
 ./scripts/upgrade-sync/sync.py --apply
 # This rewrites the single drifting file from the canonical
 ```
@@ -1052,7 +1096,8 @@ vim db-redis/valkey/upgrade.py
 ./scripts/upgrade-sync/sync.py --check
 #   DRIFT [external-with-image-tag] db-redis/valkey/upgrade.py
 
-# 3. Propagate
+# 3. Propagate — --apply refuses a dirty working tree, so commit the edit first
+git commit -am "<message>"
 ./scripts/upgrade-sync/sync.py --apply
 # valkey now includes the image tag auto-update block
 
@@ -1072,7 +1117,7 @@ chmod +x scripts/upgrade-sync/sync.py
 
 ### `ERROR: <file> has no '# upgrade-template:' header on line 2`
 
-The file is missing its line-2 `# upgrade-template: <name>` header. Every one of the 25 consumers already carries the header, so this only fires for newly-added files — fill it in by hand:
+The file is missing its line-2 `# upgrade-template: <name>` header. Every consumer already carries the header, so this only fires for newly-added files — fill it in by hand:
 ```bash
 # 1: #!/usr/bin/env python3
 # 2: # upgrade-template: <correct-template>
@@ -1099,7 +1144,7 @@ git -C kuberntes-infra add ... && git -C kuberntes-infra commit -m "..."
 Possible causes:
 1. You modified a canonical but haven't run `--apply` yet → `./scripts/upgrade-sync/sync.py --apply`
 2. The canonical's marker structure is broken (the `# ===` line count is not 3) → inspect the canonical
-3. `detect_template` mis-classified a file → check the explicit header
+3. The line-2 header (`# upgrade-template:`) points at the wrong canonical → check the header
 
 ### `--check` reports drift on a single file
 
@@ -1112,9 +1157,9 @@ Manually edited, or a partial apply:
 # If a mistake, --apply restores it from the canonical
 ```
 
-### `detect_template` mis-classifies a file
+### A file is managed under the wrong canonical
 
-`detect_template`'s content-based heuristic is imprecise for the file. Fix the header manually:
+`--check` / `--apply` pick the canonical from the line-2 header name alone (`detect_template` is not used). Fix the header manually:
 ```bash
 # Edit line 2 directly
 vim path/to/chart/upgrade.py
@@ -1122,15 +1167,15 @@ vim path/to/chart/upgrade.py
 # 2: # upgrade-template: <correct-template>
 ```
 
-### Added a new canonical but `--check` doesn't recognize it
+### Added a new canonical but `--check` fails with exit 2
 
-Probably forgot to add a branch to `detect_template()`. See [Adding a new canonical variant](#adding-a-new-canonical-variant).
+Probably the header name does not match the `templates/<name>.py` file name (the name without extension must match exactly). See [Adding a new canonical variant](#adding-a-new-canonical-variant).
 
 <br/>
 
 ## Compatibility
 
-- **Python 3.10+**: sync.py / check-versions.py / manage-backups.py / `templates/*.py` / consumer `upgrade.py` all run on the helmfile-tools image's Python 3.12, Homebrew Mac (3.13+), and Linux distro Python 3.10+. No 3.11+ syntax (no `match`-only constructs, no `tomllib`-only paths, no `ExceptionGroup`). ✅
+- **Python 3.10+**: sync.py / check-versions.py / manage-backups.py / `templates/*.py` / consumer `upgrade.py` all run on the helmfile-tools image's Python 3.12, Homebrew Mac (3.13+), and Linux distro Python 3.10+. No 3.11+ features (no `tomllib`-only paths, no `ExceptionGroup`). ✅
 - **stdlib only**: no third-party dependency on this layer (see `docs/python-script-conventions.md` for the formal dep-introduction procedure if it ever changes). ✅
 - **Wrapper `*.sh` portability** (`scripts/python/run.sh`, `scripts/setup-tools.sh`): ✅
   - `#!/usr/bin/env bash` shebang selects the first bash in `$PATH` — Homebrew bash 5.x on macOS, `/bin/bash` 5.x on most Linux. Works on bare macOS bash 3.2 too (wrappers avoid bash 4+ features).
@@ -1146,17 +1191,22 @@ Probably forgot to add a branch to `detect_template()`. See [Adding a new canoni
 - Prevents accidentally overwriting manual edits
 - Override: `--force` flag
 
+<br/>
+
 ### Header-based dispatch
 - The canonical mapping is explicitly declared in the header, so sync cannot apply the wrong canonical by accident
-- Missing header → `--check` errors out explicitly (no silent fallback)
+
+<br/>
 
 ### Bytewise verification
 - `--check` byte-compares the synthesized expected against the actual file
 - A 1-byte difference is reported as drift → catches subtle changes
 
+<br/>
+
 ### Header integrity
 - Every managed `upgrade.py` must declare a `# upgrade-template: <name>` header on line 2
-- Files without the header are silently SKIPped by `--check` and ignored by `--apply` (no drift gate)
+- Files without the header are silently SKIPped by `--check` (`SKIP  [no-header]`, exit code unaffected) and ignored by `--apply` — they fall out of the drift gate quietly. The **only** place a missing header is a hard error (exit 2) is `--print-expected` (`_resolve_template()` in `scripts/python/upgrade_sync/commands.py`).
 
 <br/>
 
@@ -1166,16 +1216,16 @@ Probably forgot to add a branch to `detect_template()`. See [Adding a new canoni
 
 A: That's intentional. The body is canonical-owned, so `sync --apply` overwrites it from the canonical. To add a new feature to the body:
 1. Edit the canonical itself and sync (applies to all charts)
-2. Or, if you need per-chart behavior, branch via a CONFIG block variable (e.g., check `EXTRA_FEATURE_ENABLED=true`)
+2. Or, if you need per-chart behavior, branch via a CONFIG block variable (e.g., check whether `CONFIG["EXTRA_FEATURE_ENABLED"]` is `True`)
 
 <br/>
 
 **Q: How do I add a per-chart placeholder variable to a canonical?**
 
 A:
-1. Add a placeholder to the canonical's CONFIG block (e.g., `EXTRA_DIR="__EXTRA_DIR__"`)
-2. Use it in the canonical's body (e.g., `cp -r "$EXTRA_DIR" ...`)
-3. Fill in the real value in each chart's CONFIG block (`EXTRA_DIR="custom-data"`)
+1. Add a placeholder to the canonical's CONFIG block (e.g., `"EXTRA_DIR": "__EXTRA_DIR__"`)
+2. Use it in the body's owner, `scripts/python/upgrade_core/<template>.py` (e.g., `config["EXTRA_DIR"]`)
+3. Fill in the real value in each chart's CONFIG block (`"EXTRA_DIR": "custom-data"`)
 4. Charts that don't use it can leave it empty or rely on a default
 
 Each chart's CONFIG is user-owned and untouched by sync.
@@ -1202,7 +1252,7 @@ A: No. `find_managed_files` excludes `*/backup/*`. Each chart's `backup/` direct
 
 **Q: How are `_deprecated/` and `_optional/` handled?**
 
-A: Both are permanently excluded from sync drift, all Makefile checks (test/lint/shell-lint), and governance.
+A: Both are excluded from sync drift, all Makefile checks (test/lint/shell-lint), and governance.
 - `_deprecated/` (`*/_deprecated/*` exclude): retired components, kept as a historical trail.
 - `_optional/` (`*/_optional/*` exclude): inactive optional components. **To activate, move the directory out of `_optional/`** — it then auto-rejoins sync and check scopes. On activation, run `./upgrade.py` directly, or `sync.py --apply` once to align with the canonical templates.
 
@@ -1210,7 +1260,7 @@ A: Both are permanently excluded from sync drift, all Makefile checks (test/lint
 
 **Q: What about non-helm directories like kubespray?**
 
-A: `find_managed_files` only matches `upgrade.py` files, so directories without both `Chart.yaml` and `upgrade.py` are never candidates. kubespray is Ansible-based and unrelated.
+A: `find_managed_files` only matches `upgrade.py` files, so directories without both `Chart.yaml` and `upgrade.py` are never candidates.
 
 <br/>
 
@@ -1240,6 +1290,6 @@ A: `git checkout HEAD -- .` restores everything in one shot. Always run sync fro
 
 ## See also
 
-- Main README: [../../README.md](../../README.md)
+- Main README: [../../README-en.md](../../README.md)
 - Canonical sources: [templates/](templates/)
 - Sync tool: [sync.py](sync.py)

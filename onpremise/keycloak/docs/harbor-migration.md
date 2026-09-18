@@ -1,7 +1,7 @@
 # Harbor OIDC → Keycloak migration (Phase 4, 2026-04-28)
 
 > **Plan order**: Plan v2 had this as Phase 5; user moved it forward to **Phase 4** (Harbor before ArgoCD).
-> **Status**: 2026-04-28 — procedure finalized. Cluster apply pending user approval.
+> **Status**: ✅ **Applied (2026-04-28)** — Keycloak is Harbor's live IdP. The procedure below is kept as the reproduction/rollback record; remaining items are tracked in the **Follow-ups** section at the bottom.
 
 Switches the Harbor OIDC IdP from GitLab to Keycloak. **Harbor's OIDC settings live in the UI/API, not in Helm values**, so chart changes are limited to comments/docs; only runtime cluster reconfiguration is required.
 
@@ -21,7 +21,7 @@ The OIDC `sub` of existing users changes — they re-onboard as new accounts, re
 
 ## User impact (current inventory)
 
-From `cicd/harbor-helm/scripts/admin/harbor-admin-en.sh users / projects / project-members`:
+From `cicd/harbor-helm/scripts/admin/harbor-admin.sh users / projects / project-members`:
 
 | Item | Value | Impact |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ From `cicd/harbor-helm/scripts/admin/harbor-admin-en.sh users / projects / proje
 | Project members (`library`, `example-project`, `secondary-project`) | Only `admin` (Harbor's built-in admin) | No OIDC users mapped → no re-mapping work |
 | Downtime | ~1s after the `set-oidc` PUT (cache refresh) | Effectively zero |
 
-→ User impact in this cluster is minimal: somaz logs in once and gets re-promoted. Done.
+→ User impact in this cluster is minimal: admin logs in once and gets re-promoted. Done.
 
 <br/>
 
@@ -43,12 +43,12 @@ From `cicd/harbor-helm/scripts/admin/harbor-admin-en.sh users / projects / proje
 ```bash
 cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
-./harbor-admin-en.sh config        > /tmp/harbor-pre-phase4-config.txt
-./harbor-admin-en.sh users         > /tmp/harbor-pre-phase4-users.txt
-./harbor-admin-en.sh groups        > /tmp/harbor-pre-phase4-groups.txt
+./harbor-admin.sh config        > /tmp/harbor-pre-phase4-config.txt
+./harbor-admin.sh users         > /tmp/harbor-pre-phase4-users.txt
+./harbor-admin.sh groups        > /tmp/harbor-pre-phase4-groups.txt
 for p in library example-project secondary-project; do
   echo "=== $p ==="
-  ./harbor-admin-en.sh project-members "$p"
+  ./harbor-admin.sh project-members "$p"
 done > /tmp/harbor-pre-phase4-members.txt
 
 mkdir -p ~/harbor-backup-phase4
@@ -58,6 +58,7 @@ cp /tmp/harbor-pre-phase4-*.txt ~/harbor-backup-phase4/
 ### Step 2. (Optional) Pre-flight on the Keycloak side
 
 ```bash
+# Confirm kcadm-verify.sh passes completely (exit code 0)
 cd kuberntes-infra/security/keycloak
 ./scripts/kcadm-verify.sh
 
@@ -73,7 +74,7 @@ cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 # Pass secret via env var (no shell history)
 # ⚠️ This cluster uses a self-signed wildcard cert → must pass --verify-cert false
 HARBOR_OIDC_CLIENT_SECRET='<HARBOR_OIDC_CLIENT_SECRET>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
     --client-id harbor \
@@ -89,7 +90,7 @@ Review the printed body (secret masked). Confirm the policy fields: `oidc_admin_
 
 ```bash
 HARBOR_OIDC_CLIENT_SECRET='<HARBOR_OIDC_CLIENT_SECRET>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name Keycloak \
     --endpoint https://auth.example.com/realms/example \
     --client-id harbor \
@@ -100,14 +101,14 @@ HARBOR_OIDC_CLIENT_SECRET='<HARBOR_OIDC_CLIENT_SECRET>' \
 ### Step 5. Verify
 
 ```bash
-./harbor-admin-en.sh config
+./harbor-admin.sh config
 # Expected:
 #   oidc_name              = Keycloak
 #   oidc_endpoint          = https://auth.example.com/realms/example
 #   oidc_client_id         = harbor...
 #   oidc_groups_claim      = groups
 #   oidc_group_filter      = server
-#   oidc_verify_cert       = True
+#   oidc_verify_cert       = False    <- self-signed wildcard cert environment
 #   oidc_auto_onboard      = True
 #   oidc_admin_group       = (empty)
 ```
@@ -127,19 +128,19 @@ For this environment (1 user, yourself) the simpler **Option B (re-join)** is su
 cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # 7-1. Confirm new user appears (after Step 6's first login)
-./harbor-admin-en.sh users
-# Expect: a new user alongside the legacy 'somaz' (id=3)
+./harbor-admin.sh users
+# Expect: a new user alongside the legacy 'admin' (id=3)
 
 # 7-2. Promote the new user to sysadmin
-./harbor-admin-en.sh promote admin@example.com
-# If two users share the email, target by username (e.g. 'somaz2') or new user_id
+./harbor-admin.sh promote admin@example.com
+# If two users share the email, target by username (e.g. 'admin2') or new user_id
 
 # 7-3. Verify
-./harbor-admin-en.sh user-info admin@example.com
-./harbor-admin-en.sh whoami    # always shows admin (call is by admin)
+./harbor-admin.sh user-info admin@example.com
+./harbor-admin.sh whoami    # always shows admin (call is by admin)
 
 # 7-4. (Optional) Disable the old GitLab-OIDC user
-./harbor-admin-en.sh demote <legacy-username-or-email>   # revoke admin only
+./harbor-admin.sh demote <legacy-username-or-email>   # revoke admin only
 # Or delete via Web UI Users → Delete (full removal)
 ```
 
@@ -157,12 +158,12 @@ cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 ## Verification checklist
 
-- [ ] `./harbor-admin-en.sh config` shows the Keycloak endpoint
-- [ ] `./harbor-admin-en.sh systeminfo \| grep auth_mode` still `oidc_auth`
+- [ ] `./harbor-admin.sh config` shows the Keycloak endpoint
+- [ ] `./harbor-admin.sh systeminfo \| grep auth_mode` still `oidc_auth`
 - [ ] Incognito browser shows `LOGIN VIA OIDC PROVIDER Keycloak`
 - [ ] Click redirects to Keycloak, which shows `Sign in with GitLab`
 - [ ] GitLab login completes, returns to Harbor home
-- [ ] `./harbor-admin-en.sh users` lists a new user
+- [ ] `./harbor-admin.sh users` lists a new user
 - [ ] After `promote` the new user has `sysadmin_flag=True`
 - [ ] `harbor login harbor.example.com` (Docker / podman OIDC token auth) works
 - [ ] A non-`server` GitLab user attempting login → no Harbor user created (group filter works)
@@ -178,7 +179,7 @@ cd kuberntes-infra/cicd/harbor-helm/scripts/admin
 
 # GitLab Application creds (recover from admin/Applications)
 HARBOR_OIDC_CLIENT_SECRET='<gitlab application secret>' \
-  ./harbor-admin-en.sh set-oidc \
+  ./harbor-admin.sh set-oidc \
     --name GitLab \
     --endpoint http://gitlab.example.com \
     --client-id '<gitlab application id>' \
@@ -201,6 +202,6 @@ Rollback flips the OIDC `sub` back to GitLab basis → re-run Step 7 to clean us
 ## References
 
 - [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../../harbor-helm/docs/oidc-setup-keycloak.md) — Keycloak OIDC standard procedure (§7 rollback + legacy full link)
-- [`cicd/harbor-helm/scripts/admin/README-en.md`](../../harbor-helm/scripts/admin/README.md) — `harbor-admin-en.sh` command reference (incl. `set-oidc`)
+- [`cicd/harbor-helm/scripts/admin/README-en.md`](../../harbor-helm/scripts/admin/README.md) — `harbor-admin.sh` command reference (incl. `set-oidc`)
 - [Phase 5 vaultwarden migration](./vaultwarden-migration.md), [Phase 6 ArgoCD migration](./argocd-migration.md) — follow-up phases
 - [architecture-en.md](./architecture.md) — auth flow & user impact summary

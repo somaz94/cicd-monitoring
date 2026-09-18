@@ -462,6 +462,120 @@ print(json.dumps(d, indent=2))" >&2
   _ok "OIDC config applied. Verify with the 'config' command"
 }
 
+cmd_gc_status() {
+  # Garbage collection schedule + recent runs.
+  #
+  # GC is a RUNTIME setting stored in Harbor's database, not a Helm value — same
+  # category as the OIDC config above. Nothing in git describes it, so this command
+  # is how you find out what the cluster actually has.
+  _info "Schedule"
+  api GET "/api/v2.0/system/gc/schedule" | python3 -c "
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    print('  (none — GC never runs unless someone triggers it by hand)')
+    raise SystemExit
+d = json.loads(raw)
+s = d.get('schedule') or {}
+print(f\"  type   = {s.get('type')}\")
+print(f\"  cron   = {s.get('cron')}   (6-field, and Harbor core runs in UTC)\")
+print(f\"  next   = {s.get('next_scheduled_time')}\")
+print(f\"  params = {d.get('job_parameters')}\")"
+
+  _info "Recent runs"
+  api GET "/api/v2.0/system/gc?page_size=5&sort=-creation_time" | python3 -c "
+import json, sys
+rows = json.loads(sys.stdin.read() or '[]')
+if not rows:
+    print('  (never run)')
+for g in rows:
+    p = {}
+    try:
+        p = json.loads(g.get('job_parameters') or '{}')
+    except ValueError:
+        pass
+    freed = p.get('freed_space')
+    freed = f\"{freed/1024**3:.1f}G\" if isinstance(freed, (int, float)) else '-'
+    print(f\"  id={g.get('id'):<5} {str(g.get('job_kind')):<14} {g.get('job_status'):<9} \"
+          f\"{(g.get('creation_time') or '')[:19]}  freed={freed} \"
+          f\"blobs={p.get('purged_blobs','-')} manifests={p.get('purged_manifests','-')}\")"
+}
+
+cmd_gc_schedule() {
+  # gc-schedule [--cron '0 0 20 * * 6'] [--delete-untagged true|false] [--workers N]
+  #
+  # Default cron is Saturday 20:00 UTC = Sunday 05:00 KST — a weekend slot that clears
+  # the backup CronJobs (etcd 02:00, app backups 03:00, harbor-db 04:00 KST) and lands
+  # when CI is quiet. GC briefly slows the registry, so do not move it into work hours.
+  local cron="0 0 20 * * 6" delete_untagged="true" workers="1"
+  local dry_run=0 no_confirm=0
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --cron)             cron="$2"; shift 2 ;;
+      --delete-untagged)  delete_untagged="$2"; shift 2 ;;
+      --workers)          workers="$2"; shift 2 ;;
+      --dry-run)          dry_run=1; shift ;;
+      -y|--no-confirm)    no_confirm=1; shift ;;
+      *)                  _die "Unknown option: $1" ;;
+    esac
+  done
+
+  case "$delete_untagged" in true|false) ;; *) _die "--delete-untagged must be true|false";; esac
+  case "$workers" in ''|*[!0-9]*) _die "--workers must be a number";; esac
+  # Harbor wants seconds-first cron; a 5-field expression is silently misread as a
+  # different time, so reject it here rather than discover it a week later.
+  #
+  # Counted with awk rather than `set -- $cron`: unquoted expansion glob-expands the
+  # `*` fields against the working directory in bash, and zsh does not word-split it
+  # at all. awk sees the string exactly as written in both shells.
+  local cron_fields
+  cron_fields=$(printf '%s\n' "$cron" | awk '{print NF}')
+  [ "$cron_fields" -eq 6 ] || \
+    _die "--cron must have 6 fields (sec min hour dom mon dow), got ${cron_fields}: $cron"
+
+  local body
+  body=$(CRON="$cron" DU="$delete_untagged" W="$workers" python3 -c '
+import json, os
+print(json.dumps({
+  "schedule": {"type": "Custom", "cron": os.environ["CRON"]},
+  "parameters": {
+    "delete_untagged": os.environ["DU"] == "true",
+    "workers": int(os.environ["W"]),
+  },
+}))')
+
+  _info "Target: ${HARBOR_URL}/api/v2.0/system/gc/schedule"
+  echo "$body" | python3 -m json.tool >&2
+
+  if [ "$dry_run" -eq 1 ]; then
+    _ok "DRY RUN — request not sent"
+    return 0
+  fi
+
+  if [ "$no_confirm" -eq 0 ]; then
+    printf '%s' "${YELLOW}Continue? [y/N]: ${NC}" >&2
+    local reply
+    read -r reply
+    case "$reply" in
+      y|Y|yes|YES) ;;
+      *) _info "Cancelled"; exit 0 ;;
+    esac
+  fi
+
+  # POST creates, PUT updates. Which one applies depends on whether a schedule already
+  # exists, so try POST and fall back rather than making the caller know.
+  local resp="" code=""
+  resp=$(api_status POST "/api/v2.0/system/gc/schedule" "$body")
+  code=$(echo "$resp" | head -1)
+  if [ "$code" = "409" ]; then
+    resp=$(api_status PUT "/api/v2.0/system/gc/schedule" "$body")
+    code=$(echo "$resp" | head -1)
+  fi
+  [[ "$code" =~ ^(200|201)$ ]] || _die "Failed to set GC schedule (HTTP $code): $(echo "$resp" | tail -n +2)"
+  _ok "GC schedule applied. Verify with the 'gc-status' command"
+}
+
 cmd_systeminfo() {
   # /systeminfo is public (no auth required) — drop basic auth
   local -a opts=(-sk)
@@ -509,6 +623,17 @@ ${BOLD}OIDC configuration${NC}
                                             --groups-claim, --group-filter, --user-claim,
                                             --admin-group, --scope, --auto-onboard true|false.
                                   client-secret can also be passed via HARBOR_OIDC_CLIENT_SECRET env.
+
+${BOLD}Garbage collection${NC}
+  gc-status                       Show the GC schedule and recent runs
+  gc-schedule [opts]              Set the GC schedule (supports --dry-run / -y).
+                                  optional: --cron '<6-field>' (default '0 0 20 * * 6'
+                                              = Sat 20:00 UTC = Sun 05:00 KST),
+                                            --delete-untagged true|false (default true),
+                                            --workers N (default 1).
+                                  GC reclaims blobs no manifest references; it never
+                                  deletes a referenced image. --delete-untagged also
+                                  drops untagged manifests (stale build cache included).
 
 ${BOLD}Diagnostics${NC}
   config                          Dump OIDC-related config (secret excluded)
@@ -559,6 +684,8 @@ main() {
     add-group)            [ $# -ge 1 ] || _die "add-group <oidc-group-name>"; cmd_add_group "$1" ;;
     config)               cmd_config ;;
     set-oidc)             cmd_set_oidc "$@" ;;
+    gc-status)            cmd_gc_status ;;
+    gc-schedule)          cmd_gc_schedule "$@" ;;
     systeminfo)           cmd_systeminfo ;;
     *)                    echo "Unknown command: $cmd" >&2; usage 1 ;;
   esac

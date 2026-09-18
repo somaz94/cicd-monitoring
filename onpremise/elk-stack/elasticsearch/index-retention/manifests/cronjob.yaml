@@ -60,7 +60,7 @@ spec:
                 # Space-separated allow-list of raw log indices to trim.
                 # NEVER add cohort (*-user-cohort) or system (.ds-*/.internal.*) indices.
                 - name: INDICES
-                  value: "dev-example-project-game qa-example-project-game dev-example-project-battle"
+                  value: "dev-example-project-game qa-example-project-game dev-example-project-battle dev2-example-project-game dev2-example-project-battle"
                 # In-namespace ES HTTPS service (ECK self-signed cert -> curl -k).
                 - name: ES_HOST
                   value: "https://elasticsearch-es-http:9200"
@@ -111,6 +111,15 @@ spec:
                     # index first.
                     case "${RESP}" in
                       '') echo "  ! ${IDX}: no response (curl failed)" >&2; RC=1 ;;
+                      # A listed index that does not exist YET is not a failure. An
+                      # environment is enrolled in INDICES when its apps are deployed,
+                      # but the index itself is only created by fluentd on the first log
+                      # line -- and a low-traffic component (battle emits little beyond
+                      # framework start-up) can take days to produce one. Without this
+                      # branch the whole Job exits 1 every night until then, firing
+                      # KubeJobFailed for something that is working as intended.
+                      # MUST stay above the '"error"' branch: the 404 body contains both.
+                      *'index_not_found_exception'*) echo "  ~ ${IDX}: not created yet — skipped" ;;
                       *'"error"'*) echo "  ! ${IDX}: ES returned an error" >&2; RC=1 ;;
                       *'"timed_out":true'*) echo "  ! ${IDX}: query timed out" >&2; RC=1 ;;
                     esac

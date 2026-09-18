@@ -22,7 +22,7 @@
     # ------------------------------------------------------------------
     - name: Check if node_exporter service exists
       stat:
-        path: /etc/systemd/system/{{ node_exporter_service }}.service
+        path: "{{ node_exporter_launchd_plist if ansible_facts.system == 'Darwin' else node_exporter_systemd_unit }}"
       register: service_file
 
     - name: Stop node_exporter service
@@ -30,17 +30,29 @@
         name: "{{ node_exporter_service }}"
         state: stopped
         enabled: false
-      when: service_file.stat.exists
+      when:
+        - ansible_facts.system != 'Darwin'
+        - service_file.stat.exists
       ignore_errors: true
 
-    - name: Remove systemd unit file
+    - name: Unload node_exporter LaunchDaemon
+      command: "launchctl bootout system/{{ node_exporter_launchd_label }}"
+      register: launchd_bootout
+      changed_when: launchd_bootout.rc == 0
+      failed_when: false
+      when:
+        - ansible_facts.system == 'Darwin'
+        - service_file.stat.exists
+
+    - name: Remove service unit file
       file:
-        path: /etc/systemd/system/{{ node_exporter_service }}.service
+        path: "{{ node_exporter_launchd_plist if ansible_facts.system == 'Darwin' else node_exporter_systemd_unit }}"
         state: absent
 
     - name: Reload systemd daemon
       systemd:
         daemon_reload: true
+      when: ansible_facts.system != 'Darwin'
 
     # ------------------------------------------------------------------
     # 2. Remove binary and backup
@@ -55,20 +67,30 @@
         path: "{{ node_exporter_bin }}.bak"
         state: absent
 
+    # Only the launchd path writes this; systemd hosts log to the journal.
+    - name: Remove launchd log file
+      file:
+        path: "{{ node_exporter_launchd_log }}"
+        state: absent
+      when: ansible_facts.system == 'Darwin'
+
     # ------------------------------------------------------------------
     # 3. Remove user
     # ------------------------------------------------------------------
+    # Only Linux ever created a dedicated account; on macOS the exporter ran as
+    # an existing login that must survive the uninstall.
     - name: Remove node_exporter system user
       user:
         name: node_exporter
         state: absent
         remove: true
+      when: ansible_facts.system != 'Darwin'
 
     # ------------------------------------------------------------------
     # 4. Verify
     # ------------------------------------------------------------------
     - name: Verify node_exporter is not running
-      shell: "ss -tlnp | grep ':9100 ' || true"
+      shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check
       changed_when: false
 

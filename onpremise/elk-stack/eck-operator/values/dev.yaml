@@ -1,14 +1,18 @@
 ---
-# ECK Operator is set to watch ALL namespaces (empty list) as a workaround for
-# an ECK 3.3.x bug: the stackconfigpolicy-controller emits a "Reconciler error:
-# unable to get: / because of unknown namespace for the cache" message every
-# ~17 minutes when managedNamespaces is narrowed to a subset. The controller
-# tries to resolve resources outside the cache scope; widening the cache to
-# all namespaces eliminates the spam at its root.
+# ECK Operator watches ALL namespaces (empty list).
 #
-# Scope impact is minimal: cluster-scoped RBAC is already created via
-# createClusterScopedResources: true below, and no Elastic CR is deployed
-# outside 'logging' today. Revisit once ECK is upgraded past the 3.3.x fix.
+# This began as a workaround for an ECK 3.3.x bug: the stackconfigpolicy-controller
+# enqueued zero-value reconcile requests, so a narrowed managedNamespaces produced a
+# "Reconciler error: unable to get: / because of unknown namespace for the cache"
+# every ~17 minutes. That bug is FIXED upstream (elastic/cloud-on-k8s issue #9178,
+# PR #9179, shipped in ECK 3.4.0), so the empty list is no longer forced.
+#
+# It is kept empty deliberately. Narrowing buys nothing measurable here -- every
+# Elastic CR lives in 'logging' on both clusters -- while a static list silently
+# stops managing any CR created elsewhere later. If scoping is ever wanted, prefer
+# the namespaceSelector field (label-based; on/off-boards live, no operator restart)
+# over a static list. Cluster-scoped RBAC comes from createClusterScopedResources
+# below.
 installCRDs: true
 managedNamespaces: []
 

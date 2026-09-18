@@ -1,6 +1,6 @@
 # ArgoCD dex → Keycloak OIDC migration (Phase 6, 2026-04-29)
 
-> **Status**: 2026-04-29 — procedure finalized. Cluster apply requires user approval.
+> **Status**: ✅ **Applied (2026-04-29)** — Keycloak OIDC is ArgoCD's live SSO. The procedure below is kept as the reproduction/rollback record; remaining items are tracked in the **Follow-up cleanup** section at the bottom.
 
 Switches the ArgoCD dex GitLab connector to Keycloak OIDC. Keycloak brokers GitLab as IdP, so user credentials remain GitLab — the only user action is **a single re-login**.
 
@@ -212,9 +212,18 @@ Five traps tripped in sequence during cutover. Documented so the next migration 
 
 ### Additional verification scenario (proves RBAC enforcement)
 
+> ⚠️ **Updated 2026-07-30**: the global-admin subject moved from email to a **group** (`g, global-admin, role:global-admin`). The procedure below is a record from the email-mapping era; both lines are group subjects now, so distinguishing "email vs group" no longer means anything. To check the group claim itself, generate the token Keycloak would actually issue — read-only, no login required:
+>
+> ```bash
+> kubectl -n keycloak exec -i keycloak-0 -- /opt/keycloak/bin/kcadm.sh \
+>   get "clients/<argocd-client-uuid>/evaluate-scopes/generate-example-access-token?userId=<user-uuid>&scope=openid+email+profile" -r example
+> ```
+>
+> Also note that if the group claim stops arriving, `policy.default` is empty, so an **OIDC user ends up with zero permissions**. Break-glass is the local `admin` account (`argocd-initial-admin-secret`) — see the Break-glass section of [gitlab-brokering-en.md](./gitlab-brokering.md).
+
 When `g, admin@example.com, role:global-admin` and `g, server, role:server-admin` are both active, you cannot tell which match actually applies. Verification procedure:
 
-1. Comment out `g, admin@example.com, role:global-admin` → apply → confirm somaz still operates with server-admin only (proves the server group claim works)
+1. Comment out `g, admin@example.com, role:global-admin` → apply → confirm admin still operates with server-admin only (proves the server group claim works)
 2. Comment out the four `secondary-project/*` permission lines → apply → confirm secondary-project apps disappear from the UI (proves server-admin policy enforcement)
 3. Restore both immediately after verification
 

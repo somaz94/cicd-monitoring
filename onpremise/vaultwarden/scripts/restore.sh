@@ -15,7 +15,9 @@ NAMESPACE="vaultwarden"
 DATA_PVC="vaultwarden-data-vaultwarden-0"
 BACKUP_PVC="vaultwarden-backup-data"
 STATEFULSET="vaultwarden"
-RESTORE_IMAGE="busybox:latest"
+# alpine (not busybox) because the restore verifies the backup with sqlite3
+# before it overwrites the live database. Matches the backup CronJob image.
+RESTORE_IMAGE="alpine:3.21"
 
 # -----------------------------------------------
 # Functions
@@ -133,9 +135,14 @@ do_restore() {
 
   # Step 2: Restore
   echo ""
+  # The restore verifies the backup with PRAGMA integrity_check BEFORE it
+  # overwrites the live database, and deletes db.sqlite3-wal / -shm afterwards.
+  # Leaving the live WAL in place next to a restored older main database is not
+  # inert: SQLite finds a salt mismatch, treats the WAL as stale and drops it,
+  # so the restore "succeeds" while silently discarding whatever the WAL held.
   echo "[Step 2/4] Restoring from backup db-${DATE}.sqlite3..."
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "    (dry-run) kubectl run vw-restore --rm -it --restart=Never --image=$RESTORE_IMAGE -n $NAMESPACE --overrides=... (would 'cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3 + rsa_key')"
+    echo "    (dry-run) kubectl run vw-restore --rm -it --restart=Never --image=$RESTORE_IMAGE -n $NAMESPACE --overrides=... (would verify db-${DATE}.sqlite3 with integrity_check, then 'cp -> /data/db.sqlite3', 'rm -f /data/db.sqlite3-wal /data/db.sqlite3-shm', + rsa_key)"
   else
     kubectl run vw-restore --rm -it --restart=Never \
       --image="$RESTORE_IMAGE" -n "$NAMESPACE" \
@@ -144,7 +151,7 @@ do_restore() {
           \"containers\": [{
             \"name\": \"restore\",
             \"image\": \"$RESTORE_IMAGE\",
-            \"command\": [\"sh\", \"-c\", \"set -e; if [ ! -f /backup-data/db-${DATE}.sqlite3 ]; then echo 'ERROR: db-${DATE}.sqlite3 not found'; exit 1; fi; cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3; cp /backup-data/rsa_key-${DATE}.pem /data/rsa_key.pem 2>/dev/null || echo 'WARNING: rsa_key not found in backup, keeping current'; echo 'Restore complete: db-${DATE}.sqlite3 -> /data/db.sqlite3'\"],
+            \"command\": [\"sh\", \"-c\", \"set -e; apk add --no-cache sqlite >/dev/null; if [ ! -f /backup-data/db-${DATE}.sqlite3 ]; then echo 'ERROR: db-${DATE}.sqlite3 not found'; exit 1; fi; R=\$(sqlite3 /backup-data/db-${DATE}.sqlite3 'PRAGMA integrity_check;'); case \$R in ok) ;; *) echo 'ERROR: backup failed integrity_check, refusing to overwrite the live database:'; echo \$R; exit 1 ;; esac; cp /backup-data/db-${DATE}.sqlite3 /data/db.sqlite3; rm -f /data/db.sqlite3-wal /data/db.sqlite3-shm; cp /backup-data/rsa_key-${DATE}.pem /data/rsa_key.pem 2>/dev/null || echo 'WARNING: rsa_key not found in backup, keeping current'; echo 'Restore complete and verified: db-${DATE}.sqlite3 -> /data/db.sqlite3'\"],
             \"volumeMounts\": [
               {\"name\": \"data\", \"mountPath\": \"/data\"},
               {\"name\": \"backup\", \"mountPath\": \"/backup-data\", \"readOnly\": true}

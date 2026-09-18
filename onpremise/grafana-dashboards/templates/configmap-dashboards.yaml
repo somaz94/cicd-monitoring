@@ -1,0 +1,24 @@
+{{- if .Values.dashboards.enabled -}}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana-dashboards.fullname" $ }}-{{ trimSuffix ".json" (base $path) }}
+  namespace: {{ default $.Release.Namespace $.Values.dashboards.namespace }}
+  {{- with $.Values.dashboards.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 -}}
+  {{- end }}
+  labels:
+    {{- include "grafana-dashboards.labels" $ | nindent 4 }}
+    {{ $.Values.dashboards.labelKey }}: {{ $.Values.dashboards.labelValue | quote }}
+data:
+  {{ base $path }}: |
+    {{- /* Emitted verbatim — do NOT wrap in tpl. Grafana legendFormat uses
+           {{name}} / {{nodepool}} placeholders that Helm would try to
+           evaluate as template actions and fail on. Unlike the upstream
+           fluent-bit chart, these dashboards need no value injection. */}}
+    {{- $.Files.Get $path | nindent 4 }}
+---
+{{- end }}
+{{- end -}}

@@ -23,7 +23,118 @@ crds:
 # =============================================================================
 grafana:
   enabled: true
-  adminPassword: "exampleAdminPassword"  # TODO: Change this to a secure password
+
+  # Local admin credentials come from the `grafana-auth` Secret (unsealed from the SealedSecret in
+  # `extraObjects` below), NOT from an inline `adminPassword`.
+  #
+  # Do NOT simply delete this block to "remove the password": kube-prometheus-stack leaves
+  # `adminPassword` commented out, so dropping the override falls through to the grafana subchart's
+  # own default, which is the literal string `strongpassword`. Replacing it is required, not optional.
+  #
+  # The local admin is now BREAK-GLASS ONLY — day-to-day login is OIDC (see auth.generic_oauth in
+  # grafana.ini). The login form is deliberately left enabled (`disable_login_form` unset) because
+  # this component auto-syncs: a bad OIDC change reaches the cluster with no manual gate, and the
+  # local admin is then the only way back in. Read the password with:
+  #   kubectl -n monitoring get secret grafana-auth -o jsonpath='{.data.admin-password}' | base64 -d
+  #
+  # SCOPE NOTE — this moved the password OUT OF GIT; it did NOT rotate it. The sealed value is the
+  # same one the cluster already had, on purpose, so git / live / this comment all agree.
+  # Grafana applies `admin_password` only when it first CREATES the admin user, and that user has
+  # existed since 2026-04-07, so an env change alone can never take effect here. Rotating it needs a
+  # deliberate `grafana-cli admin reset-admin-password <new>` inside the pod plus a reseal — decided
+  # against for now (2026-07-30). Until then this password is still the cluster-wide shared one that
+  # also appears in security/vaultwarden, security/keycloak, and bootstrap/vm.
+  admin:
+    existingSecret: grafana-auth
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # OIDC client secret as an env var rather than a value in grafana.ini.
+  # Grafana maps GF_<SECTION>_<KEY> onto config, so this populates
+  # auth.generic_oauth.client_secret without the secret ever entering the rendered ConfigMap —
+  # which also keeps the chart's `assertNoLeakedSecrets` guard (default true) satisfied.
+  envValueFrom:
+    GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET:
+      secretKeyRef:
+        name: grafana-auth
+        key: oidc-client-secret
+
+  grafana.ini:
+    server:
+      # Absolute URL Grafana builds its OAuth redirect from. Must match the Keycloak client's
+      # redirectUris (https://grafana.example.com/login/generic_oauth) or the flow fails.
+      root_url: https://grafana.example.com
+    auth.generic_oauth:
+      enabled: true
+      name: Keycloak
+      client_id: grafana
+      # client_secret intentionally absent — injected via envValueFrom above.
+      #
+      # `groups` is NOT requested here. In this realm the groups claim rides in on a DEFAULT
+      # client-scope plus the client's own oidc-group-membership-mapper, so it arrives
+      # automatically; asking for it explicitly makes Keycloak reject the request with
+      # `Invalid scopes`. Same reason the argo-cd dex connector omits its scopes list
+      # (cicd/argo-cd/values/dev.yaml).
+      scopes: openid email profile
+      auth_url: https://auth.example.com/realms/example/protocol/openid-connect/auth
+      token_url: https://auth.example.com/realms/example/protocol/openid-connect/token
+      api_url: https://auth.example.com/realms/example/protocol/openid-connect/userinfo
+      # Match Harbor's `oidc_user_claim: preferred_username` so a user is `admin` here too,
+      # rather than an email-shaped login that differs from every other app.
+      login_attribute_path: preferred_username
+      name_attribute_path: name
+      # Keycloak group -> Grafana role. `full.path: "false"` on the groups mapper means the claim
+      # carries bare names (`server`), not paths (`/server`).
+      #   global-admin -> GrafanaAdmin  (1 member; server admin + org Admin)
+      #   server       -> Admin         (the 8 GitLab `server` group members; org Admin)
+      #   anything else-> Viewer
+      #
+      # Two distinct levels, deliberately:
+      #   Admin        = ORG role. Dashboards, folders, datasources, alert rules, org users.
+      #                  This is what the ops team needs; Editor stops at dashboards.
+      #   GrafanaAdmin = org Admin PLUS the server-admin flag (`isAdmin`), which is the only thing
+      #                  that reveals Administration → Server Admin: global users across orgs,
+      #                  org create/delete, server settings, LDAP, server stats, plugin install.
+      #                  Kept to `global-admin` (1 member) — the 8-member `server` group has no
+      #                  need to manage orgs or server settings.
+      #
+      # Safe to grant broadly only because `server` stopped meaning "everyone" on 2026-07-30: the
+      # Keycloak IdP mapper used to hardcode EVERY brokered GitLab user into it (43 accounts vs the
+      # intended 8). See security/keycloak/docs/gitlab-brokering.md.
+      role_attribute_path: contains(groups[*], 'global-admin') && 'GrafanaAdmin' || contains(groups[*], 'server') && 'Admin' || 'Viewer'
+      # Required for the path above to be allowed to return GrafanaAdmin — without it Grafana
+      # silently caps the result at org Admin. It also makes the flag SYNC on every login: leaving
+      # `global-admin` revokes server admin on the user's next sign-in, it is not sticky.
+      allow_assign_grafana_admin: true
+      # auth.example.com serves a SELF-SIGNED wildcard cert (issuer == subject == CN=*.example.com),
+      # and these token/userinfo calls are server-to-server from the Grafana pod, so verification
+      # would fail outright. Same reason the argo-cd dex connector sets insecureSkipVerify.
+      # Remove once cert-manager issues a trusted cert for *.example.com.
+      tls_skip_verify_insecure: true
+
+  # Sealed admin + OIDC client secret. `encryptedData` is safe to commit: it is encrypted with the
+  # sealed-secrets controller's PUBLIC cert and only that controller's private key can open it.
+  # `--scope strict` (the kubeseal default) binds the ciphertext to monitoring/grafana-auth, so
+  # renaming either the namespace or the Secret makes it undecryptable — reseal instead of editing.
+  #
+  # Carried here rather than as a standalone manifest because this component is ArgoCD-pull managed
+  # (argocd/kube-prometheus-stack.yaml, autoSync: true); shipping it inside the release means git
+  # stays the single source of truth and a cluster rebuild needs no out-of-band step.
+  extraObjects:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      metadata:
+        name: grafana-auth
+        namespace: monitoring
+      spec:
+        encryptedData:
+          admin-user: AgA81919RcJdcChDfTOR7sNUIqg5z1xgRChE/BGAHAY3xOtBoCgEsrmIDwVxi/cLgvLGg6XNRj/yUlyLU1JObnNJ+R30nfzSXDyG1a2lQSD/Bb0NLkRjqBTJ4c5GJpZbNNuGQS2HdQ1dnLEWNnBRHsEZUSnupdh6LLBEhZjtXbZyW6YMsFlqV7B3l7TCBA4C8WgXDJBIqlinnbdcj37Q8zQj/x4TcpU1PIvlY8+jTe84Mznf29gbgWhNE6IdV9t+4rQTGtafYMcz/5WedOZWftiWeQDeqtoOTxTdCI0sr9EJ7MORxZdG5GC8VZkS1d//sWHUUE2cT8qNAydh5EJNP/nlYs2aq5ow1SEmvVASn0rqbV5PNVgDmubzvV6PtrJWd+oimOEEgCXHbQz9jTQq0Xx1RCPP/7J0unMokbqeTtXPTLN5Bngn0JoroW3BBXPmVw8jz1WE3ZKUYpPXkVfe9lfjJPEStS0hz/k+K5ryC7Vz9Ej6PU0Q0g/qot3caXGmlrd6gn6au6xLfoOElNqOS8bfXUqypbXgYUIqEU7Q/zGCYSNAYqhHg7ZBJXuPz2x2tVLr6R3zrlNXe7e+2C6B7l9lMc5iyW1zwSoZVuuKZKIxufSO38iv85Y66iOyMvrx3DLKKIsWFd2Hoqxbc1ULk/0vxXCTG1wLlx3QM9TsZ6SaY03qS5Nf/U8MpyrQQm4Y+Em5yNUGtA==
+          admin-password: AgB27qaSrdn5okL5GorSyAvIvDZvsEI3USa9/ctFb3FbXNAjXk3SCNWGtaatx2bIPsFcq6xnaoS1Z5vk2VkBI9PI2Fy7KQ9X2WWf/BvQlzR8/s483J9FLwZWbMQlM90sgX0QJjGicIJVZiUow+Q3rj2iaAtkF4HsIkVNCXbUKrn6oI6mBSCTc2P4It7gVC2wc/43P4i9FmtIgQ2CWZCK6PTmmmhx+1iKcWuzFvPI405JoT2xD2ZN+GeN1RaqVZJEzn23dLaDat8ogmitm3PPBKhZ+eXB7mvA8dzatMe7aJWxjMRV+BelpKy0qzguXOlXwjodSWcjW06FtboY/zWGL3qZEqKA5qlKo3/NbcBQro+gu0hS5eX5FXreNKTB/CMObBYktv8ZwsySQ+Fez8yqEU6rAMgxF8GASY6UG3MfvuOjtiApr3hQgX4RWGnzOG8W9Jgdt+bS/tLjtFPZEk6eDJSyP2MJWZCRAqqGCd39PWOdvKfCdZP2qrkTuAlV8BBuy0McGf/v/Aze9TQZga88PJlt0EZ9I7wM/vbLzDr9STkvhPmIC1tKvGsfUC66eS4FjAJgCgCbuHIdqJSiSnj6ctnRn8yl5Xr1jfRD3i0NEp/L/nN0OfkiV9gexLm/EXSVIb7T7EXli/NIn9CFgCdkq3gNZrACYZBtHPLswrZe76nuX86s60ZFrorkNQHpg6j61/3O1+UE9LRDNfcJFw==
+          oidc-client-secret: AgAykO24yrZ6lHX3AB35z8/hpxkgOAbRmOCdDSOrjhX1VGaqP1YZwcwtFVI993XyjYUU+sC5PnWGGgsYaZUg0kFK0rO5SYLuYGczvcFAtnMEV4rS8skJ+E8N4LqO9Ecf+Gx936kKE+au3zh6kmEo5V2VGJDbBSJlNZLT1Zj47KRt5jnFMR2IHX0j2IOE56O02Kz5itSBxwmrkL09vTa5T0BjjxhkfnEp29kpLEqd+2A+6UXKZSHDnHhOnNx/YdK1+m64MT8c9Mew34U1oJsMoZH4zKHy7zMbTcdWuzEbQqSXwCoRzYi0SYEcnpxZfrrKEJm7M89d7+qU8zo8nhvsaakfIm+aZPNsUHQOH41sDas1WJRbc3fDfuYqEnpsg9OxyK4TqCiqnGjKqogKjTytYCwcpPzCnMGDxZCLILb/milqN+d/609PU1gZo9euR/4fMmIhGnFElfq/sWxS3sQqO5yXe8o7prAb5VxbjJxM0n/1s3nw8wNtQQ+VAjWjHG6yjrra7rZGWJ1y5HHZ5oYQhhsnBQz8mN3pbx0zzC4wE7zInaOCmsYHPKJZSc11OtUYfAjnvxjtx0x1gn92cGnFssPYmfBa80Hrj5ZDzpf49pKQT8jzsLp0gt59CkZqT12H6yurhF/mdb+Olzvt51wXa6UzPgcsoVlFJ6J1TP4a/TwP8ltG/pyjjXC5bM9YQveFdABffkIHbSCqDjb9m3LPVNesyowEIIBDlbzW3EmeJmxKhtqHrd9m8Kug8TNi7V5p1sKxdztDmO9WpGmx9CB7f8zu9I7cwiKyZW804m4bUrcIzCvLakcOMA==
+        template:
+          metadata:
+            name: grafana-auth
+            namespace: monitoring
 
   resources:
     requests:
@@ -161,6 +272,19 @@ prometheus:
               - "192.0.2.60:9100"  # gitlab
             labels:
               env: "vm"
+              group: "on-premise"
+
+      # Jenkins build machine (macOS). Kept as its own job rather than folded
+      # into physical-servers so the alert rules can target it by job name --
+      # its failure modes are specific to this host (the build workspaces live
+      # on an external SSD, and its internal disk fills from build artifacts).
+      - job_name: "build-machines"
+        scrape_interval: 30s
+        static_configs:
+          - targets:
+              - "192.0.2.80:9100"  # mac-mini
+            labels:
+              env: "physical"
               group: "on-premise"
 
     # Cilium metrics (no ServiceMonitor — scrape via kubernetes_sd_configs)

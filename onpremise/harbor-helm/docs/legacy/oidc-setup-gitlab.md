@@ -11,7 +11,7 @@
 Harbor ships with a native OIDC client, so **no Dex is needed** (difference from ArgoCD).
 OIDC settings are not exposed through Helm values; they live in the **Harbor core database** and must be injected via the **Harbor REST API or the Web UI**.
 
-This document documents the **API-based declarative injection procedure** as the standard (re-runnable, easier to audit than UI clicks). The [`scripts/harbor-admin.sh`](../../scripts/admin/harbor-admin.sh) helper wraps most of these operations.
+This document documents the **API-based declarative injection procedure** as the standard (re-runnable, easier to audit than UI clicks). The [`scripts/admin/harbor-admin.sh`](../../scripts/admin/harbor-admin.sh) helper wraps most of these operations.
 
 <br/>
 
@@ -90,7 +90,7 @@ EOF
 ### Verify the Injection (secret excluded)
 
 ```bash
-scripts/harbor-admin.sh config
+scripts/admin/harbor-admin.sh config
 # or:
 curl -sk -u "admin:$ADMIN_PW" --resolve harbor.example.com:443:192.0.2.55 \
   https://harbor.example.com/api/v2.0/configurations \
@@ -119,7 +119,7 @@ curl -sk -u "admin:$ADMIN_PW" -H "Content-Type: application/json" \
 ### Confirm the Flip
 
 ```bash
-scripts/harbor-admin.sh systeminfo | grep auth_mode
+scripts/admin/harbor-admin.sh systeminfo | grep auth_mode
 # "auth_mode": "oidc_auth"
 ```
 
@@ -145,7 +145,7 @@ If the user is not in the `server` group filter, no Harbor user record is create
 A freshly onboarded OIDC user has normal privileges. Promote via API:
 
 ```bash
-scripts/harbor-admin.sh promote admin@example.com
+scripts/admin/harbor-admin.sh promote admin@example.com
 ```
 
 Equivalent raw calls:

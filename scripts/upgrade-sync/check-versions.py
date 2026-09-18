@@ -45,12 +45,18 @@ from pathlib import Path
 # CI helmfile-tools image.
 # ---------------------------------------------------------------------------
 _here = Path(__file__).resolve().parent
-for _anc in [_here, *_here.parents]:
-    if (_anc / "scripts" / "python" / "upgrade_sync").is_dir():
-        sys.path.insert(0, str(_anc / "scripts" / "python"))
-        break
+if (_here / "upgrade_sync").is_dir():
+    # Standalone layout — the packages sit next to this script.
+    sys.path.insert(0, str(_here))
+else:
+    # Embedded layout — <repo>/scripts/upgrade-sync/ next to <repo>/scripts/python/.
+    for _anc in [_here, *_here.parents]:
+        if (_anc / "scripts" / "python" / "upgrade_sync").is_dir():
+            sys.path.insert(0, str(_anc / "scripts" / "python"))
+            break
 
 from upgrade_sync.config_parse import parse_config_block  # noqa: E402
+from upgrade_sync.paths import resolve_repo_root  # noqa: E402
 from upgrade_sync.discovery import (  # noqa: E402
     find_managed_files,
     parse_template_header,
@@ -297,13 +303,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--updates-only", action="store_true",
         help="Only print rows with status UPDATE or ERROR.",
     )
+    parser.add_argument(
+        "--repo-root", metavar="DIR", default=None,
+        help=(
+            "Repository to scan. Defaults to the embedded repo when installed "
+            "at <repo>/scripts/upgrade-sync/, otherwise $UPGRADE_SYNC_REPO_ROOT, "
+            "otherwise the git root of the current directory."
+        ),
+    )
     return parser.parse_args(argv[1:])
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     script_dir = Path(__file__).resolve().parent
-    repo_root = script_dir.parent.parent
+    repo_root = resolve_repo_root(script_dir, args.repo_root)
 
     print("Collecting managed upgrade.{sh,py} configs...")
     rows, chart_rows, helm_repos, total, skipped, filtered = parse_managed_files(

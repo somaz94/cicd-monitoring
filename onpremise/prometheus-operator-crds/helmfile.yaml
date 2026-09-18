@@ -37,7 +37,7 @@ releases:
   - name: prometheus-operator-crds
     chart: prometheus-community/prometheus-operator-crds
     namespace: monitoring
-    version: 30.0.1  # lockstep-appversion-match: observability/monitoring/kube-prometheus-stack
+    version: 31.0.0  # lockstep-appversion-match: observability/monitoring/kube-prometheus-stack
 
 # Ensure namespace before sync (idempotent no-op when present).
 # kubectl args aren't shell-parsed → use sh -c to evaluate || true.

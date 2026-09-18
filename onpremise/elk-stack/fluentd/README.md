@@ -1,6 +1,6 @@
 # Fluentd Helm Chart
 
-Manages the [Fluentd](https://www.fluentd.org/) DaemonSet for Kubernetes log collection using Helmfile.
+Manages the [Fluentd](https://www.fluentd.org/) **StatefulSet** — the aggregator stage of the Kubernetes log-collection pipeline (the workload kind is `kind` in `values/dev.yaml`). It receives logs from the node-level fluent-bit DaemonSet, buffers them on the `fluentd-buffer` PVC, and forwards them to Elasticsearch.
 
 > **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/fluentd.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
 
@@ -11,13 +11,16 @@ Manages the [Fluentd](https://www.fluentd.org/) DaemonSet for Kubernetes log col
 ```
 fluentd/
 ├── Chart.yaml          # Version tracking (no local templates)
-├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── argocd/
+│   └── fluentd.yaml    # ArgoCD marker — `chart.version` is the chart pin SSOT
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml       # Custom values (manually managed)
 ├── upgrade.py          # Version upgrade script
-├── backup/             # Auto-backup during upgrades
-└── README.md
+├── docs/               # Topic guides (KO+EN pairs) — listed in the Documentation table below
+├── backup/             # Auto-backup during upgrades (holds the retired helmfile.yaml)
+├── README.md
+└── README-en.md
 ```
 
 <br/>
@@ -68,11 +71,11 @@ Use `upgrade.py` to perform version upgrades.
 # Preview changes only (no file modifications)
 ./upgrade.py --dry-run
 
-# Upgrade to a specific version
-./upgrade.py --version 0.6.0
+# Upgrade to a specific version (the current pin is `chart.version` in argocd/fluentd.yaml)
+./upgrade.py --version <X.Y.Z>
 
 # Combine flags
-./upgrade.py --dry-run --version 0.6.0
+./upgrade.py --dry-run --version <X.Y.Z>
 
 # Exclude specific values files from comparison
 ./upgrade.py --exclude old-release,test
@@ -82,7 +85,7 @@ upgrade.py automatically performs the following:
 1. Checks current/latest version
 2. Downloads Chart.yaml, values.yaml and shows diff comparison
 3. Inspects `values/*.yaml` for breaking changes (removed/new top-level keys)
-4. Creates backup then updates files (Chart.yaml, values.yaml, helmfile.yaml)
+4. Creates backup then updates files (Chart.yaml, values.yaml, argocd/fluentd.yaml)
 
 ### Two-track version management (chart vs image.tag)
 
@@ -141,6 +144,18 @@ Custom settings are managed in `values/dev.yaml`. Key settings:
 
 Upstream default values can be referenced in `values.yaml`.
 
+<br/>
+
+### `authorization` redaction (02_filters.conf Step 4)
+
+`data.requestHeader.authorization` carries `Basic base64(accountId:sessionId)` — a live credential, since the game server authenticates by comparing that `sessionId` against the Redis session. Step 4 masks it while serializing the nested `data` JSON: only the scheme token (`Basic` / `Bearer` / `Digest` / `Negotiate`) is kept, the rest becomes `[REDACTED]`, and anything not matching a known scheme is redacted whole (fail-closed). Header lookup is case-insensitive.
+
+Ported from the AWS prod pipeline ([`fluentd-aws/values/prod.yaml`](../fluentd-aws/values/prod.yaml)); the expression is byte-identical, only the tag namespace differs.
+
+- ⚠️ Applies to **new records only**. Records already in `dev-example-project-game` / `qa-example-project-game` still hold the plaintext credential — and unlike prod these indices are **not ILM-managed**, so nothing ages them out on its own.
+- ⚠️ Covers **only** `authorization` inside `data.requestHeader`. Sibling headers such as `cookie` / `x-api-key`, and the `data.requestBody` / `data.responseBody` payloads, are blind spots. The battle pipeline carries no auth header at all.
+- `data.traceId` is retained on-prem and in prod alike. AWS prod briefly ran a Step 7 that deleted the field; it was reverted on 2026-08-05 — with the value left only in `_id`, which has no `.keyword` sub-field and no fielddata, the `terms` aggregations and `wildcard` / `prefix` searches became impossible, and those are precisely the queries the field exists for (a UUID the app issues per request and shares with the battle server, so one request can be followed across both). On-prem there was never a saving to chase anyway: the whole index is a few hundred MB and never rolls.
+
 ```bash
 # Check upstream default values
 helm show values fluent/fluentd
@@ -166,7 +181,7 @@ helmfile status         # Check status
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
 | Elasticsearch connection failure | Check host/port/credentials in `values/dev.yaml` |
-| Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluentd` |
+| Logs not being collected | Check StatefulSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluentd` |
 
 <br/>
 

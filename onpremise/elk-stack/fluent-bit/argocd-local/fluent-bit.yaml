@@ -4,7 +4,7 @@
 # The generator emits one Application named `infra-<releaseName>` whose single git source points at
 # this component's VENDORED chart dir (`chart: .` in the helmfile -> path-based App source).
 #
-# Phase 3-3 target. Adopts the live helmfile release 'fluent-bit' (logging ns, local chart 0.57.7,
+# Phase 3-3 target. Adopts the live helmfile release 'fluent-bit' (logging ns, vendored chart at the version in Chart.yaml / chart.version below,
 # DaemonSet 3/3) in place. releaseName=fluent-bit keeps app.kubernetes.io/instance=fluent-bit so the
 # DaemonSet selector renders identical to live -> no recreate. The chart's ServiceMonitor already
 # exists in-cluster (no drift), so the adopt-diff is expected to be tracking-id annotations only.

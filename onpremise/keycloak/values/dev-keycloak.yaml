@@ -1,5 +1,6 @@
 # Keycloak CR + HTTPRoute on the dev (example dev) cluster.
-# Consumed by the helmfile release `keycloak` (oci://ghcr.io/somaz94/charts/keycloak-cr@0.1.0).
+# Consumed by the helmfile release `keycloak` (oci://ghcr.io/somaz94/charts/keycloak-cr;
+# the version is pinned in helmfile.yaml).
 # Operator + CRDs must already be installed via ../keycloak-operator/.
 
 # Keycloak CR — primary resource.
@@ -35,6 +36,20 @@ keycloak:
     limits:
       cpu: 2000m
       memory: 2Gi
+
+  # Expose /metrics on the management port (9000, already published by keycloak-service).
+  # The operator gates ServiceMonitor creation on this flag — without it the Keycloak CR
+  # reports `warning: A ServiceMonitor will not be created because 'metrics-enabled' is not
+  # true.` and Prometheus has no Keycloak target at all. Setting it makes the operator render
+  # the ServiceMonitor itself, so nothing is declared here; the Prometheus CR runs
+  # serviceMonitorSelector: {} so no discovery label is required.
+  #
+  # Changing this rewrites the StatefulSet pod spec — the operator does a rolling restart, and
+  # with instances: 1 that is a short auth outage for every service brokered through
+  # auth.example.com. Apply it during a quiet window.
+  additionalOptions:
+    - name: metrics-enabled
+      value: "true"
 
 # Realm import — disabled at first apply. Phase 3 (UI / kcadm.sh) creates the `example` realm with GitLab brokering, then exports it back into manifests/realm-example.json and re-applies via helmfile `--set-file realmImport.realm=manifests/realm-example.json`.
 realmImport:

@@ -21,10 +21,13 @@ Exports ECK-managed Elasticsearch metrics (in the logging namespace) to Promethe
 ```
 prometheus-elasticsearch-exporter/
 ├── Chart.yaml
-├── helmfile.yaml
+├── argocd/
+│   └── prometheus-elasticsearch-exporter.yaml  # ArgoCD release metadata (chart version SSOT)
+├── values.yaml                 # Upstream defaults (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml                # ES connection info (es.uri), ServiceMonitor settings
 ├── upgrade.py
+
 ├── backup/
 └── README.md
 ```
@@ -48,13 +51,15 @@ extraEnvSecrets:
 
 ## Installation
 
-```bash
-# First install (CRDs not yet present)
-helmfile sync
+ArgoCD pull-managed. The chart version SSOT is `chart.version` in `argocd/prometheus-elasticsearch-exporter.yaml`, and `./upgrade.py` updates that file (there is no helmfile).
 
-# Subsequent updates
-helmfile apply
+```bash
+./upgrade.py --dry-run     # check for a newer chart
+./upgrade.py               # bump the pin, re-sync Chart.yaml / values.yaml
 ```
+
+Commit the pin and push to master; ArgoCD syncs that revision.
+
 
 <br/>
 

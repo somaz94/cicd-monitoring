@@ -10,7 +10,7 @@
 #
 # Stateful via ECK: the chart renders a Kibana CR (+ HTTPRoute). The ECK operator owns the real
 # Deployment 'kibana-kb' — not in the helm release, so ArgoCD never touches it. Adoption only annotates
-# the chart resources; the Kibana CR spec renders identical (same chart 0.1.5 + values) so the operator
+# the chart resources; the Kibana CR spec renders identical (the chart.version pinned below, unchanged, plus the same values) so the operator
 # does not roll the pod. Kibana health is green (no single-node yellow caveat like elasticsearch).
 #
 # OCI repoURL is no-scheme (ArgoCD appends chart name). This file is the chart-version SSOT.
@@ -21,7 +21,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: ghcr.io/somaz94/charts               # registered OCI repo (no scheme) -> ArgoCD appends chart name
   name: kibana-eck
-  version: "0.1.5"
+  version: "0.1.7"
 valueFile: observability/logging/kibana/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
 createNamespace: false                          # 'logging' already exists
 autoSync: true                                  # adopt-diff verified (CR cpu 1000m==1 normalized by operator, zero kibana roll; HTTPRoute tracking-id only) -> auto-sync (prune+selfHeal) on

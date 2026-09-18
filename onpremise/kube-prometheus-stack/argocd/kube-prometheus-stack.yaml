@@ -3,12 +3,15 @@
 # One file per helmfile release: the generator emits one Application named `infra-<releaseName>`.
 #
 # Phase 3-5 target — the first generator-v2 consumer (multi-valueFile + ignoreDifferences).
-# Adopts the live helmfile release 'kube-prometheus-stack' (monitoring ns, chart 86.3.2) in place.
+# Adopts the live helmfile release 'kube-prometheus-stack' (monitoring ns, at the chart.version pinned below) in place.
 #
-# Multi-valueFile: this chart splits its values across THREE files (core / alertmanager / alerts).
-# The structured ApplicationSet template can only render a single valueFile, so the extra two are
+# Multi-valueFile: this chart splits its values across SIX files (core / alertmanager / four alert
+# files). The structured ApplicationSet template can only render a single valueFile, so the rest are
 # declared in `extraValueFiles` below; the appset's templatePatch re-renders the whole sources array
 # with valueFiles = [valueFile] + extraValueFiles (see infra-applicationset.yaml templatePatch v2).
+# The four alert files are a pure split of what used to be one 76K dev-alerts.yaml -- helm deep-merges
+# additionalPrometheusRulesMap, so ADDING ANOTHER ONE MEANS ADDING IT TO THE LIST BELOW or its rule
+# groups are silently never rendered.
 #
 # Workload ownership (drives the adopt-diff expectation):
 #   - Deployments grafana / kube-state-metrics / operator  -> instance=kube-prometheus-stack (helm-owned)
@@ -42,15 +45,19 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: https://prometheus-community.github.io/helm-charts
   name: kube-prometheus-stack
-  version: "87.15.1"
+  version: "88.3.0"
 # Primary values file (repo-root-relative; pulled via the kuberntes-infra $values multi-source ref).
 valueFile: observability/monitoring/kube-prometheus-stack/values/dev.yaml
 # Extra values files merged after the primary (generator-v2 multi-valueFile support). Order matters:
-# helmfile applies dev.yaml -> dev-alertmanager.yaml -> dev-alerts.yaml; ArgoCD applies them in the
-# same order (primary first, then this list), so later files win on overlapping keys — same as helmfile.
+# ArgoCD applies them primary-first then this list in order, so later files win on overlapping keys.
+# The four alert files hold DISJOINT rule-group keys, so that ordering does not matter between them —
+# it matters only against dev.yaml, which is why the alert files come last.
 extraValueFiles:
   - observability/monitoring/kube-prometheus-stack/values/dev-alertmanager.yaml
   - observability/monitoring/kube-prometheus-stack/values/dev-alerts.yaml
+  - observability/monitoring/kube-prometheus-stack/values/dev-alerts-network.yaml
+  - observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml
+  - observability/monitoring/kube-prometheus-stack/values/dev-alerts-backup.yaml
 createNamespace: false                          # 'monitoring' already exists
 autoSync: true                                  # adopt-diff verified clean (every resource = tracking-id annotation only; zero Deployment/DaemonSet recreate, Prometheus/Alertmanager STS generation unchanged=2/2, Grafana PVC untouched) -> auto-sync (prune+selfHeal) on
 # ignoreDifferences omitted on purpose — add only if the adopt-diff proves /spec/volumeName drifts

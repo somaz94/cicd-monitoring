@@ -11,7 +11,7 @@ This component (`security/keycloak/`) and the sibling [`security/keycloak-operat
 | CRD lifecycle | Tied to the instance chart — accidental chart uninstall removes the CRDs and every Keycloak/Realm CR is garbage-collected | CRDs are owned by the operator chart with `crds.keep: true`; survive chart uninstall |
 | Permission boundary | Operator's cluster-scoped RBAC and instance's namespace-scoped RBAC mix in one release | Operator namespace (`keycloak-system`) and instance namespace (`keycloak`) are separate |
 | Upgrade cadence | Operator + instance + DB locked to a single chart bump | Operator (CRDs/compat), keycloak-cr (Keycloak server version), postgresql (DB) cycle independently |
-| Multi-instance | Implicitly assumes one operator per instance | One operator reconciles Keycloak CRs across namespaces (`watchNamespaces: JOSDK_WATCH_ALL`) |
+| Multi-instance | Implicitly assumes one operator per instance | One operator reconciles Keycloak CRs across namespaces (the explicit namespace list in `watchNamespaces` — not a cluster-wide watch) |
 
 <br/>
 

@@ -4,6 +4,22 @@ Operational procedure to re-ingest game logs from NFS into Elasticsearch after l
 
 <br/>
 
+> 🔴 **Read this first — this doc predates both the stdout-DaemonSet switch and the ArgoCD migration.**
+>
+> fluent-bit is now **ArgoCD pull-managed** and has no `helmfile.yaml`. The release metadata and chart-version SSOT is `argocd-local/fluent-bit.yaml`, and the Application (`infra-fluent-bit`) runs `autoSync: true` with selfHeal. The collection path also moved from the NFS aggregator to a node-level stdout DaemonSet. That breaks the assumptions below on several layers:
+>
+> - `helmfile apply` → there is no `helmfile.yaml` to apply. A values change only takes effect through a commit on master, and a manual helm apply is **reverted immediately by selfHeal.**
+> - `kubectl scale deployment fluent-bit` / reading `deployment/fluent-bit` logs → the workload is a **DaemonSet** (`kind` in `values/dev.yaml`). The stop/restart commands below target a Deployment that no longer exists.
+> - `fluent-bit-state-pvc` → there is no state PVC. The tail DB checkpoints live on a per-node hostPath (`extraVolumes` in `values/dev.yaml`), and `persistentVolumeClaims.enabled` is false. The cleaner pod below mounts a PVC that never binds.
+> - `Ignore_Older 7d` ("current setting") → `values/dev.yaml` carries no `Ignore_Older` key at all. The 7-day window described below is not current behavior.
+> - "logs still alive on NFS" → the current INPUTs tail container logs on the node (each INPUT's `Path` in `values/dev.yaml`). Replaying from NFS files is no longer a valid premise, and the DB filename list below no longer matches the INPUT set — `values/dev.yaml` is the SSOT.
+>
+> **So the body below cannot be run as written.** If an index is lost under the current setup, look at ES snapshot recovery first; if a fluent-bit-side replay is still needed, the procedure has to be rewritten around the DaemonSet + hostPath layout.
+>
+> (Confirmed 2026-09-18. The body below is preserved from the helmfile + NFS-aggregator era.)
+
+<br/>
+
 ## Background: DB ≠ ES asynchrony
 
 With the Phase 1a configuration applied in [values/dev.yaml](../values/dev.yaml), fluent-bit persists per-INPUT tail offsets to SQLite databases. However:

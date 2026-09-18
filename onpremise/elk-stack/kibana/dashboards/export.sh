@@ -9,6 +9,13 @@ set -euo pipefail
 
 DASHBOARDS_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANIFEST="${MANIFEST:-$DASHBOARDS_DIR/manifest.txt}"
+# Target kube-context. REQUIRED — no default, no fallback to the current
+# context. See the matching comment in apply.sh: the on-prem and AWS clusters
+# both expose logging/elasticsearch-es-default-0, so a bare kubectl succeeds
+# against whichever context is current. On export the damage is quieter than on
+# apply — you get a 404 (wrong cluster has no such dashboard) or, worse, a
+# successful export of the OTHER cluster's objects written over the repo file.
+KUBE_CONTEXT="${KUBE_CONTEXT:-}"
 NAMESPACE="${NAMESPACE:-logging}"
 ES_POD="${ES_POD:-elasticsearch-es-default-0}"
 ES_CONTAINER="${ES_CONTAINER:-elasticsearch}"
@@ -35,13 +42,19 @@ err()  { log "${C_ERR}✗${C_RST} $*" >&2; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--id UUID --out FILE]... [--space-id ID] [--no-data-view] [--dry-run]
+Usage: $(basename "$0") --context CTX [--id UUID --out FILE]... [--space-id ID]
+                   [--no-data-view] [--dry-run]
 
 Exports dashboards (and their references) from the in-cluster Kibana into NDJSON
 files. Run after editing dashboards/lenses in the Kibana UI to capture the new
 state into the repo.
 
 Options:
+  --context CTX         REQUIRED. kube-context to run every kubectl call against.
+                        No default and no fallback to the current context — the
+                        on-prem and AWS clusters have identically named logging
+                        pods, so an implicit context silently reads the wrong
+                        one. \`kubectl config get-contexts -o name\` lists them.
   --id UUID --out FILE  Export a specific dashboard ID to FILE (relative to this
                         directory or absolute). May be repeated for multiple
                         dashboards. When given, the manifest is ignored.
@@ -55,6 +68,7 @@ Manifest format ($MANIFEST):
   <dashboard-uuid>  <ndjson-filename>
 
 Env overrides:
+  KUBE_CONTEXT=$KUBE_CONTEXT
   MANIFEST=$MANIFEST
   NAMESPACE=$NAMESPACE
   ES_POD=$ES_POD
@@ -74,6 +88,10 @@ declare -a ARG_IDS=()
 declare -a ARG_OUTS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --id)
       shift; [ $# -gt 0 ] || { err "--id requires UUID"; exit 2; }
       ARG_IDS+=("$1")
@@ -93,6 +111,15 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# --- kube-context gate -------------------------------------------------------
+# Enforced even for --dry-run, same rationale as apply.sh.
+KUBE_CONTEXT_HINT="${NAMESPACE}/${ES_POD}"
+_KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
+require_kube_context
 
 # Build the Space URL prefix. Default Space has no prefix; named Spaces use "/s/<id>".
 if [ "$SPACE_ID" = "default" ]; then
@@ -145,6 +172,8 @@ KIBANA_URL="${KIBANA_SCHEME}://${KIBANA_SVC}:${KIBANA_PORT}"
 EXPORT_PATH="/api/saved_objects/_export"
 
 log "Kibana saved objects export"
+# Resolved cluster, not just the context name — see apply.sh.
+log "  context=${KUBE_CONTEXT}  cluster=$(kube_context_cluster)"
 log "  namespace=$NAMESPACE  pod=$ES_POD  kibana=$KIBANA_URL"
 log "  space=$SPACE_ID  manifest=$MANIFEST  emit-data-view=$EMIT_DATA_VIEW  dry-run=$DRY_RUN"
 log "  targets (${#IDS[@]}):"
@@ -157,7 +186,7 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
-PASS=$(kubectl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
+PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
 if [ -z "$PASS" ]; then
   err "Failed to read password from secret $NAMESPACE/$ES_SECRET key=$ES_USER"
   exit 1
@@ -186,7 +215,15 @@ export_one() {
   local req
   req=$(printf '{"objects":[{"type":"dashboard","id":"%s"}],"includeReferencesDeep":true,"excludeExportDetails":false}' "$id")
 
-  kubectl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
+  # No `-i`. The request body is inline (`-d "$req"`), so nothing is piped in,
+  # and an idle stdin stream makes kubectl tear the connection down mid-response:
+  # the export arrives TRUNCATED with "connection reset by peer", at a different
+  # byte offset each run (measured 2026-08-03 against prod-example-app: 10021 and
+  # 17137 bytes on two tries, vs a consistent 32321 without `-i`). The truncated
+  # tail is a half-written JSON line, so the splitter below dies on
+  # JSONDecodeError rather than reporting a transport problem. apply.sh keeps
+  # `-i` legitimately — it pipes the NDJSON file in on stdin.
+  kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -u "${ES_USER}:${PASS}" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
       -X POST "${KIBANA_URL}${SPACE_PREFIX}${EXPORT_PATH}" -d "$req" \
     > "$raw"
@@ -270,7 +307,11 @@ out_path = pathlib.Path(sys.argv[2])
 
 merged = {}
 last_summary = None
-for fp in glob.glob(str(workdir / '*.raw')):
+# sorted(): glob.glob() does not guarantee an order, and `merged` is a dict whose
+# insertion order becomes the output line order. Without sorting, the emitted
+# NDJSON can reorder between runs with no actual change, which defeats any
+# `git diff`-based drift check over these files.
+for fp in sorted(glob.glob(str(workdir / '*.raw'))):
     # Re-read raw exports to merge all index-pattern refs.
     with open(fp) as f:
         for line in f:

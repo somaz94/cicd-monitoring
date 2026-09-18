@@ -25,6 +25,20 @@ set -euo pipefail
 
 [ -n "${ZSH_VERSION:-}" ] && setopt nonomatch
 
+# Mandatory --context gate (shared definition — see the lib for the rationale).
+# Every kubectl call below goes through `kctl`.
+_RT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+KUBE_CONTEXT_HINT="${KUBE_CONTEXT_HINT:-logging/elasticsearch-es-default-0}"
+# shellcheck source=../../../../scripts/lib/kube-context.sh
+# shellcheck disable=SC1091
+source "${_RT_SCRIPT_DIR}/../../../../scripts/lib/kube-context.sh"
+
+# Resolve the program name ONCE at top level. Calling basename on "$0" INSIDE
+# usage() would print the FUNCTION name under zsh (FUNCTION_ARGZERO) — and this
+# script has no bash re-exec guard, so the help text an operator copies would be
+# wrong ("Usage: usage TRANSFORM_ID ...").
+_SELF="$(basename "${BASH_SOURCE[0]:-$0}")"
+
 # --- defaults -----------------------------------------------------------------
 
 TRANSFORM_ID=""
@@ -56,7 +70,7 @@ step() { log ""; log "${C_DIM}[step $1]${C_RST} $2"; }
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") TRANSFORM_ID [options]
+Usage: ${_SELF} TRANSFORM_ID [options]
 
 Stop, _reset, and start an Elasticsearch transform. _reset clears the
 in-memory checkpoint + stats so the next start replays the full source
@@ -64,6 +78,15 @@ index — the typical post-mapping-change workflow.
 
 Required:
   TRANSFORM_ID                  Transform id (e.g. qa-example-project-game-user-cohort).
+  --context CTX                 kube-context for every kubectl call. No default and
+                                no fallback to the current context — both clusters
+                                expose ${NAMESPACE_ES}/${ES_POD}, so an implicit
+                                context would stop and reset a transform on the
+                                wrong cluster. Enforced for --dry-run too. The
+                                name is a LOCAL kubeconfig alias with no fixed
+                                value — list yours with
+                                \`kubectl config get-contexts -o name\`, and read
+                                the cluster= line in the plan (the stable id).
 
 Options:
   --stop-only                   Stop the transform but do NOT _reset or _start.
@@ -73,6 +96,7 @@ Options:
   -h, --help                    Show this help and exit.
 
 Env overrides (rarely needed):
+  KUBE_CONTEXT=${KUBE_CONTEXT}
   NAMESPACE_ES=${NAMESPACE_ES}
   ES_POD=${ES_POD}  ES_CONTAINER=${ES_CONTAINER}
   ES_SVC=${ES_SVC}  ES_PORT=${ES_PORT}  ES_SCHEME=${ES_SCHEME}
@@ -80,13 +104,13 @@ Env overrides (rarely needed):
 
 Examples:
   # Full restart with explicit confirmation:
-  $(basename "$0") qa-example-project-game-user-cohort
+  ${_SELF} --context <ctx> qa-example-project-game-user-cohort
 
   # Stop only — pair with DELETE /dest + apply.sh --replace when changing mapping:
-  $(basename "$0") qa-example-project-game-user-cohort --stop-only -y
+  ${_SELF} --context <ctx> qa-example-project-game-user-cohort --stop-only -y
 
   # Dry-run to inspect the planned curl commands:
-  $(basename "$0") qa-example-project-game-user-cohort --dry-run -y
+  ${_SELF} --context <ctx> qa-example-project-game-user-cohort --dry-run -y
 EOF
 }
 
@@ -94,6 +118,10 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --context)
+      shift; [ $# -gt 0 ] || { err "--context requires CTX"; exit 2; }
+      KUBE_CONTEXT="$1"
+      ;;
     --stop-only)  STOP_ONLY=1 ;;
     --dry-run)    DRY_RUN=1 ;;
     -y|--yes)     CONFIRM_PROMPT=0 ;;
@@ -110,6 +138,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Hard-fail unless a real kube-context was named — enforced for --dry-run too.
+require_kube_context
 
 if [ -z "$TRANSFORM_ID" ]; then
   err "TRANSFORM_ID is required"
@@ -129,7 +160,7 @@ PASS=""
 
 load_es_pass() {
   if [ "$DRY_RUN" = "1" ]; then return 0; fi
-  PASS=$(kubectl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
+  PASS=$(kctl -n "$NAMESPACE_ES" get secret "$ES_SECRET" \
     -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   [ -n "$PASS" ] || { err "failed to read elastic password from secret/$ES_SECRET"; exit 1; }
 }
@@ -141,7 +172,7 @@ es_curl() {
     printf "    (dry-run) curl -X %s %s%s\n" "$method" "$ES_URL" "$path" >&2
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
+  kctl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" \
       -H 'Content-Type: application/json' \
       -X "$method" "${ES_URL}${path}" "$@"
@@ -153,7 +184,7 @@ es_status() {
     echo "000"
     return 0
   fi
-  kubectl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
+  kctl -n "$NAMESPACE_ES" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" -o /dev/null -w '%{http_code}' \
       -X "$method" "${ES_URL}${path}"
 }
@@ -163,6 +194,10 @@ es_status() {
 print_plan() {
   log ""
   log "Transform restart plan"
+  # Print the resolved cluster, not just the context name — a context can be renamed
+  # or repointed, so the cluster is what actually identifies the target. This line is
+  # the operator's last chance to catch a wrong-cluster run.
+  log "  kube context:         ${KUBE_CONTEXT}  (cluster=$(kube_context_cluster))"
   log "  transform id:         ${TRANSFORM_ID}"
   log "  mode:                 $([ "$STOP_ONLY" = 1 ] && echo 'stop only (no _reset, no _start)' || echo 'stop + _reset + _start')"
   log "  ES pod:               ${NAMESPACE_ES}/${ES_POD} (container=${ES_CONTAINER})"

@@ -4,20 +4,13 @@ Deploys a Keycloak instance with a dedicated PostgreSQL into the `keycloak` name
 
 Mirroring the ECK operator/CR split, the **Operator + CRDs must be installed first** via the sibling [`security/keycloak-operator/`](../keycloak-operator) component.
 
-<br/>
-
-## Documentation
-
-| Doc | Topic |
-|---|---|
-| [docs/architecture-en.md](docs/architecture.md) | Auth flow Before/After + LDAP migration path + user impact table + scenario comparison (read before cutover) |
-| [docs/realm-setup-en.md](docs/realm-setup.md) | Phase 3 — create the `example` realm + groups + clients (argocd, harbor, oauth2-proxy, vaultwarden) |
-| [docs/gitlab-brokering-en.md](docs/gitlab-brokering.md) | Phase 3 — register GitLab as an Identity Provider (preserve existing GitLab SSO) |
-| [docs/harbor-migration-en.md](docs/harbor-migration.md) | Phase 4 — switch the Harbor OIDC endpoint to Keycloak (moved ahead of ArgoCD in plan) |
-| [docs/argocd-migration-en.md](docs/argocd-migration.md) | Phase 6 — replace the ArgoCD dex GitLab connector with Keycloak OIDC + `argocd-https-redirect` HTTPRoute |
-| [docs/vaultwarden-migration-en.md](docs/vaultwarden-migration.md) | Switch vaultwarden's SSO authority from GitLab → Keycloak |
-| [docs/operator-cr-relationship-en.md](docs/operator-cr-relationship.md) | Why the Operator (sibling component) and the CR + DB (this component) are split |
-| [docs/backup-restore-en.md](docs/backup-restore.md) | PostgreSQL backup/restore + realm export procedure |
+> **Related app — keycloak-ops**: much of what this script does is also available from a **web UI** → https://hub.example.com/apps/keycloak-ops/ (repo `server/keycloak-ops`). It is reachable only behind the portal (no public address of its own), and its **access group is `global-admin`**.
+>
+> | This script only | Also available in the web UI |
+> |---|---|
+> | **First-time realm creation** (realm does not exist yet) · master-realm admin | OIDC client registration (+SealedSecret sealing) · group + IdP mapper creation · group membership · realm/client-scope/IdP convergence · realm check |
+>
+> The first two cannot move to the UI: keycloak-ops sits behind the example-hub portal, and that portal is an **OIDC client of this realm** — without the realm the UI is unreachable. The UI needs neither cluster access nor the master-admin password.
 
 <br/>
 
@@ -39,7 +32,7 @@ security/keycloak/
 ├── scripts/
 │   ├── restore.sh                      # pg_dump restore (-h)
 │   ├── realm-export.sh                 # kc.sh export → manifests/realm-example.json (-h)
-│   ├── kcadm-bootstrap.sh              # realm + groups + clients + GitLab IdP + master admin (-h)
+│   ├── kcadm-bootstrap.sh              # realm + groups + clients + GitLab IdP + master admin (`-h` for all options)
 │   └── kcadm-verify.sh                 # read-only verification of all of the above (-h, exit 1 on fail)
 ├── docs/                               # Korean / English pairs
 ├── upgrade.py                          # external-oci template (tracks somaz94/keycloak-cr)
@@ -47,6 +40,21 @@ security/keycloak/
 ├── README.md                           # Korean version
 └── README-en.md                        # (this file)
 ```
+
+<br/>
+
+## Documentation
+
+| Doc | Topic |
+|---|---|
+| [docs/architecture-en.md](docs/architecture.md) | Auth flow Before/After + LDAP migration path + user impact table + scenario comparison (read before cutover) |
+| [docs/realm-setup-en.md](docs/realm-setup.md) | Phase 3 — create the `example` realm + groups + clients (argocd, harbor, vaultwarden, example-hub) |
+| [docs/gitlab-brokering-en.md](docs/gitlab-brokering.md) | Phase 3 — register GitLab as an Identity Provider (preserve existing GitLab SSO) |
+| [docs/harbor-migration-en.md](docs/harbor-migration.md) | Phase 4 — switch the Harbor OIDC endpoint to Keycloak (moved ahead of ArgoCD in plan) |
+| [docs/argocd-migration-en.md](docs/argocd-migration.md) | Phase 6 — replace the ArgoCD dex GitLab connector with Keycloak OIDC + `argocd-https-redirect` HTTPRoute |
+| [docs/vaultwarden-migration-en.md](docs/vaultwarden-migration.md) | Switch vaultwarden's SSO authority from GitLab → Keycloak — **not applied** (two attempts on 2026-04-29, both rolled back; vaultwarden still uses GitLab direct SSO). Kept as the re-attempt recipe |
+| [docs/operator-cr-relationship-en.md](docs/operator-cr-relationship.md) | Why the Operator (sibling component) and the CR + DB (this component) are split |
+| [docs/backup-restore-en.md](docs/backup-restore.md) | PostgreSQL backup/restore + realm export procedure |
 
 <br/>
 
@@ -84,6 +92,7 @@ Operator + CR are kept in separate helmfiles (G14). This component is the CR sid
 | PVC | NFS (`nfs-client-server`), 20Gi |
 | DB credentials | chart-managed Secret `keycloak-postgresql` (keys: `username`, `password`) |
 | Realm import | Disabled (enabled after Phase 3 export) |
+| Metrics | Enabled (`metrics-enabled`) — `/metrics` on management port 9000. The operator renders the ServiceMonitor itself |
 
 <br/>
 
@@ -147,7 +156,8 @@ open "https://www.keycloak.org/server/db"
 ### 2. What the chart defaults to
 
 ```bash
-helm show chart oci://ghcr.io/somaz94/charts/postgresql --version 0.1.0 | grep ^appVersion
+# The chart version the release uses is owned by the keycloak-postgresql `version` field in helmfile.yaml.
+helm show chart oci://ghcr.io/somaz94/charts/postgresql | grep ^appVersion
 # appVersion: 18-alpine     # chart default
 ```
 

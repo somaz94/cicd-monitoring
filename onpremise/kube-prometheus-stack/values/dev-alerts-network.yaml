@@ -1,0 +1,210 @@
+# yaml-language-server: $schema=
+# =============================================================================
+# Alert Rules (network) — MetalLB + blackbox probes
+#
+# The L2/LoadBalancer plane and the synthetic probes that watch endpoints from
+# outside. Split out of dev-alerts.yaml; severity levels and field meanings are
+# documented in that file.
+#
+# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
+# it across every values file and each top-level key becomes its own PrometheusRule CR --
+# the file boundary has no effect at runtime, it exists so a 76K file stops being one
+# reviewable unit.
+#
+#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
+#                            control-plane)
+#   dev-alerts-network.yaml  metallb, blackbox
+#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
+#                            elasticsearch, redis, mysql
+#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
+#
+# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
+# key in two files does not combine the two rule lists -- the later file replaces the
+# earlier one wholesale and the dropped rules disappear silently.
+#
+# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
+# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
+# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
+# **/values/*.yaml.
+# =============================================================================
+
+additionalPrometheusRulesMap:
+
+  # ---------------------------------------------------------------------------
+  # MetalLB — failure modes a replica count cannot see.
+  #
+  # Deliberately NOT a "speaker pod is down" rule: KubeDaemonSetRolloutStuck and
+  # KubeDeploymentReplicasMismatch (kube-prometheus-stack defaults, both enabled)
+  # already cover that for every namespace. Adding another would put two alerts on
+  # one event — the same duplication this repo avoided by disabling KubePodNotReady
+  # when it introduced the custom pod-alerts group.
+  #
+  # What follows are the states where every MetalLB pod is Running and healthy, so
+  # nothing else in the stack says a word, yet LoadBalancer assignment is broken.
+  # ---------------------------------------------------------------------------
+  metallb-alerts:
+    groups:
+      - name: metallb-alerts
+        rules:
+          # Address pool nearly out. Measured 2026-08-05: 11 of 18 in use, and the
+          # 11 consumers are the nginx-gateway Gateways — every new Gateway or
+          # LoadBalancer Service takes one more.
+          #
+          # An absolute threshold rather than a percentage: the pool is 18 addresses,
+          # so one address is 5.5% and a percentage threshold quantises badly. "Fewer
+          # than 2 left" is the statement that actually matters.
+          - alert: MetalLBAddressPoolNearlyExhausted
+            expr: metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total < 2
+            for: 15m
+            labels:
+              severity: warning
+              group: metallb
+            annotations:
+              summary: "MetalLB pool {{ $labels.pool }} has {{ $value }} address(es) left"
+              description: "The MetalLB address pool '{{ $labels.pool }}' is nearly exhausted. Once it empties, every new Gateway or LoadBalancer Service stays Pending with no error on the workload itself — the pods come up healthy and only the external IP never arrives. Check `kubectl get svc -A --field-selector spec.type=LoadBalancer` and the IPAddressPool in network/metallb/values/."
+
+          # Pool empty. Split from the warning above because the consequence changes
+          # from "soon" to "now": allocation is already failing silently.
+          - alert: MetalLBAddressPoolExhausted
+            expr: metallb_allocator_addresses_total - metallb_allocator_addresses_in_use_total == 0
+            for: 5m
+            labels:
+              severity: critical
+              group: metallb
+            annotations:
+              summary: "MetalLB pool {{ $labels.pool }} is fully allocated"
+              description: "The MetalLB address pool '{{ $labels.pool }}' has no free addresses. New LoadBalancer Services and Gateways cannot be assigned an IP and will sit in Pending indefinitely — the symptom looks like a broken deployment, not a network problem. Widen the IPAddressPool in network/metallb/values/dev-metallb.yaml or release unused LoadBalancer Services."
+
+          # Speaker/controller running but serving a configuration it knows is out of
+          # date. This is the classic "looks healthy, is not" case: the pod is Ready,
+          # replica counts are green, and the announced state silently no longer
+          # matches the IPAddressPool / L2Advertisement in the cluster.
+          - alert: MetalLBConfigStale
+            expr: metallb_k8s_client_config_stale_bool == 1
+            for: 10m
+            labels:
+              severity: critical
+              group: metallb
+            annotations:
+              summary: "MetalLB {{ $labels.pod }} is running a stale configuration"
+              description: "MetalLB pod {{ $labels.pod }} reports its loaded config as stale — it rejected or failed to apply the latest IPAddressPool / L2Advertisement and keeps announcing the previous one. The pod stays Ready throughout, so no replica-based alert fires. Check `kubectl -n metallb logs {{ $labels.pod }}` for the rejected resource."
+
+          # Config never loaded at all — distinct from stale (which implies an earlier
+          # good load). Catches a speaker that came up against a malformed config.
+          - alert: MetalLBConfigNotLoaded
+            expr: metallb_k8s_client_config_loaded_bool == 0
+            for: 10m
+            labels:
+              severity: critical
+              group: metallb
+            annotations:
+              summary: "MetalLB {{ $labels.pod }} has no configuration loaded"
+              description: "MetalLB pod {{ $labels.pod }} has never successfully loaded a configuration — it is Running but announcing nothing. Any LoadBalancer depending on this speaker is unreachable. Check `kubectl -n metallb logs {{ $labels.pod }}` and validate the IPAddressPool / L2Advertisement resources."
+
+  # ---------------------------------------------------------------------------
+  # Blackbox — external synthetic probes (observability/monitoring/blackbox-exporter).
+  #
+  # These are the only checks in this cluster that run from OUTSIDE the workload:
+  # everything else (readinessProbe, replica counts, ServiceMonitors) asks a pod
+  # about itself. A probe failing while every pod reports Ready means the break
+  # is in the path — DNS, the MetalLB address, the Gateway, or the HTTPRoute.
+  #
+  # Selectors use the `target` label, not `instance`. The chart's metricRelabelings
+  # set both: `instance` to the probed URL and `target` to the human-readable name
+  # declared in values/dev.yaml. Selecting on `target` means a URL change (a new
+  # health path, http->https) does not silently orphan these rules.
+  # ---------------------------------------------------------------------------
+  blackbox-alerts:
+    groups:
+      - name: blackbox-alerts
+        rules:
+          # The prober itself is blind.
+          #
+          # absent(probe_success) rather than a `job=` selector on `up`: the
+          # chart sets jobLabel to a label the Service does not carry, so the
+          # resulting job value is not knowable before deploy — a guessed
+          # selector would produce a rule that never fires. probe_success is
+          # emitted by every probe target, so its complete absence is exactly
+          # "no probing is happening", whatever the job label ends up being.
+          - alert: BlackboxExporterDown
+            expr: absent(probe_success)
+            for: 10m
+            labels:
+              severity: warning
+              group: blackbox
+            annotations:
+              summary: "No synthetic probes are reporting"
+              description: "probe_success has no series at all — blackbox-exporter is down or its ServiceMonitors stopped matching. Every probe alert below is blind until this recovers, and their silence would otherwise read as health. Check `kubectl -n monitoring get pods -l app.kubernetes.io/name=prometheus-blackbox-exporter`."
+
+          # A non-portal target stopped answering. Split from the portal rule
+          # because the blast radius differs: these are individually scoped apps.
+          - alert: BlackboxProbeFailed
+            expr: probe_success{target!~"example-hub-.*"} == 0
+            for: 5m
+            labels:
+              severity: warning
+              group: blackbox
+            annotations:
+              summary: "Probe {{ $labels.target }} is failing"
+              description: "The synthetic probe for {{ $labels.target }} ({{ $labels.instance }}) has failed for 5+ minutes. The pods behind it may still be Ready — this checks the whole external path (DNS -> MetalLB IP -> Gateway -> HTTPRoute -> pod), so look at the Gateway and HTTPRoute before the workload."
+
+          # The portal. Categorically worse: every proxy-gated app is reachable
+          # only through it.
+          - alert: ExampleHubPortalProbeFailed
+            expr: probe_success{target="example-hub-portal"} == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: blackbox
+            annotations:
+              summary: "example-hub portal is not answering from outside"
+              description: "The example-hub portal has failed its external probe for 3+ minutes. It is the single entrance to every proxy-gated app (account-tool / es-ops / vpn-ops / harbor-ops / keycloak-ops), so all of them are unreachable regardless of their own health. The probe covers DNS -> MetalLB IP -> ngf Gateway -> HTTPRoute -> pod; check `kubectl -n nginx-gateway get gateway ngf` and `kubectl -n example-hub get pods` in that order."
+
+          # 🔴 The authorization gate stopped redirecting unauthenticated access.
+          #
+          # The probe module asserts HTTP 302; probe_success goes to 0 for any
+          # other status. The extra status-code clause separates the two ways that
+          # can happen — a 2xx means the portal is serving a privileged app with no
+          # login at all, a 5xx means the portal is merely broken. Both need
+          # attention; only the first is a security incident.
+          #
+          # Every app behind that gate holds admin credentials (Keycloak master
+          # admin, Harbor admin, an SSH private key, a GitLab admin token), and
+          # nothing else in this cluster watches for this condition.
+          - alert: ExampleHubAuthGateBypassed
+            expr: probe_success{target="example-hub-auth-gate"} == 0 and probe_http_status_code{target="example-hub-auth-gate"} < 400
+            for: 5m
+            labels:
+              severity: critical
+              group: blackbox
+            annotations:
+              summary: "example-hub served a proxied app without redirecting to OIDC login"
+              description: "An unauthenticated request to /apps/es-ops/healthz returned status {{ $value }} instead of a 302 to /oidc/login. A 2xx here means the portal is proxying to a privileged app with NO login — treat as an active security incident and check example-hub's auth middleware wiring immediately."
+
+          # Same probe failing with a server error rather than an open gate.
+          - alert: ExampleHubAuthGateProbeFailed
+            expr: probe_success{target="example-hub-auth-gate"} == 0 and probe_http_status_code{target="example-hub-auth-gate"} >= 400
+            for: 5m
+            labels:
+              severity: warning
+              group: blackbox
+            annotations:
+              summary: "example-hub auth-gate probe is failing with status {{ $value }}"
+              description: "The auth-gate probe expects a 302 to /oidc/login but got {{ $value }}. This is the portal erroring rather than the gate being open — check `kubectl -n example-hub logs deploy/example-hub`."
+
+          # Certificate expiry on the wildcard. Measured 2026-08-05: 2036-04-14, so
+          # this is quiet for a decade — it exists because a missed renewal has no
+          # other early warning, and the cert is manually managed.
+          #
+          # Note the probes run with insecure_skip_verify (see values/dev.yaml for
+          # why); this metric is still populated, which is what keeps that trade-off
+          # acceptable.
+          - alert: BlackboxSSLCertExpiringSoon
+            expr: probe_ssl_earliest_cert_expiry - time() < 30 * 24 * 3600
+            for: 1h
+            labels:
+              severity: warning
+              group: blackbox
+            annotations:
+              summary: "TLS certificate for {{ $labels.target }} expires in under 30 days"
+              description: "The certificate served at {{ $labels.instance }} expires in {{ $value | humanizeDuration }}. The *.example.com wildcard is manually managed, so nothing renews it automatically."

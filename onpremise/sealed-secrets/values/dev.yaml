@@ -14,12 +14,22 @@ resources:
     cpu: 200m
     memory: 128Mi
 
-# Prometheus integration is off by default. Enable out-of-band once the kube-prometheus-stack
-# release label selector is wired in (the ServiceMonitor must carry the stack's discovery
-# label, e.g. `release: <kps-release>`, or it will not be scraped). Same out-of-band pattern
-# as ../keycloak-operator/values/dev.yaml.
+# Scrape the controller's metrics endpoint (the sealed-secrets-metrics Service on :8081).
+# No discovery label is needed: the Prometheus CR runs serviceMonitorSelector: {} and
+# serviceMonitorNamespaceSelector: {}, so every ServiceMonitor in every namespace is picked
+# up. (A `release: kube-prometheus-stack` label is only required by ruleSelector and
+# probeSelector — see ../../observability/monitoring/kube-prometheus-stack/values/dev.yaml.)
+#
+# The chart's ServiceMonitor selects on `app.kubernetes.io/component: metrics`, which the
+# metrics Service already carries, and targets the port named `metrics`.
+#
+# prometheusRule stays off on purpose: alert rules for this cluster live only in
+# observability/monitoring/kube-prometheus-stack/values/dev-alerts*.yaml (this group is in
+# dev-alerts-apps.yaml). Letting the chart emit its own PrometheusRule would scatter rules
+# outside that component and additionally
+# require injecting the `release` label here to satisfy ruleSelector.
 metrics:
   serviceMonitor:
-    enabled: false
+    enabled: true
   prometheusRule:
     enabled: false

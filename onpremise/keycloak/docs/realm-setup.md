@@ -30,8 +30,8 @@ export GITLAB_BROKERING_CLIENT_SECRET=...
 The script reconciles (idempotent — re-runs safely):
 1. **Master-realm permanent admin user** + Cluster Secret `keycloak-master-admin` (default username `admin` / password `exampleAdminPassword`, override with `REAL_ADMIN_USERNAME` / `REAL_ADMIN_PASSWORD`). Recover password later with `kubectl -n keycloak get secret keycloak-master-admin -o jsonpath='{.data.password}' | base64 -d`
 2. Realm `example`
-3. Groups `server`, `global-admin`
-4. Clients `argocd`, `harbor`, `oauth2-proxy`, `vaultwarden` (secrets printed to stdout)
+3. Groups — GitLab-mapped `server`, `client`, `gamedesign` (each with its IdP group mapper) plus manually-managed `global-admin` (override via `GITLAB_MAPPED_GROUPS` / `MANUAL_GROUPS`)
+4. Clients `argocd`, `harbor`, `vaultwarden`, `example-hub`, `grafana` (secrets masked by default — set `SHOW_CLIENT_SECRETS=1` to print)
 5. Per-client group-membership protocol-mapper (so tokens carry the `groups` claim)
 6. **GitLab Identity Provider** — only when `GITLAB_BROKERING_CLIENT_ID` / `_SECRET` env vars are set; otherwise this step is skipped (useful for LDAP-only flows)
 
@@ -44,6 +44,24 @@ Once bootstrap finishes, run the read-only verifier:
 ```bash
 ./scripts/kcadm-verify.sh   # exit 0 = all good, 1 = something missing
 ```
+
+<br/>
+
+### Minimal modes (one object, no full re-run)
+
+A full run also re-reconciles the master admin password, so use a minimal mode when touching one thing.
+
+```bash
+./scripts/kcadm-bootstrap.sh --client grafana        # upsert one client
+./scripts/kcadm-bootstrap.sh --group gamedesign      # create one group + its IdP mapper
+./scripts/kcadm-bootstrap.sh --delete-group qa       # delete a group + its IdP mapper
+```
+
+`--group` only accepts names in `GITLAB_MAPPED_GROUPS` — a mapper created for a name outside that list would never be reconciled by a later full run, so the two paths would drift immediately.
+
+`--delete-group` does the reverse: it **refuses a name still in the declared lists.** A full run would recreate it via `ensure_group`, so the deletion would not stick — remove it from `GITLAB_MAPPED_GROUPS` / `MANUAL_GROUPS` first. When the group has members it names who would lose access and requires `DELETE_GROUP_CONFIRM=1`.
+
+> ℹ️ The keycloak-ops console enforces the same rules (`SCRIPT_MANAGED_GROUPS` / `PROTECTED_GROUPS`). Keep the lists in step so both paths reach the same verdict.
 
 <br/>
 
@@ -63,7 +81,7 @@ Once bootstrap finishes, run the read-only verifier:
 ### 3. Add user
 
 1. realm `example` → Users → Add user
-2. Username `somaz`, Email `admin@example.com`, Email verified ON → Save
+2. Username `admin`, Email `admin@example.com`, Email verified ON → Save
 3. Credentials → Set password (Temporary OFF)
 4. Groups → Join `global-admin`
 
@@ -81,10 +99,12 @@ Once bootstrap finishes, run the read-only verifier:
 - Valid redirect URIs: `https://harbor.example.com/c/oidc/callback`
 - Save → copy Client Secret
 
-#### `oauth2-proxy`
-- Client ID `oauth2-proxy`, Standard flow ON, PKCE ON
-- Valid redirect URIs: `https://*.example.com/oauth2/callback` (or per-app explicit URIs)
-- Save → copy Client Secret
+> **Do not create `oauth2-proxy`.** The first revision of this document (2026-04) walked through
+> creating it and the client was in fact created, but oauth2-proxy itself was never deployed — there
+> is no workload, no chart and no Secret. An unused confidential client holding the broadest redirect
+> in the realm (`https://*.example.com/oauth2/callback`) was cleaned up in 2026-08. If it is ever
+> actually deployed, restore this step and `CANONICAL_CLIENTS` in `kcadm-bootstrap.sh` in that
+> same commit.
 
 ### 5. Group → token claim mapping
 
@@ -98,7 +118,7 @@ To preserve ArgoCD's `g, server, role:server-admin` policy, the access/ID token 
 2. The new `groups` scope → Mappers tab → Add mapper → By configuration → **Group Membership**
    - Name `groups`, Token Claim Name `groups`, Full group path OFF
    - Add to ID token ON, Add to access token ON, Add to userinfo ON, Add to introspection ON ✱
-3. For each client (argocd, harbor, oauth2-proxy, vaultwarden) → Client scopes tab → Add client scope → pick `groups` → **Default** (not Optional)
+3. For each client (argocd, harbor, vaultwarden, example-hub) → Client scopes tab → Add client scope → pick `groups` → **Default** (not Optional)
 
 #### 5-2. Client-direct mapper (per client)
 
@@ -118,7 +138,7 @@ When creating mappers via kcadm/Admin API, omitting fields creates a mapper with
 
 - kcadm's `--fields config` cannot render dot-keys (`claim.name`, etc.), so even a correctly-configured mapper looks like `{}` in this output — making visual inspection misleading.
 - Recommended: create mappers via JSON file (`-f`) and verify with raw GET (don't trust `--fields config`).
-- Automation: [scripts/kcadm-bootstrap.sh](../scripts/kcadm-bootstrap.sh) (idempotent) + [scripts/kcadm-verify.sh](../scripts/kcadm-verify.sh) (38 checks including all six fields).
+- Automation: [scripts/kcadm-bootstrap.sh](../scripts/kcadm-bootstrap.sh) (idempotent) + [scripts/kcadm-verify.sh](../scripts/kcadm-verify.sh) (covers all six fields; the script prints its own pass count as `Result: N passed`, which grows as `VERIFY_CLIENTS` / `GITLAB_MAPPED_GROUPS` grow).
 
 <br/>
 
@@ -128,7 +148,7 @@ When creating mappers via kcadm/Admin API, omitting fields creates a mapper with
 curl -s -X POST https://auth.example.com/realms/example/protocol/openid-connect/token \
   -d grant_type=password \
   -d client_id=admin-cli \
-  -d username=somaz \
+  -d username=admin \
   -d password=<temp password>
 
 # Decode the access_token at jwt.io → expect "groups": ["global-admin"]
@@ -139,8 +159,8 @@ curl -s -X POST https://auth.example.com/realms/example/protocol/openid-connect/
 ## Next steps
 
 - [gitlab-brokering-en.md](gitlab-brokering.md) — Add GitLab Identity Provider (existing GitLab accounts as login source)
-- [argocd-migration-en.md](argocd-migration.md) — ArgoCD dex connector → Keycloak OIDC (Phase 4)
-- [harbor-migration-en.md](harbor-migration.md) — Harbor OIDC endpoint → Keycloak (Phase 5)
+- [harbor-migration-en.md](harbor-migration.md) — Harbor OIDC endpoint → Keycloak (Phase 4)
+- [argocd-migration-en.md](argocd-migration.md) — ArgoCD dex connector → Keycloak OIDC (Phase 6)
 
 <br/>
 

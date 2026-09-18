@@ -13,7 +13,7 @@ name: elasticsearch
 
 # Elastic Stack version. Bump via ./upgrade.py for rolling upgrade. Major bumps
 # require ECK operator compatibility check.
-version: "9.4.2"
+version: "9.5.1"
 
 # Password for the built-in `elastic` superuser.
 # Rendered into Secret `<name>-es-elastic-user` (key: elastic) which ECK picks up.
@@ -21,6 +21,14 @@ version: "9.4.2"
 #   kubectl -n logging get secret elasticsearch-es-elastic-user \
 #     -o jsonpath='{.data.elastic}' | base64 -d
 elasticPassword: "exampleAdminPassword"
+
+# Keep the data PVCs when the Elasticsearch resource itself is deleted. The ECK
+# default (DeleteOnScaledownAndClusterDeletion) would take the data with it, and
+# this app runs with auto-sync prune+selfHeal, so an accidental prune of the
+# Application would be unrecoverable. Scale-down still reclaims PVCs; only the
+# cluster-deletion path is blocked, so a deliberate teardown needs a manual PVC
+# cleanup afterwards.
+volumeClaimDeletePolicy: DeleteOnScaledownOnly
 
 # Node sets — array of StatefulSets. Single all-roles node set matches the
 # legacy (single-node, NFS) topology. Expand for HA.

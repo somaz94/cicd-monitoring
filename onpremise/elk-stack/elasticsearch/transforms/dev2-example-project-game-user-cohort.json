@@ -1,0 +1,119 @@
+{
+  "description": "Per-user atomic facts + max_cleared_chapter from /adventures/clear responseBody.",
+  "source": {
+    "index": [
+      "dev2-example-project-game"
+    ],
+    "query": {
+      "bool": {
+        "filter": [
+          {
+            "exists": {
+              "field": "data.userId"
+            }
+          }
+        ]
+      }
+    },
+    "runtime_mappings": {
+      "lastClearedChapter": {
+        "type": "long",
+        "script": {
+          "source": "if (doc['data.requestPath.keyword'].size() == 0) return; if (doc['data.requestPath.keyword'].value != '/adventures/clear') return; def src = params._source; if (src == null || src.data == null || src.data.responseBody == null) return; String s = String.valueOf(src.data.responseBody); int idx = s.indexOf('lastClearedChapter'); if (idx < 0) return; int colon = s.indexOf(':', idx); if (colon < 0) return; String after = s.substring(colon + 1); int p = 0; int n = after.length(); while (p < n) { int ch = (int)after.charAt(p); if (ch >= 48 && ch <= 57) break; p++; } int st = p; while (p < n) { int ch = (int)after.charAt(p); if (ch < 48 || ch > 57) break; p++; } if (p > st) { emit(Long.parseLong(after.substring(st, p))); }"
+        }
+      }
+    }
+  },
+  "pivot": {
+    "group_by": {
+      "user_id": {
+        "terms": {
+          "field": "data.userId"
+        }
+      }
+    },
+    "aggregations": {
+      "first_seen": {
+        "scripted_metric": {
+          "params": {
+            "path": "/users/create"
+          },
+          "init_script": "state.times = new ArrayList();",
+          "map_script": "if (doc['data.requestPath.keyword'].size() > 0 && doc['data.requestPath.keyword'].value == params.path) { state.times.add(doc['@timestamp'].value.toInstant().toEpochMilli()); }",
+          "combine_script": "return state.times;",
+          "reduce_script": "long min = Long.MAX_VALUE; boolean any = false; for (def s : states) { for (def t : s) { long tv = (long)t; if (tv < min) min = tv; any = true; } } return any ? Instant.ofEpochMilli(min).toString() : null;"
+        }
+      },
+      "last_seen": {
+        "max": {
+          "field": "@timestamp"
+        }
+      },
+      "total_events": {
+        "value_count": {
+          "field": "@timestamp"
+        }
+      },
+      "active_days_count": {
+        "cardinality": {
+          "script": {
+            "source": "doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString()",
+            "params": {
+              "tz": "Asia/Seoul"
+            }
+          }
+        }
+      },
+      "active_dates": {
+        "scripted_metric": {
+          "params": {
+            "tz": "Asia/Seoul"
+          },
+          "init_script": "state.dates = new HashSet();",
+          "map_script": "state.dates.add(doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString());",
+          "combine_script": "return state.dates;",
+          "reduce_script": "Set out = new TreeSet(); for (def s : states) { out.addAll(s); } return new ArrayList(out);"
+        }
+      },
+      "active_days_count_cst": {
+        "cardinality": {
+          "script": {
+            "source": "doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString()",
+            "params": {
+              "tz": "Asia/Shanghai"
+            }
+          }
+        }
+      },
+      "active_dates_cst": {
+        "scripted_metric": {
+          "params": {
+            "tz": "Asia/Shanghai"
+          },
+          "init_script": "state.dates = new HashSet();",
+          "map_script": "state.dates.add(doc['@timestamp'].value.toInstant().atZone(ZoneId.of(params.tz)).toLocalDate().toString());",
+          "combine_script": "return state.dates;",
+          "reduce_script": "Set out = new TreeSet(); for (def s : states) { out.addAll(s); } return new ArrayList(out);"
+        }
+      },
+      "max_cleared_chapter": {
+        "max": {
+          "field": "lastClearedChapter"
+        }
+      }
+    }
+  },
+  "dest": {
+    "index": "dev2-example-project-game-user-cohort"
+  },
+  "frequency": "5m",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "60s"
+    }
+  },
+  "settings": {
+    "max_page_search_size": 500
+  }
+}

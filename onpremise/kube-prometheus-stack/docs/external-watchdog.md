@@ -36,7 +36,7 @@ bastion cron (5m)
 |---|---|
 | Host | `server4` (192.0.2.15) — non-cluster, always-on |
 | Install path | `/home/example/.prometheus-watchdog/` |
-| Files | `watchdog-check.sh` · `kubectl` (v1.34.3) · `kubeconfig` (SA token, 600) · `watchdog.env` (Slack webhook, 600) |
+| Files | `watchdog-check.sh` · `kubectl` (matches the cluster version — see `kube_version` in `bootstrap/kubespray`) · `kubeconfig` (SA token, 600) · `watchdog.env` (Slack webhook, 600) |
 | Credential | Minimal ServiceAccount `prometheus-watchdog` (`monitoring` ns, `services/proxy` get only — not admin). Manifest: [scripts/watchdog-rbac.yaml](../scripts/watchdog-rbac.yaml) |
 | API endpoint | `https://192.0.2.17:6443` |
 | cron | `*/5 * * * *` (cron service active) |
