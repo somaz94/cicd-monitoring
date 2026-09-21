@@ -1,0 +1,79 @@
+# find-sensitive.sh allowlist — reviewed 2026-09-21.
+# Every entry is an upstream chart example, a placeholder, a documentation address, or a
+# SealedSecret ciphertext; none is a live credential or real infrastructure address.
+# Format: <relative path><TAB><exact line text>. A new value in the same file is still reported.
+
+aws/argocd/README.md	slack-token: "xoxb-your-slack-bot-token"
+aws/argocd/values.yaml	#   password: my-password
+aws/argocd/values.yaml	# - ip: 10.20.30.40
+aws/argocd/values/mgmt.yaml	slack-token: "xoxb-your-slack-bot-token"
+aws/fluent-bit-aws/values.yaml	# clusterIP: 172.16.10.1
+aws/gitlab-runner-aws/values.yaml	# - ip: "10.1.2.3"
+aws/grafana/values.yaml	# Each entry must be a valid CIDR notation string (e.g. 10.0.0.0/8).
+aws/kube-prometheus-stack/values.yaml	#  - ip: 10.10.0.100
+aws/kube-prometheus-stack/values.yaml	# - 10.141.4.22
+aws/kube-prometheus-stack/values.yaml	# - 10.141.4.23
+aws/kube-prometheus-stack/values.yaml	# - 10.141.4.24
+aws/loki/values.yaml	#     password: "test-password-1"<br>
+gcp/argocd/values.yaml	#   password: my-password
+gcp/argocd/values.yaml	# - ip: 10.20.30.40
+gcp/argocd/values/mgmt.yaml	slack-token: "xoxb-your-slack-bot-token"
+gcp/grafana/values.yaml	# Each entry must be a valid CIDR notation string (e.g. 10.0.0.0/8).
+gcp/kube-prometheus-stack/values.yaml	#  - ip: 10.10.0.100
+gcp/kube-prometheus-stack/values.yaml	# - 10.141.4.22
+gcp/kube-prometheus-stack/values.yaml	# - 10.141.4.23
+gcp/kube-prometheus-stack/values.yaml	# - 10.141.4.24
+gcp/loki/values.yaml	#     password: "test-password-1"<br>
+github-cicd/aws-gcp/ci_cd.yml	ssh -o "StrictHostKeyChecking=no" appuser@10.0.0.1 << 'EOF'
+github-runner/actions-runner-controller/README.md	github_token: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+github-runner/actions-runner-controller/values/runner.yaml	github_token: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+gitlab-cicd/pipelines/data/aws-module-v1.yml	- DESTINATION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/data/"
+gitlab-cicd/pipelines/data/aws-module-v1.yml	SERVER_DESTINATION_VERSION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/version/"
+gitlab-cicd/pipelines/data/aws-module-v2.yml	- DESTINATION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/data/"
+gitlab-cicd/pipelines/data/aws-module-v2.yml	SERVER_DESTINATION_VERSION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/version/"
+gitlab-cicd/pipelines/data/aws-v1.yml	- DESTINATION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/data/"
+gitlab-cicd/pipelines/data/aws-v1.yml	SERVER_DESTINATION_VERSION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/version/"
+gitlab-cicd/pipelines/data/aws-v2.yml	- DESTINATION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/data/"
+gitlab-cicd/pipelines/data/aws-v2.yml	SERVER_DESTINATION_VERSION="ec2-user@10.0.0.1:/mnt/example-app/$CI_COMMIT_REF_NAME/app/version/"
+gitlab-cicd/pipelines/server/aws-v2.yml	AWS_EC2_HOST="ec2-user@10.0.0.1"
+gitlab-cicd/pipelines/server/aws-v2.yml	Host 10.0.0.1
+gitlab-cicd/pipelines/server/aws-v2.yml	HostName 10.0.0.1
+gitlab-cicd/templates/variables/common.yml	AWS_EC2_IP: "10.0.0.1"
+gitlab-runner/values.yaml	#     token = "glrt-xxxxxxxxxxxxxxxxxxxx"
+gitlab-runner/values.yaml	# - ip: "10.1.2.3"
+jenkins/ios-jenkinsfile	GIT_URL = 'http://192.168.1.7/client/example-user'
+jenkins/lua-jenkinsfile	GIT_URL = 'http://192.168.1.7/client/example-user'
+jenkins/res-jenkinsfile	GIT_URL = 'http://192.168.1.7/client/example-user'
+onpremise/argocd/values.yaml	#   password: my-password
+onpremise/argocd/values.yaml	# - ip: 10.20.30.40
+onpremise/argocd/values/dev-notifications.yaml	slack-token: "xoxb-your-slack-bot-token"
+onpremise/elk-stack/_deprecated/logstash/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
+onpremise/elk-stack/_deprecated/metricbeat/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
+onpremise/elk-stack/_deprecated/metricbeat/values/mgmt.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
+onpremise/elk-stack/elasticsearch/scripts/kibana_saved_objects_migrate.sh	echo "  secret: monitoring/elasticsearch-master-credentials"
+onpremise/elk-stack/fluent-bit/values.yaml	# clusterIP: 172.16.10.1
+onpremise/grafana/values.yaml	# Each entry must be a valid CIDR notation string (e.g. 10.0.0.0/8).
+onpremise/grafana/values/mgmt.yaml	#       url: http://10.0.0.11:3100
+onpremise/harbor-helm/values.yaml	addr: "192.168.0.2:6379"
+onpremise/harbor-helm/values.yaml	host: "192.168.0.1"
+onpremise/harbor-helm/values.yaml	password: "changeit"
+onpremise/harbor-helm/values.yaml	password: "harbor_registry_password"
+onpremise/harbor-helm/values.yaml	password: "password"
+onpremise/jenkins/values.yaml	#     value: "http://192.168.64.1:3128"
+onpremise/jenkins/values.yaml	#   service.beta.kubernetes.io/load-balancer-source-ranges: "172.0.0.0/8, 10.0.0.0/8"
+onpremise/jenkins/values.yaml	# - 172.17.1.0/24
+onpremise/jenkins/values.yaml	# - ip: 10.0.50.50
+onpremise/jenkins/values.yaml	# - ip: 192.168.50.50
+onpremise/jenkins/values.yaml	# -- The IP range from which external agents are allowed to connect to controller, i.e., 172.17.0.0/16
+onpremise/jenkins/values.yaml	password: "password"
+onpremise/kube-prometheus-stack/docs/slack-alert-format.md	"instance": "10.244.0.15:8080"
+onpremise/kube-prometheus-stack/docs/slack-alert-format.md	Instance: 10.244.0.15:8080
+onpremise/kube-prometheus-stack/docs/slack-alert-format.md	Instance: 10.244.1.20:9090
+onpremise/kube-prometheus-stack/docs/slack-alert-format.md	| Pod alert | All of `Namespace: slack-bots`, `Pod: test-pod-abc123`, `Instance: 10.244.0.15:8080` shown (plus `Container:` if a `container` label was included) |
+onpremise/kube-prometheus-stack/values.yaml	# - 10.141.4.22
+onpremise/kube-prometheus-stack/values.yaml	# - 10.141.4.23
+onpremise/kube-prometheus-stack/values.yaml	# - 10.141.4.24
+onpremise/kube-prometheus-stack/values/dev.yaml	admin-password: AgB27qaSrdn5okL5GorSyAvIvDZvsEI3USa9/ctFb3FbXNAjXk3SCNWGtaatx2bIPsFcq6xnaoS1Z5vk2VkBI9PI2Fy7KQ9X2WWf/BvQlzR8/s483J9FLwZWbMQlM90sgX0QJjGicIJVZiUow+Q3rj2iaAtkF4HsIkVNCXbUKrn6oI6mBSCTc2P4It7gVC2wc/43P4i9FmtIgQ2CWZCK6PTmmmhx+1iKcWuzFvPI405JoT2xD2ZN+GeN1RaqVZJEzn23dLaDat8ogmitm3PPBKhZ+eXB7mvA8dzatMe7aJWxjMRV+BelpKy0qzguXOlXwjodSWcjW06FtboY/zWGL3qZEqKA5qlKo3/NbcBQro+gu0hS5eX5FXreNKTB/CMObBYktv8ZwsySQ+Fez8yqEU6rAMgxF8GASY6UG3MfvuOjtiApr3hQgX4RWGnzOG8W9Jgdt+bS/tLjtFPZEk6eDJSyP2MJWZCRAqqGCd39PWOdvKfCdZP2qrkTuAlV8BBuy0McGf/v/Aze9TQZga88PJlt0EZ9I7wM/vbLzDr9STkvhPmIC1tKvGsfUC66eS4FjAJgCgCbuHIdqJSiSnj6ctnRn8yl5Xr1jfRD3i0NEp/L/nN0OfkiV9gexLm/EXSVIb7T7EXli/NIn9CFgCdkq3gNZrACYZBtHPLswrZe76nuX86s60ZFrorkNQHpg6j61/3O1+UE9LRDNfcJFw==
+onpremise/kube-prometheus-stack/values/dev.yaml	oidc-client-secret: AgAykO24yrZ6lHX3AB35z8/hpxkgOAbRmOCdDSOrjhX1VGaqP1YZwcwtFVI993XyjYUU+sC5PnWGGgsYaZUg0kFK0rO5SYLuYGczvcFAtnMEV4rS8skJ+E8N4LqO9Ecf+Gx936kKE+au3zh6kmEo5V2VGJDbBSJlNZLT1Zj47KRt5jnFMR2IHX0j2IOE56O02Kz5itSBxwmrkL09vTa5T0BjjxhkfnEp29kpLEqd+2A+6UXKZSHDnHhOnNx/YdK1+m64MT8c9Mew34U1oJsMoZH4zKHy7zMbTcdWuzEbQqSXwCoRzYi0SYEcnpxZfrrKEJm7M89d7+qU8zo8nhvsaakfIm+aZPNsUHQOH41sDas1WJRbc3fDfuYqEnpsg9OxyK4TqCiqnGjKqogKjTytYCwcpPzCnMGDxZCLILb/milqN+d/609PU1gZo9euR/4fMmIhGnFElfq/sWxS3sQqO5yXe8o7prAb5VxbjJxM0n/1s3nw8wNtQQ+VAjWjHG6yjrra7rZGWJ1y5HHZ5oYQhhsnBQz8mN3pbx0zzC4wE7zInaOCmsYHPKJZSc11OtUYfAjnvxjtx0x1gn92cGnFssPYmfBa80Hrj5ZDzpf49pKQT8jzsLp0gt59CkZqT12H6yurhF/mdb+Olzvt51wXa6UzPgcsoVlFJ6J1TP4a/TwP8ltG/pyjjXC5bM9YQveFdABffkIHbSCqDjb9m3LPVNesyowEIIBDlbzW3EmeJmxKhtqHrd9m8Kug8TNi7V5p1sKxdztDmO9WpGmx9CB7f8zu9I7cwiKyZW804m4bUrcIzCvLakcOMA==
+onpremise/loki/values.yaml	#     password: "test-password-1"<br>
+onpremise/prometheus-elasticsearch-exporter/values/dev.yaml	# Password from ECK-managed secret: elasticsearch-es-elastic-user (key: elastic).
