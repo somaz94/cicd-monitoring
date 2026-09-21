@@ -21,7 +21,7 @@
 #                           silently.
 #   print_values_summary    Per-chart Python callable invoked at the
 #                           tail of Step 1. Receives kwarg values_dir.
-#                           When omitted, the K10 default surfaces
+#                           When omitted, the default surfaces
 #                           `.image.tag` per `values/*.yaml` via yq.
 #
 # Helper exposed via the do_mirror kwargs:

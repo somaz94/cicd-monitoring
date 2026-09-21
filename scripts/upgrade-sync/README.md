@@ -48,7 +48,7 @@ scripts/upgrade-sync/templates/
 └── argocd-pin.py                  # bumps chart.version in the ArgoCD metadata file (delegates to a base template)
 ```
 
-> All canonicals are Python (Phase 4 K6~K13 sequence completed). The body lives in `scripts/python/upgrade_core/<template>.py`; each `templates/<name>.py` canonical is a thin wrapper around the placeholder dict + ancestor walk.
+> All canonicals are Python. The body lives in `scripts/python/upgrade_core/<template>.py`; each `templates/<name>.py` canonical is a thin wrapper around the placeholder dict + ancestor walk.
 
 <br/>
 
@@ -259,7 +259,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 #### 1. [external-standard.py](templates/external-standard.py) — external helm repo chart (most common, Python)
 
 - **Use**: Receives a chart from an external helm repo and deploys via helmfile
-- **Language**: Python (.sh → .py flip in Phase 4 / MR-K6). Body lives in `scripts/python/upgrade_core/external_standard.py`; the canonical is a thin wrapper.
+- **Language**: Python. Body lives in `scripts/python/upgrade_core/external_standard.py`; the canonical is a thin wrapper.
 - **Flow**: 7 steps (current → fetch latest → download → diff Chart → diff values → check breaking → apply + backup)
 - **Consumers**: the `external-standard` row of `sync.py --status` is the SSOT for the count; the `[external-standard]` rows of `sync.py --check` are the SSOT for the list. Representative consumers: `cicd/argo-cd`, `network/metallb`, `security/vaultwarden`.
 
@@ -363,7 +363,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 #### 7. [ansible-github-release.py](templates/ansible-github-release.py) — Ansible-deployed (non-Helm) component + GitHub Releases tracking (Python)
 
 - **Use**: Components **deployed via Ansible**, not Helm, where the version lives in a single YAML file (e.g. `group_vars/all.yml`) and the upstream source is a GitHub Releases feed. No `Chart.yaml` / `helmfile.yaml`.
-- **Language**: Python (Phase 4 / MR-K7 .sh → .py flip). Body lives in `scripts/python/upgrade_core/ansible_github_release.py`; the canonical is a thin wrapper.
+- **Language**: Python. Body lives in `scripts/python/upgrade_core/ansible_github_release.py`; the canonical is a thin wrapper.
 - **Flow**: 5 steps (current → fetch latest from GitHub → diff preview + major-bump warning → backup → update VERSION_FILE)
 - **Specific variables**:
   - `COMPONENT_NAME`: human-readable name (e.g. `node_exporter`)
@@ -495,7 +495,7 @@ Useful for debugging when a single file shows drift.
 
 <br/>
 
-> **Note**: The bash `sync.sh` once shipped a one-shot migration command `--insert-headers` and a verification mode `--check --no-header`. Both were retired in Phase 5 P5-A (resolute-bison) — every consumer now carries the `# upgrade-template:` header (see `sync.py --status` for the current count), so the commands were dead code. If you need content-based template auto-detection, call `detect_template()` from `scripts/python/upgrade_sync/detect.py` directly.
+> **Note**: The bash `sync.sh` once shipped a one-shot migration command `--insert-headers` and a verification mode `--check --no-header`. Both were retired — every consumer now carries the `# upgrade-template:` header (see `sync.py --status` for the current count), so the commands were dead code. If you need content-based template auto-detection, call `detect_template()` from `scripts/python/upgrade_sync/detect.py` directly.
 
 <br/>
 
@@ -602,7 +602,7 @@ The following tools must be on `PATH` (CI runner installs them automatically via
 | `git` | git-tags lookups, automated commit/push | `local-with-templates` (git mode), CI `auto-upgrade.py` |
 | `curl` | upstream metadata fetch | `check-versions.py`, every version-source template |
 | `python3` (>= 3.10) | runs every sync/upgrade script (`sync.py`, `check-versions.py`, `manage-backups.py`, each `upgrade.py`) | always |
-| `jq` | JSON processing | some helm plugins (auto-upgrade's `jq` usage was replaced with python stdlib `json` in MR-K4) |
+| `jq` | JSON processing | some helm plugins (auto-upgrade's `jq` usage was replaced with python stdlib `json`) |
 | `yq` | YAML processing | CI `helmfile-apply-component.py`, `apply-components.py` |
 | `crane` | OCI image mirror (upstream → private registry) | `external-oci-with-mirror` template Step 7 mirror stage |
 | `tar`, `gzip` | archive handling | `helm pull --untar`, OCI chart downloads |

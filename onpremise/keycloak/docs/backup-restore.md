@@ -119,7 +119,7 @@ helmfile -f helmfile.yaml -e dev apply \
   --set-file realmImport.realm=manifests/realm-example.json
 ```
 
-> The realm export contains client secrets. **gitlab-project is an internal repo so plaintext is acceptable**, but rotation leaves traces in git history — use `git filter-repo` to scrub, or migrate to ExternalSecrets later.
+> The realm export contains client secrets. **Keep it out of public repositories** — an internal repo may hold it in plaintext, but rotation leaves traces in git history — use `git filter-repo` to scrub, or migrate to ExternalSecrets later.
 
 <br/>
 
