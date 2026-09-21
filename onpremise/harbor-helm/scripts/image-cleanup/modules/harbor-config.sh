@@ -5,9 +5,7 @@ IFS=$'\n\t'
 # Harbor config module
 # Manages configuration-related functions
 
-# -- Global variable definitions --
 
-# Default settings
 DEFAULT_HARBOR_URL="harbor.example.com"           # Default Harbor registry URL
 DEFAULT_HARBOR_PROTOCOL="https"                  # Default protocol for the Harbor API (http/https) — matches harbor-helm externalURL
 DEFAULT_HARBOR_USER="admin"                      # Default Harbor admin username
@@ -27,7 +25,6 @@ _SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
 source "$(cd "$(dirname "$_SCRIPT_PATH")" && pwd)/../../../../../scripts/lib/colors.sh"
 unset _SCRIPT_PATH
 
-# Print help message
 show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
@@ -47,7 +44,6 @@ show_help() {
     echo "  $0 -p <project> -r all -k 50"
 }
 
-# Validate configuration
 validate_config() {
     if [ -z "$HARBOR_URL" ] || [ -z "$HARBOR_USER" ] || [ -z "$HARBOR_PASS" ] || [ -z "$PROJECT_NAME" ]; then
         echo -e "${RED}Error: please fill in all configuration variables in the script${NC}"
@@ -60,12 +56,10 @@ validate_config() {
     fi
 }
 
-# -- Parse command-line arguments --
 parse_arguments() {
     local print_help=false
     local repo_set=false
 
-    # Initialize empty REPOSITORIES array
     REPOSITORIES=()
 
     while [[ $# -gt 0 ]]; do
@@ -112,21 +106,17 @@ parse_arguments() {
         esac
     done
 
-    # Show help if requested
     if [ "$print_help" = true ]; then
         show_help
         exit 0
     fi
 
-    # Apply default if no repositories specified
     if [ ${#REPOSITORIES[@]} -eq 0 ]; then
         REPOSITORIES=("${DEFAULT_REPOSITORIES[@]}")
     fi
 }
 
-# -- Initialize configuration --
 initialize_config() {
-    # Apply defaults when not provided
     HARBOR_URL="${HARBOR_URL:-$DEFAULT_HARBOR_URL}"
     HARBOR_PROTOCOL="${HARBOR_PROTOCOL:-$DEFAULT_HARBOR_PROTOCOL}"
     HARBOR_USER="${HARBOR_USER:-$DEFAULT_HARBOR_USER}"
@@ -138,14 +128,12 @@ initialize_config() {
     DRY_RUN="${DRY_RUN:-$DEFAULT_DRY_RUN}"
     BATCH_SIZE="${BATCH_SIZE:-$DEFAULT_BATCH_SIZE}"
 
-    # Ensure BATCH_SIZE is at least 1
     if [ "$BATCH_SIZE" -lt 1 ]; then
         echo -e "${YELLOW}Invalid batch size $BATCH_SIZE, setting to 1${NC}"
         BATCH_SIZE=1
     fi
 }
 
-# Verify required commands are present
 check_requirements() {
     local missing_commands=()
 

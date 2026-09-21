@@ -19,10 +19,6 @@ STATEFULSET="vaultwarden"
 # before it overwrites the live database. Matches the backup CronJob image.
 RESTORE_IMAGE="alpine:3.21"
 
-# -----------------------------------------------
-# Functions
-# -----------------------------------------------
-
 DRY_RUN=0
 
 usage() {
@@ -194,10 +190,6 @@ do_restore() {
   echo " Verify: https://vault.example.com"
   echo "============================================"
 }
-
-# -----------------------------------------------
-# Main
-# -----------------------------------------------
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

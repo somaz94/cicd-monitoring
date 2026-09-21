@@ -7,8 +7,8 @@ canonical wrapper, ``scripts/python/run.sh sync.py``). The actual logic
 lives in ``scripts/python/upgrade_sync/`` — this file just resolves the
 package root via an ancestor walk and dispatches to ``cli.main``.
 
-The ancestor walk mirrors every K6..K12 consumer's pattern so the file
-also works when invoked from an arbitrary cwd or via a symlink.
+Same ancestor walk as every consumer upgrade.py, so the file also works
+when invoked from an arbitrary cwd or via a symlink.
 """
 
 from __future__ import annotations

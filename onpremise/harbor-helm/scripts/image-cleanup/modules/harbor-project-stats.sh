@@ -5,7 +5,6 @@ IFS=$'\n\t'
 # Harbor project stats module — simple version
 # Description: fetches per-repository artifact counts for a given Harbor project
 
-# Fetch all repositories and artifact counts for a given project
 show_project_repositories_stats() {
     local project_name="$1"
 
@@ -17,7 +16,6 @@ show_project_repositories_stats() {
 
     echo -e "${GREEN}=== Per-repository artifact counts for project '${project_name}' ===${NC}\n"
 
-    # Fetch repository list for the project via the Harbor API
     echo -e "${YELLOW}Fetching repository list...${NC}"
 
     local api_url="${HARBOR_PROTOCOL}://${HARBOR_URL}/api/v2.0/projects/${project_name}/repositories"
@@ -30,20 +28,17 @@ show_project_repositories_stats() {
         return 1
     fi
 
-    # Check whether the JSON response is empty or contains an error
     if [[ -z "$response" ]] || echo "$response" | grep -q '"errors"'; then
         echo -e "${RED}Error: could not fetch repositories for project '${project_name}'.${NC}"
         echo "Response: $response"
         return 1
     fi
 
-    # Ensure the response is a JSON array
     if ! echo "$response" | jq -e '. | type == "array"' >/dev/null 2>&1; then
         echo -e "${RED}Error: unexpected response format.${NC}"
         return 1
     fi
 
-    # Count repositories
     local repo_count=""
     repo_count=$(echo "$response" | jq '. | length' 2>/dev/null)
 
@@ -54,14 +49,12 @@ show_project_repositories_stats() {
 
     echo -e "${GREEN}Found ${repo_count} repositories total.${NC}\n"
 
-    # Print table header
     printf "%-4s %-40s %-15s %-20s\n" "NO" "REPOSITORY NAME" "ARTIFACTS" "LAST UPDATED"
     printf "%-4s %-40s %-15s %-20s\n" "----" "----------------------------------------" "---------------" "--------------------"
 
     local total_artifacts=0
     local repo_number=1
 
-    # Process each repository's info
     while read -r repo_data; do
         if [[ -z "$repo_data" ]] || [[ "$repo_data" == "null" ]]; then
             continue
@@ -75,12 +68,10 @@ show_project_repositories_stats() {
         artifact_count=$(echo "$repo_data" | jq -r '.artifact_count // 0')
         update_time=$(echo "$repo_data" | jq -r '.update_time // "N/A"')
 
-        # Format timestamp (ISO 8601 → human readable)
         if [[ "$update_time" != "N/A" ]] && [[ "$update_time" != "null" ]]; then
             update_time=$(echo "$update_time" | sed 's/T/ /' | sed 's/\.[0-9]*Z$//')
         fi
 
-        # Color based on artifact count
         local color_code=""
         if [[ $artifact_count -gt 100 ]]; then
             color_code="$RED"
@@ -92,7 +83,6 @@ show_project_repositories_stats() {
             color_code="$GREEN"
         fi
 
-        # Strip project prefix from repository name (for readability)
         local clean_repo_name=""
         clean_repo_name=$(echo "$repo_name" | sed "s|^${project_name}/||")
 
@@ -104,7 +94,6 @@ show_project_repositories_stats() {
 
     done < <(echo "$response" | jq -c '.[]')
 
-    # Print summary
     echo -e "\n${GREEN}=== Summary ===${NC}"
     echo -e "${YELLOW}Total repositories:${NC} $repo_count"
     echo -e "${YELLOW}Total artifacts:${NC} $total_artifacts"
@@ -113,7 +102,6 @@ show_project_repositories_stats() {
     return 0
 }
 
-# Help function
 show_stats_help() {
     echo -e "${GREEN}=== Harbor project repository stats help ===${NC}\n"
 
@@ -138,7 +126,6 @@ show_stats_help() {
     echo -e "  • HARBOR_URL, HARBOR_USER, HARBOR_PASS variables must be set."
 }
 
-# Behavior when this module is executed directly
 # Main-or-source guard — zsh lacks BASH_SOURCE; :-} fallback gives empty string so the guard passes naturally.
 if [[ "${BASH_SOURCE[0]:-}" == "${0}" ]]; then
     echo -e "${YELLOW}This module must be sourced from another script.${NC}"

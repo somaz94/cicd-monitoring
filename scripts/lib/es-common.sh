@@ -1,9 +1,7 @@
 # shellcheck shell=bash
 # Repo-root shared environment defaults + helper functions for Elasticsearch
-# operations. Sourced by both the self-hosted (observability/logging/elasticsearch)
-# and the AWS-managed (observability/logging/elasticsearch-aws) component scripts,
-# so it lives here as the single source of truth. Source this file from another
-# shell script — do not execute it directly.
+# operations. Sourced by elasticsearch-aws/scripts and scripts/elasticsearch.
+# Source this file from another shell script — do not execute it directly.
 #
 # Usage (from a component under observability/logging/<component>/scripts/):
 #   #!/usr/bin/env bash

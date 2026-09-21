@@ -1,22 +1,6 @@
-# =============================================================================
-# Expose — chart-native HTTPRoute (Phase 7+, 2026-04-17)
-#
-# - expose.type: route → chart auto-generates HTTPRoute `harbor-route`
-#   (templates/gateway-apis/route.yaml)
-# - HTTPS termination is handled by `wildcard-example-tls` on the NGF ngf Gateway
-#   (nginx-gateway ns). The chart `expose.tls.secret.secretName: harbor-tls` reference is
-#   dead config not rendered in route mode but kept for values.schema.json compatibility.
-# - The actual self-signed Secret `harbor-tls` was removed via `kubectl delete` on 2026-04-17
-#   (consolidated into wildcard-example-tls).
-# - sibling `harbor-https-redirect` HTTPRoute + ClientSettingsPolicy(body.maxSize:0) are
-#   not supported by the chart → kept as raw in manifests/httproutes.yaml.
-# - The existing `ingress:` block is kept commented out for rollback reference (below).
-#
-# When self-signed rollback is needed (e.g. Gateway/wildcard failure):
-#   1. Regenerate harbor-tls via the openssl procedure in docs/tls-setup.md
-#      kubectl create secret tls harbor-tls --cert=... --key=... -n harbor
-#   2. Switch to `expose.type: ingress` + restore the ingress: block below
-# =============================================================================
+# Expose: chart HTTPRoute `harbor-route`; TLS terminates at the NGF `ngf` Gateway (wildcard-example-tls).
+# The redirect HTTPRoute + ClientSettingsPolicy are not chart-supported -> manifests/httproutes.yaml.
+# Rollback to Ingress: recreate harbor-tls (docs/tls-setup.md), set type: ingress, restore the ingress: block below.
 expose:
   type: route
   tls:
@@ -25,7 +9,7 @@ expose:
     secret:
       # Not rendered in route mode (dead config). Real Secret must be recreated on rollback.
       secretName: harbor-tls
-  # ingress:  # (Phase 7+ commented out — using expose.type: route. On rollback, set type=ingress + restore below)
+  # ingress:  # rollback only — see header
   #   hosts:
   #     core: harbor.example.com
   #   controller: default
@@ -54,95 +38,8 @@ expose:
 
 externalURL: https://harbor.example.com
 
-# -----------------------------------------------------------------------------
-# Alternative: plain HTTP (no TLS)
-#
-# Comment out the HTTPS `expose:` / `externalURL:` block above and uncomment
-# the block below to serve Harbor over HTTP. Container runtimes (containerd,
-# docker) pulling/pushing via HTTP must be configured with insecure-registries.
-# -----------------------------------------------------------------------------
-# expose:
-#   type: ingress
-#   tls:
-#     enabled: false
-#   ingress:
-#     hosts:
-#       core: harbor.example.com
-#     controller: default
-#     className: "nginx"
-#     annotations:
-#       nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable HTTP → HTTPS redirect
-#       nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # No TLS termination needed
-#       nginx.ingress.kubernetes.io/proxy-body-size: "0"          # Allow large image pushes
-#   clusterIP:
-#     name: harbor
-#     ports:
-#       httpPort: 80
-#       httpsPort: 443
-#
-# externalURL: http://harbor.example.com
-
-# =============================================================================
-# SSO — Keycloak OpenID Connect (Phase 4, 2026-04-28+)
-#
-# Harbor does NOT expose OIDC settings as Helm values — they are stored in
-# Harbor's core database. Configure via API/UI AFTER `helmfile apply` succeeds.
-#
-# Standard procedure (recommended automation):
-#   ./scripts/admin/harbor-admin.sh set-oidc \
-#       --name Keycloak \
-#       --endpoint https://auth.example.com/realms/example \
-#       --client-id harbor \
-#       --client-secret '<phase-3 secret>' \
-#       [--dry-run] [-y]
-#
-# Harbor UI / API equivalent:
-#   - Auth Mode:           oidc_auth   (one-way — already flipped on this cluster)
-#   - OIDC Provider Name:  Keycloak
-#   - OIDC Endpoint:       https://auth.example.com/realms/example
-#   - Client ID:           harbor
-#   - Client Secret:       (Phase 3 kcadm-bootstrap.sh output, see harbor-migration.md)
-#   - Group Claim Name:    groups      (matches harbor client mapper)
-#   - OIDC Admin Group:    <empty>     (admin@example.com promoted manually)
-#   - OIDC Group Filter:   server      (only Keycloak `server` group members may sign in)
-#   - OIDC Scope:          openid,profile,email
-#   - Username Claim:      preferred_username
-#   - Verify Certificate:  ON          (HTTPS + wildcard cert is trusted)
-#   - Automatic onboarding: ON         (only users passing Group Filter are created)
-#
-# Migration history & user re-mapping:
-#   security/keycloak/docs/harbor-migration.md (Phase 4 step-by-step)
-# Detailed reference: cicd/harbor-helm/docs/oidc-setup-keycloak.md
-# Legacy GitLab full procedure: cicd/harbor-helm/docs/legacy/oidc-setup-gitlab.md
-# Permissions helper: scripts/admin/harbor-admin.sh
-#
-# -----------------------------------------------------------------------------
-# Legacy: GitLab-direct OIDC (pre-Phase 4) — preserved for rollback only
-# -----------------------------------------------------------------------------
-# Until 2026-04-28 Harbor used GitLab as its OIDC IdP directly. To roll back:
-#
-#   Prerequisites:
-#     1. GitLab Admin → Applications → New Application
-#        - Name: Harbor
-#        - Redirect URI: https://harbor.example.com/c/oidc/callback
-#        - Confidential: Yes
-#        - Scopes: openid, profile, email
-#     2. Copy Application ID and Secret.
-#
-#   Apply via harbor-admin.sh:
-#     ./scripts/admin/harbor-admin.sh set-oidc \
-#         --name GitLab \
-#         --endpoint http://gitlab.example.com \
-#         --client-id '<gitlab application id>' \
-#         --client-secret '<gitlab application secret>' \
-#         --verify-cert false
-#
-#   GitLab-era field deltas vs Keycloak:
-#     - oidc_name:          GitLab          (vs Keycloak)
-#     - oidc_endpoint:      http://gitlab.example.com  (vs https://auth.example.com/realms/example)
-#     - oidc_verify_cert:   false (HTTP)    (vs true on HTTPS)
-#     - oidc_groups_claim:  groups (try groups_direct on GitLab 17+)  (vs groups)
-# =============================================================================
+# SSO: Keycloak OIDC lives in Harbor's DB, not Helm values — apply it after helmfile with
+# scripts/admin/harbor-admin.sh set-oidc (docs/oidc-setup-keycloak.md; GitLab rollback: docs/legacy/oidc-setup-gitlab.md).
 
 persistence:
   enabled: true

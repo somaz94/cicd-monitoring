@@ -19,20 +19,7 @@ node_exporter_port: "9100"
 node_exporter_bin: "/usr/local/bin/node_exporter"
 node_exporter_service: "node_exporter"
 
-# =============================================================================
-# OS abstraction
-#
-# The playbooks serve Linux servers and (since the mac-mini build host joined)
-# macOS. Every value below resolves on Linux to exactly the literal it replaced,
-# so Linux hosts see no behavioural change:
-#
-#   node_exporter_os       -> "linux"
-#   node_exporter_pkg_arch -> "amd64"   (node_exporter_arch, unchanged)
-#   node_exporter_dist     -> "node_exporter-<version>.linux-amd64"
-#   node_exporter_url      -> the same release URL as before
-#
-# Keep it that way: anything added here must fall back to the Linux literal.
-# =============================================================================
+# OS abstraction. Every value here must fall back to the Linux literal.
 
 node_exporter_os: "{{ 'darwin' if ansible_facts.system == 'Darwin' else 'linux' }}"
 node_exporter_pkg_arch: "{{ 'arm64' if ansible_facts.system == 'Darwin' else node_exporter_arch }}"
@@ -44,7 +31,7 @@ node_exporter_url: "https://github.com/prometheus/node_exporter/releases/downloa
 # Linux creates a dedicated `node_exporter` nologin system user. macOS has no
 # equivalent the `user` module can create portably (it needs dscl and manual UID
 # allocation), so a macOS host group overrides this with an existing
-# unprivileged login — see inventory.ini. Nothing the exporter collects on
+# unprivileged login — see group_vars/build_machines.yml. Nothing the exporter collects on
 # darwin requires root.
 node_exporter_run_user: "node_exporter"
 node_exporter_run_group: "{{ 'staff' if ansible_facts.system == 'Darwin' else 'node_exporter' }}"

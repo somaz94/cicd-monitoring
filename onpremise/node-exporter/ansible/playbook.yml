@@ -22,9 +22,6 @@
   # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
-    # ------------------------------------------------------------------
-    # 0. Pre-check: Verify port is available
-    # ------------------------------------------------------------------
     - name: Check if port {{ node_exporter_port }} is already in use
       shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check
@@ -40,9 +37,6 @@
         - port_check.stdout | length > 0
         - "'node_exporter' not in port_check.stdout"
 
-    # ------------------------------------------------------------------
-    # 1. Create system user
-    # ------------------------------------------------------------------
     # macOS has no portable way to create a nologin service account through the
     # `user` module (it needs dscl plus manual UID allocation), so darwin hosts
     # run the exporter as an existing unprivileged login instead — see
@@ -55,9 +49,6 @@
         create_home: no
       when: ansible_facts.system != 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 2. Download and install binary
-    # ------------------------------------------------------------------
     - name: Download node_exporter
       get_url:
         url: "{{ node_exporter_url }}"
@@ -104,9 +95,6 @@
         - "/tmp/{{ node_exporter_dist }}"
       tags: [update]
 
-    # ------------------------------------------------------------------
-    # 3. Configure the service (systemd on Linux, launchd on macOS)
-    # ------------------------------------------------------------------
     - name: Deploy systemd unit file
       template:
         src: templates/node_exporter.service.j2
@@ -201,9 +189,6 @@
       changed_when: false
       when: ansible_facts.system == 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 4. Verify
-    # ------------------------------------------------------------------
     # Handlers normally fire after the last task, which would leave the check
     # below testing the pre-restart process. Flushing first makes the
     # verification describe the state the play actually leaves behind.

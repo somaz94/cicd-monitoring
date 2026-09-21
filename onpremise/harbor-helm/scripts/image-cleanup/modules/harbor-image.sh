@@ -5,7 +5,6 @@ IFS=$'\n\t'
 # Harbor image management module
 # Manages image-related functions
 
-# Fetch image tags for a repository via Harbor V2 API
 get_image_tags() {
     local repo=$1
     local page_size=100
@@ -19,7 +18,6 @@ get_image_tags() {
 
     echo -e "${YELLOW}Using Harbor V2 API: $api_url${NC}"
 
-    # Fetch total count first
     local total_items=0
     local count_response=""; count_response=$(curl -s -k -H "Accept: application/json" -u "$HARBOR_USER:$HARBOR_PASS" "$api_url?page=1&page_size=1")
 
@@ -28,7 +26,6 @@ get_image_tags() {
         return
     fi
 
-    # Try to read count from header
     local header_info=""; header_info=$(curl -s -k -I -u "$HARBOR_USER:$HARBOR_PASS" "$api_url?page=1&page_size=1")
     if echo "$header_info" | grep -i "x-total-count" > /dev/null; then
         total_items=$(echo "$header_info" | grep -i "x-total-count" | awk '{print $2}' | tr -d '\r')
@@ -44,7 +41,6 @@ get_image_tags() {
         pages_needed=10
     fi
 
-    # Fetch artifacts page by page
     for ((page=1; page<=pages_needed; page++)); do
         echo -e "${YELLOW}Fetching page $page/$pages_needed${NC}"
         local page_url="$api_url?page=$page&page_size=$page_size&with_tag=true&with_label=false"
@@ -76,7 +72,6 @@ get_image_tags() {
             break
         fi
 
-        # Process artifacts
         for ((i=0; i<page_count; i++)); do
             local digest=""; digest=$(echo "$artifacts" | jq -r ".[$i].digest")
 
@@ -119,14 +114,12 @@ get_image_tags() {
         return
     fi
 
-    # Sort by push time (newest first)
     all_images=$(echo -e "$all_images" | sort -t $'\t' -k2,2r)
     echo -e "${GREEN}Total artifacts retrieved: $total_count${NC}"
 
     echo -e "$all_images"
 }
 
-# Delete a single image
 delete_image() {
     local repo=$1
     local digest=$2
@@ -191,7 +184,6 @@ delete_image() {
     fi
 }
 
-# Delete images in batches
 delete_images_in_batches() {
     local REPO=$1
     local IMAGES_TO_DELETE=$2
@@ -207,7 +199,6 @@ delete_images_in_batches() {
 
     echo -e "${YELLOW}Using batch size: $BATCH_SIZE${NC}"
 
-    # Collect all digests
     local DIGESTS=()
     while read -r line; do
         [ -z "$line" ] && continue
@@ -219,7 +210,6 @@ delete_images_in_batches() {
     local TOTAL_DIGESTS=${#DIGESTS[@]}
     printf "${GREEN}Found %s digests to process with batch size %s${NC}\n" "$TOTAL_DIGESTS" "$BATCH_SIZE"
 
-    # Process in batches
     local BATCH_NUM=0
     for ((i=0; i<TOTAL_DIGESTS; i+=$BATCH_SIZE)); do
         BATCH_NUM=$((BATCH_NUM+1))

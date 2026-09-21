@@ -3,7 +3,7 @@
 
 See ``scripts/python/upgrade_sync/manage_backups.py`` for the actual
 implementation. This wrapper resolves the package root via an ancestor
-walk (same pattern as the K6..K12 consumer upgrade.py files) so the
+walk (same as every consumer upgrade.py) so the
 module is importable from any cwd.
 """
 

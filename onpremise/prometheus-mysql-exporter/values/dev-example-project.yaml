@@ -16,16 +16,14 @@ mysql:
   #   GRANT PROCESS, REPLICATION CLIENT, SELECT ON *.* TO 'exporter'@'%';
   #   FLUSH PRIVILEGES;
 
-# ServiceMonitor for Prometheus auto-discovery
 serviceMonitor:
   enabled: true
   namespace: monitoring
   interval: 30s
   jobLabel: "example-project-mysql"  # Displayed as job name in Grafana dashboards
   additionalLabels:
-    release: kube-prometheus-stack  # Must match Prometheus serviceMonitorSelector
+    release: kube-prometheus-stack  # Not required (selector is {}); kept for chart-default parity
 
-# Resources
 resources:
   requests:
     cpu: 10m

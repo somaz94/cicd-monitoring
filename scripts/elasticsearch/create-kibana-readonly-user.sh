@@ -14,15 +14,6 @@
 #       optional full_name / email).
 #   2. GET  /_security/_authenticate as the new user — sanity check.
 #
-# Password rules:
-#   - >= 8 chars enforced; warning when < 12.
-#
-# Notes on password handling (safest order):
-#   - Prefer --password-stdin (cat secret.txt | script ... --password-stdin)
-#   - Or --password-env VAR_NAME (avoids process-list leakage)
-#   - Last resort: --password STR (visible in ps/history — discouraged)
-#   - When none is given, the script prompts via `read -s` (no echo).
-#
 # bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE anything
 # else. This is NOT cosmetic — `USERNAME` is a zsh special parameter bound to the
 # process owner, so under zsh the `USERNAME="$1"` below is silently ignored and

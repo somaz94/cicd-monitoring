@@ -7,8 +7,8 @@ notifications:
   # documented extension point (values.yaml shows `region` / `environmentName`).
   #
   # 🔴 `cluster` replaces `.app.spec.destination.server` in the alert fields. This ArgoCD manages
-  # exactly ONE cluster, so that field rendered the same `https://192.0.2.17:6443` in all 55
-  # apps' alerts -- a column that never varies carries no information. The cluster name does, and
+  # exactly ONE cluster, so that field rendered the same `https://192.0.2.17:6443` in every
+  # app's alerts -- a column that never varies carries no information. The cluster name does, and
   # it stays right if the API endpoint ever changes.
   #
   # 🔧 2026-09-10: prod-notifications.yaml now carries this same key. When the warning that used
@@ -395,38 +395,6 @@ notifications:
             ]
           }]
 
-    # template.app-healthy: |
-    #   message: |
-    #     :white_check_mark: Application {{.app.metadata.name}} is healthy.
-    #   slack:
-    #     attachments: |
-    #       [{
-    #         "title": "{{ .app.metadata.name}} - Healthy",
-    #         "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
-    #         "color": "#18be52",
-    #         "fields": [
-    #         {
-    #           "title": "Sync Status",
-    #           "value": "{{.app.status.sync.status}}",
-    #           "short": true
-    #         },
-    #         {
-    #           "title": "App Health",
-    #           "value": "{{.app.status.health.status}}",
-    #           "short": true
-    #         },
-    #         {
-    #           "title": "Namespace",
-    #           "value": "{{.app.spec.destination.namespace}}",
-    #           "short": true
-    #         },
-    #         {
-    #           "title": "Revision",
-    #           "value": "{{.app.status.sync.revision}}",
-    #           "short": true
-    #         }
-    #         ]
-    #       }]
     
   triggers:
     # Fires on successful sync + Healthy state. Dedup keyed on the deployed image set,
@@ -580,11 +548,6 @@ notifications:
         - app-health-restored
         when: app.status.health.status == 'Healthy'
 
-    # trigger.test-notification: |
-    #   - description: Test notification - when application is healthy
-    #     send:
-    #     - app-healthy
-    #     when: "true"  # Always triggered
   
   # Current mode: Option B — notifications handles all events incl. health state.
   # Alertmanager covers only ArgoCDControllerReconcileStuck (root-cause of 2026-04-23 stuck).
@@ -615,7 +578,6 @@ notifications:
       # message standing in #argocd-alarm with no green follow-up, so a 17s blip reads as an
       # open incident (observed 2026-09-09 on prod-example-app-battle).
       - on-health-restored
-      # - test-notification
     - recipients:
       - slack:#infra-argocd-alarm
       selector: notify-channel=infra

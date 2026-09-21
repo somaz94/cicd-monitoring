@@ -18,9 +18,7 @@ source "${SCRIPT_DIR}/../../../../scripts/lib/prompts.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/es-helpers.sh"
 
-###################
-# Global Variables #
-###################
+# Global Variables
 
 # Elasticsearch connection settings (env-overridable; localhost defaults).
 # Default targets localhost:9200 so the script works over a port-forward:

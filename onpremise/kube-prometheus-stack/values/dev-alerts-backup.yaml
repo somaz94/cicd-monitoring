@@ -6,8 +6,7 @@
 # question: is there still a recovery point? Most read
 # kube_cronjob_status_last_successful_time; gitlab-old is the exception (a systemd
 # timer on a non-cluster host, so it reads node_exporter instead).
-# Split out of dev-alerts.yaml; severity levels and field meanings are documented
-# in that file.
+# Severity levels are documented in dev-alerts.yaml.
 #
 # SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
 # it across every values file and each top-level key becomes its own PrometheusRule CR --
@@ -174,7 +173,7 @@ additionalPrometheusRulesMap:
               summary: "Keycloak database backup CronJob no longer exists"
               description: "The keycloak-postgresql-backup CronJob is not present in the keycloak namespace — the IdP database is not being dumped at all. It is enabled by `backup.enabled` in security/keycloak/values/dev-postgresql.yaml, so it disappears if that flag is flipped or the release is rolled back. Re-apply and confirm with `kubectl -n keycloak get cronjob keycloak-postgresql-backup`."
 
-          # Ghost is the lowest-stakes of the four app backups — the blog is
+          # Ghost is the lowest-stakes of the app backups — the blog is
           # rebuildable content, not credentials or identity — but it is also the one
           # whose restore wipes the content directory before extracting, so a missing
           # backup turns a recoverable mistake into a permanent one.

@@ -2,23 +2,12 @@
 # =============================================================================
 # scripts/lib/prompts.sh — Shared prompt + validation utilities
 # =============================================================================
-# Helpers consumed by every bash script under scripts/.
-# - confirm_yes_no:     y/N confirmation prompt (default No)
-# - confirm_typed_word: confirmation prompt that requires an exact word
-# - require_commands:   batch presence-check for required commands
-# - format_human_size:  bytes → human-readable size string
-#
 # Usage:
 #   source "$(dirname "${BASH_SOURCE[0]}")/<relative-path>/lib/prompts.sh"
 #
-# When sourced alongside colors.sh, the color variables (YELLOW/RED/NC ...)
-# are used. The fallback below keeps the helpers safe when colors.sh is
-# not loaded (variables default to empty strings).
-#
 # Idempotent guard — safe to source multiple times from the same script.
-# Default prompt strings stay in Korean because every current call site
-# explicitly supplies its own message (the defaults are last-resort
-# fallbacks and the existing Korean variant scripts depend on them).
+# Default prompt strings are Korean last-resort fallbacks; every caller
+# passes its own message.
 # =============================================================================
 
 [[ -n "${__SCRIPTS_LIB_PROMPTS_LOADED:-}" ]] && return 0

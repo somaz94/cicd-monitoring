@@ -7,7 +7,7 @@
 #   - Service: <name>-kb-http (port 5601)
 #   - Secret (HTTP certs): <name>-kb-http-certs-public
 #   - Deployment: <name>-kb
-# MUST stay "kibana" for Phase 2 migration.
+# MUST stay "kibana": renaming changes every resource name above.
 name: kibana
 
 # Elastic Stack version — must match (or be compatible with) the linked
@@ -58,16 +58,13 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
 
-# Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
-# - Temporary IP: 192.0.2.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+# Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
 # - When backendRefs name is omitted, defaults to `<name>-kb-http`; when port is omitted, defaults to 5601
 httproute:
   enabled: true
   parentRefs:
     - name: ngf
       namespace: nginx-gateway
-      # sectionName: https     # When binding to HTTPS listener
-      # port: 443
   hostnames:
     - kibana.example.com
   rules:

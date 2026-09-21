@@ -22,11 +22,7 @@ set -euo pipefail
 # catch a total host/network/power loss of the bastion itself — that requires
 # a truly external (off-site) monitor. Acceptable trade-off for a dev cluster.
 #
-# Install: see docs/external-watchdog.md. Summary:
-#   1. Copy this script to the bastion (or run from a repo checkout there).
-#   2. Create the env file (default /etc/example/prometheus-watchdog.env) with:
-#        SLACK_WEBHOOK_URL="https://hooks.slack.com/services/XXX/YYY/ZZZ"
-#   3. crontab -e:  */5 * * * * /path/to/watchdog-check.sh
+# Install: see docs/external-watchdog.md.
 #
 # The Slack webhook is read from the bastion-local env file (NOT hardcoded
 # here) so the URL lives in exactly one place per host and never in the repo.

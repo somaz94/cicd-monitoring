@@ -44,7 +44,7 @@ serviceMonitor:
 # Metrics: secureMode (TLS + RBAC) is enabled so the chart's ServiceMonitor is
 # wired correctly. The operator auto-issues a self-signed cert for :8080, and
 # kube-prometheus-stack scrapes it with insecureSkipVerify=true (cluster-local
-# traffic). Requires createClusterScopedResources: true (already set below) for
+# traffic). Requires createClusterScopedResources: true (set above) for
 # the /metrics nonResourceURL ClusterRole.
 config:
   logVerbosity: "0"

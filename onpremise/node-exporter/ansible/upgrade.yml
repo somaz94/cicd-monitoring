@@ -2,7 +2,7 @@
 # =============================================================================
 # Node Exporter Upgrade Playbook
 #
-# Upgrades node_exporter binary on target hosts with zero-downtime.
+# Stops, swaps and restarts node_exporter (brief scrape gap); auto-rolls back on failure.
 # Backs up current binary before replacing.
 #
 # Usage:
@@ -20,9 +20,6 @@
   # Override per-run with: -e "node_exporter_version=1.12.0"
 
   tasks:
-    # ------------------------------------------------------------------
-    # 0. Pre-checks
-    # ------------------------------------------------------------------
     - name: Check if port {{ node_exporter_port }} is already in use
       shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check
@@ -63,9 +60,6 @@
         or (ansible_facts.system == 'Darwin'
             and launchd_status.rc | default(1) != 0)
 
-    # ------------------------------------------------------------------
-    # 1. Check current version
-    # ------------------------------------------------------------------
     - name: Get current node_exporter version
       command: "{{ node_exporter_bin }} --version"
       register: current_version
@@ -76,9 +70,6 @@
       debug:
         msg: "Current: {{ current_version.stdout_lines[0] | default('not installed') }} → Target: v{{ node_exporter_version }}"
 
-    # ------------------------------------------------------------------
-    # 2. Download new version
-    # ------------------------------------------------------------------
     - name: Download node_exporter v{{ node_exporter_version }}
       get_url:
         url: "{{ node_exporter_url }}"
@@ -99,9 +90,6 @@
         creates: "/tmp/{{ node_exporter_dist }}/node_exporter"
       when: ansible_facts.system == 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 3. Backup, replace, verify (with auto-rollback on failure)
-    # ------------------------------------------------------------------
     - name: Backup current binary
       copy:
         src: "{{ node_exporter_bin }}"
@@ -192,11 +180,7 @@
           fail:
             msg: "Upgrade failed on {{ inventory_hostname }} ({{ ansible_host }}). Rolled back to previous version."
 
-    # ------------------------------------------------------------------
-    # 4. Report result (outside the rescue scope: display failures here
-    #    should NOT trigger a rollback — the upgrade itself already
-    #    succeeded by the time we get here).
-    # ------------------------------------------------------------------
+    # Outside the rescue scope: a display failure here must not trigger a rollback.
     - name: Get new version
       command: "{{ node_exporter_bin }} --version"
       register: new_version
@@ -207,9 +191,6 @@
       debug:
         msg: "Upgraded {{ inventory_hostname }} ({{ ansible_host }}) → {{ new_version.stdout_lines[0] | default('unknown') }}"
 
-    # ------------------------------------------------------------------
-    # 5. Cleanup
-    # ------------------------------------------------------------------
     - name: Cleanup temp files
       file:
         path: "{{ item }}"

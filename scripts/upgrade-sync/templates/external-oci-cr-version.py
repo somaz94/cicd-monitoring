@@ -8,7 +8,7 @@
 # repo. This script only tracks the Stack/component version in values/<env>.yaml.
 #
 # Typical shape:
-#   - helmfile.yaml        # chart: oci://..., version: "<chart semver>"
+#   - argocd*/<release>.yaml  # chart.version = OCI chart pin (or helmfile.yaml if present)
 #   - values/<env>.yaml    # holds .<VERSION_KEY> — the Stack/component version
 #   - upgrade.py           # this script
 #   - (NO Chart.yaml, NO templates/ — those live in the chart publisher repo)
@@ -29,10 +29,9 @@
 #   - No Chart.yaml manipulation (chart metadata lives upstream).
 #   - No MIRROR_CHART_VERSION option (irrelevant without local Chart.yaml).
 #   - Backup contains only the values file (Chart.yaml restore path removed).
-#   - OCI chart version in helmfile.yaml is bumped via the script's
-#     `--check-chart` / `--upgrade-chart` subcommands when
-#     CHART_SOURCE_TYPE is configured. Without that config the chart pin
-#     stays a manual `helm pull` + review responsibility.
+#   - The OCI chart pin (argocd*/<release>.yaml, or helmfile.yaml if present)
+#     is bumped via `--check-chart` / `--upgrade-chart` when CHART_SOURCE_TYPE
+#     is configured; otherwise it stays a manual `helm pull` + review.
 #
 # Real per-chart upgrade.py files are kept in sync via:
 #   scripts/upgrade-sync/sync.py --apply

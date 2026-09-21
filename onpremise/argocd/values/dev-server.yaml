@@ -1,14 +1,10 @@
 ## Application controller
 controller:
   replicas: 1
-  # Controller environment variable optimization
   env:
-    # Kubernetes API request QPS limit (default: 50).
-    # Reduces bottlenecks during large-scale app synchronization.
+    # QPS/burst raised from 50/100 so large syncs are not client-throttled.
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "150"
-    # Kubernetes API burst request limit (default: 100).
-    # Improves sync speed during traffic spikes.
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "300"
     # Enable pprof endpoint on :6060 for goroutine leak debugging.
@@ -51,8 +47,6 @@ server:
     annotations:
       nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
       nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
-      # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-      # nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 
     # -- Defines which ingress controller will implement the resource
     ingressClassName: "nginx"
@@ -63,13 +57,7 @@ server:
     # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
     pathType: Prefix
 
-  # Gateway API HTTPRoute — Phase 3.5 (ingress-nginx → NGF) parallel deployment.
-  # - Upstream chart natively supports server.httproute: block (templates/argocd-server/httproute.yaml).
-  # - backendRefs are auto-wired by the chart: configs.params["server.insecure"]=true → service port 80 (HTTP).
-  # - sectionName: https — Phase 6 (2026-04-29) change. Avoid conflict with argocd-https-redirect HTTPRoute
-  #   (sectionName: http) — main route only on HTTPS listener. Old comment (attach both listeners) assumed
-  #   force-ssl-redirect: false; now redirect is enforced.
-  # - At Phase 6 cutover, NginxProxy loadBalancerIP swap (.69 → .55) automatically shifts real traffic.
+  # sectionName: https only — the HTTP listener belongs to the argocd-https-redirect route (dev.yaml extraObjects).
   httproute:
     enabled: true
     parentRefs:
@@ -96,19 +84,13 @@ server:
 ## Repo Server
 repoServer:
   replicas: 1
-  # Repo server environment variable optimization
   env:
-    # Command execution timeout (default: 90s).
-    # Increased timeout needed for large Helm chart manifest generation.
+    # Raised from 90s: large Helm charts overrun manifest generation.
     - name: ARGOCD_EXEC_TIMEOUT
       value: "180"
-    # Git operation retry count (default: 1).
-    # Improves stability through retries on git ls-remote failures.
     - name: ARGOCD_GIT_ATTEMPTS_COUNT
       value: "3"
-    # Allow Helm concurrent execution (default: false).
-    # Improves performance when syncing multiple Helm-based apps simultaneously.
-    # Warning: Verify no interdependencies between templates.
+    # Warning: verify no interdependencies between templates.
     - name: ARGOCD_HELM_ALLOW_CONCURRENCY
       value: "true"
   resources:

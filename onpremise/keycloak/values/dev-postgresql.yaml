@@ -52,7 +52,7 @@ resources:
 #
 # Why this matters more here than for the other components: Keycloak is the IdP
 # the whole platform federates through — ArgoCD, the example-hub portal and the
-# seven apps behind it. Losing the realm locks the recovery tooling out along
+# apps behind it. Losing the realm locks the recovery tooling out along
 # with everything else, because keycloak-ops itself sits behind that same login.
 #
 # The dump lands on a SEPARATE PVC (`keycloak-postgresql-backup`, mounted at

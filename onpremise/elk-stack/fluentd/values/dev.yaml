@@ -48,14 +48,11 @@ service:
   enabled: true
   type: "ClusterIP"
   annotations: {}
-  # loadBalancerIP:
-  # externalTrafficPolicy: Local
   ports: 
   - name: "forwarder"
     protocol: TCP
     containerPort: 24224
 
-# ServiceMonitor (Prometheus metrics for Fluentd)
 metrics:
   serviceMonitor:
     enabled: true
@@ -63,13 +60,11 @@ metrics:
     additionalLabels:
       release: kube-prometheus-stack
 
-  # PrometheusRule — buffer / retry / pipeline stall detection
   prometheusRule:
     enabled: true
     additionalLabels:
       release: kube-prometheus-stack
     rules:
-      # Pod down — no metrics scraped at all
       - alert: FluentdDown
         expr: up{job="fluentd"} == 0
         for: 2m
@@ -80,7 +75,6 @@ metrics:
           summary: "Fluentd aggregator down (logging ns)"
           description: "fluent-bit forward is blocked. fluent-bit storage is absorbing logs and will auto-resume once fluentd recovers. {{ $labels.pod }} on {{ $labels.instance }}"
 
-      # Scrape missing (job disappeared)
       - alert: FluentdScrapeMissing
         expr: absent(up{job="fluentd"} == 1)
         for: 10m
@@ -124,7 +118,6 @@ metrics:
           summary: "Fluentd buffer disk usage > 3GB"
           description: "buffer={{ $value | humanize1024 }}B / 4GB. PVC has space but approaching total_limit_size"
 
-      # Retry rate non-zero — possible transient ES failure or throttling
       - alert: FluentdRetryRising
         expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[5m]) > 0
         for: 10m
@@ -135,8 +128,6 @@ metrics:
           summary: "Fluentd → ES retry rate elevated"
           description: "retries occurring over the last 10 minutes. check ES cluster status / fluentd-0 logs"
 
-      # Pipeline stalled — buffer has chunks (input arrived) but ES emit is zero
-      #
       # sum() aggregation avoids per-plugin_id stale series firing on their own
       # AND buffer_queue_length>0 distinguishes real stall from quiet input window
       - alert: FluentdIngestStalled
@@ -154,34 +145,6 @@ metrics:
 
 dashboards:
   enabled: "false"
-
-# configMapConfigs:
-#   - fluentd-template-config
-
-# extraConfigMaps:
-#   - name: fluentd-template-config
-#     data:
-#       template.json: |
-#         {
-#           "index_patterns": ["*"],
-#           "template": {
-#             "settings": {
-#               "number_of_shards": 1
-#             },
-#             "mappings": {
-#               "properties": {
-#                 "data": {
-#                   "properties": {
-#                     "requestBody": { "type": "text" },
-#                     "responseBody": { "type": "text" }
-#                   }
-#                 }
-#               }
-#             }
-#           },
-#           "priority": 500,
-#           "version": 1
-#         }
 
 fileConfigs:
   01_sources.conf: |-
@@ -461,19 +424,7 @@ fileConfigs:
       </secondary>
     </match>
 
-  # Suppress upstream chart 0.5.3 defaults that would otherwise leak dead routes
-  # into the fluentd ConfigMap. The upstream `fileConfigs` ships a four-file chain —
-  # `01_sources.conf` (host /var/log/containers/*.log tail) → `02_filters.conf`
-  # (`@KUBERNETES` block) → `03_dispatch.conf` (`@DISPATCH` prometheus filter + relabel
-  # to `@OUTPUT`) → `04_outputs.conf` (`@OUTPUT` → `elasticsearch-master:9200`).
-  # We override 01 + 02 above with our own fluent-bit-forward + example-project.** pipeline,
-  # and add 03_outputs.conf pointing at the ECK service (`elasticsearch-es-http`).
-  # But 03_dispatch.conf + 04_outputs.conf are different keys, so Helm dict-merge
-  # keeps the upstream defaults — `@OUTPUT` plugin still initializes against the
-  # now-deleted `elasticsearch-master` service, exposing `fluentd_output_status_emit_records
-  # {type="elasticsearch"} = 0` and firing `FluentdIngestStalled` (PromQL `rate(... == 0)`)
-  # as a false positive. Empty-string overrides below emit an empty ConfigMap entry
-  # for each, which fluentd treats as a no-op.
+  # Upstream chart ships 03_dispatch/04_outputs.conf targeting the deleted elasticsearch-master; empty strings neutralize them (else FluentdIngestStalled false-fires).
   03_dispatch.conf: ""
   04_outputs.conf: ""
 

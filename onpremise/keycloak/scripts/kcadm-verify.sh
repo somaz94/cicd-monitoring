@@ -9,7 +9,8 @@ Logs into master realm via kubectl exec + kcadm.sh, then asserts:
   - master-realm admin user (REAL_ADMIN_USERNAME) + Secret keycloak-master-admin
   - realm 'example' (enabled, sslRequired=external)
   - groups: GITLAB_MAPPED_GROUPS + MANUAL_GROUPS (+ warns when global-admin is empty)
-  - clients: argocd, harbor, vaultwarden + redirect URIs + groups protocol-mapper
+  - clients: VERIFY_CLIENTS (default: argocd harbor vaultwarden example-hub grafana)
+    + redirect URIs + groups protocol-mapper
     + 6-field mapper config + 'groups' in default-client-scopes
   - realm-level 'groups' client-scope (with oidc-group-membership-mapper)
   - GitLab Identity Provider (when EXPECT_GITLAB_IDP=1, the default) — providerId=oidc + issuer URL
@@ -41,8 +42,7 @@ EOF
 }
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
 #
-# Checks: realm exists / sslRequired=external / groups (server, global-admin) + global-admin non-empty / clients (argocd, harbor, vaultwarden) with redirect URIs / per-client groups protocol-mapper / GitLab IdP enabled (when expected) / IdP server-group-map is an advanced claim→group mapper (NOT hardcoded).
-# Exits non-zero on any failure so it can be wired into CI / pre-cutover gating.
+# Read-only; exits non-zero on any failure (CI / pre-cutover gate). Checks are listed in usage().
 #
 # The same assertions are also available without cluster access at
 # hub.example.com/apps/keycloak-ops/ (the realm-check tab, GET /api/realm/check) — use that
@@ -213,9 +213,7 @@ expected_redirect() {
 # different client set can be verified without editing this script.
 # example-hub and grafana were missing here until 2026-07-30 — the loop silently verified only four
 # of the six clients, which is exactly the drift the single-list refactor set out to remove.
-# NOTE: oauth2-proxy is intentionally absent — the client was never used and was removed from the
-# realm (see the NOTE in kcadm-bootstrap.sh). Keep this list in sync with CANONICAL_CLIENTS there
-# and with KNOWN_CLIENTS in keycloak-ops; a drift makes the realm check report a missing client forever.
+# oauth2-proxy intentionally absent (see kcadm-bootstrap.sh NOTE).
 VERIFY_CLIENTS="${VERIFY_CLIENTS:-argocd harbor vaultwarden example-hub grafana}"
 # shellcheck disable=SC2046  # word splitting is the intent; $(...) splits identically in bash and zsh
 for cid in $(printf '%s' "$VERIFY_CLIENTS"); do

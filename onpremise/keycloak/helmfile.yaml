@@ -5,15 +5,11 @@
 #   2. keycloak             — somaz94/keycloak-cr chart, renders Keycloak CR + (optional) HTTPRoute.
 #
 # Operator + CRDs must be installed first via ../keycloak-operator/.
-# Chart versions pinned. Bump via ./upgrade.py (external-oci template, manages keycloak-cr only;
-# postgresql is bumped via the db-redis cycle).
+# Chart versions pinned. ./upgrade.py (external-oci template) bumps keycloak-cr only;
+# keycloak-postgresql is bumped by hand.
 
-# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
-# full rendered manifest, so 10 revisions of a large chart make helm's history query
-# return several MB in a single response and the kube-apiserver stream aborts
-# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
-# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
-# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+# historyMax 3: 10 revisions of a large chart overflow helm's history query on the
+# apiserver stream and break helmfile diff/apply. See cicd/argo-cd/docs/helm-release-history-bloat.md.
 helmDefaults:
   historyMax: 3
 

@@ -17,9 +17,6 @@
   # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
-    # ------------------------------------------------------------------
-    # 1. Stop and disable service
-    # ------------------------------------------------------------------
     - name: Check if node_exporter service exists
       stat:
         path: "{{ node_exporter_launchd_plist if ansible_facts.system == 'Darwin' else node_exporter_systemd_unit }}"
@@ -54,9 +51,6 @@
         daemon_reload: true
       when: ansible_facts.system != 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 2. Remove binary and backup
-    # ------------------------------------------------------------------
     - name: Remove node_exporter binary
       file:
         path: "{{ node_exporter_bin }}"
@@ -74,9 +68,6 @@
         state: absent
       when: ansible_facts.system == 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 3. Remove user
-    # ------------------------------------------------------------------
     # Only Linux ever created a dedicated account; on macOS the exporter ran as
     # an existing login that must survive the uninstall.
     - name: Remove node_exporter system user
@@ -86,9 +77,6 @@
         remove: true
       when: ansible_facts.system != 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 4. Verify
-    # ------------------------------------------------------------------
     - name: Verify node_exporter is not running
       shell: "{{ node_exporter_port_check_cmd }} || true"
       register: port_check

@@ -238,8 +238,8 @@ print(json.dumps(current))
 
   # Secret retrieval — MASKED by default.
   #
-  # A full run upserts six confidential clients, so printing every secret meant one command dumped
-  # all six OIDC client secrets into the terminal scrollback, and from there into CI job logs, chat
+  # A full run upserts every CANONICAL_CLIENTS entry, so printing every secret meant one command
+  # dumped all of them into the terminal scrollback, and from there into CI job logs, chat
   # pastes, and MR descriptions. The secret is readable from Keycloak at any time (see the hint
   # printed after the clients step), so echoing it here is convenience, not the delivery path.
   #
@@ -277,8 +277,8 @@ GROUPS_MAPPER_JSON='{
   }
 }'
 
-# IdP-level group mapper: put a brokered GitLab user into `/server` ONLY when their GitLab
-# `groups_direct` claim contains `server` ("Advanced Claim to Group").
+# IdP-level group mappers, one per GITLAB_MAPPED_GROUPS entry: put a brokered GitLab user into
+# `/<group>` ONLY when their `groups_direct` claim contains `<group>` ("Advanced Claim to Group").
 #
 # Why not the simpler hardcoded mapper: until 2026-07-30 this was
 # `oidc-hardcoded-group-idp-mapper`, which grants `/server` to EVERY brokered user with no claim
@@ -294,9 +294,6 @@ GROUPS_MAPPER_JSON='{
 # `groups_direct` (direct memberships) is chosen over `groups`: GitLab groups are currently flat
 # (no subgroups) so both match identically, but if a subgroup is ever added `groups_direct` fails
 # CLOSED for subgroup-only members, which is the right default for a privilege gate.
-#
-# Written to a file and passed with `-f`: `are.claim.values.regex` contains dots, which kcadm's
-# `-s` would parse as a nested config path.
 # Groups whose membership is driven by a GitLab claim — one IdP mapper each (see
 # group_mapper_json below). Adding a name here creates the Keycloak group AND its mapper, so a
 # GitLab group of the SAME NAME must exist or the mapper matches nobody and the group stays empty.
@@ -441,7 +438,7 @@ client_redirects() {
   esac
 }
 
-# client_attrs echoes the extra-attributes JSON for a client (PKCE for dex-style clients, empty otherwise).
+# client_attrs echoes the per-client extra-attributes JSON (empty when none).
 client_attrs() {
   case "$1" in
     vaultwarden)              echo '{"pkce.code.challenge.method":"S256"}' ;;
@@ -653,7 +650,7 @@ print(next((g["id"] for g in groups if g.get("name") == "global-admin"), ""))' 2
 if [[ -z "$GLOBAL_ADMIN_GID" ]]; then
   log "WARN: group global-admin not resolvable — skipping member reconcile."
 else
-  # See the splitting note in the IdP mapper block below: `$(...)` is the one form bash and zsh
+  # See the splitting note in reconcile_group_mapper above: `$(...)` is the one form bash and zsh
   # split identically (`read -ra` does not exist in zsh, and `for x in $var` does not split there).
   # shellcheck disable=SC2046  # word splitting is the intent, and it is shell-portable here
   for member in $(printf '%s' "$GLOBAL_ADMIN_MEMBERS"); do

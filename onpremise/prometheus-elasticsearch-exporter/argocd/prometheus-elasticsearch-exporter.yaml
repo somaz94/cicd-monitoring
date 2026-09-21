@@ -14,7 +14,7 @@
 # This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
 component: prometheus-elasticsearch-exporter   # -> app-name label on the generated App
 releaseName: prometheus-elasticsearch-exporter # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
-namespace: logging                             # already helmfile-managed; do not contest ownership
+namespace: logging                             # 'logging' pre-exists
 syncWave: "4"                                  # observability tier (mirrors helmfile deploy wave 4)
 chart:
   repoURL: https://prometheus-community.github.io/helm-charts

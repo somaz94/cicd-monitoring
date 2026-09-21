@@ -21,17 +21,10 @@ alertmanager:
     ingressClassName: nginx
     hosts:
       - alertmanager.example.com
-    # tls:
-    #   - secretName: alertmanager-tls
-    #     hosts:
-    #       - alertmanager.example.com
 
-  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
-  # - Temporary IP: 192.0.2.69 (ngf Gateway), swap to .55 at Phase 6 cutover
-  # - upstream chart natively supports the route: block (templates/alertmanager/route.yaml)
-  # - After verification, cutover by setting ingress.enabled: false
-  # - Only matches specified → chart auto-wires backend to alertmanager Service (port 9093)
-  #   (Using additionalRules appends the default rule, rendering 2 rules)
+  # Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
+  # - Only matches set → chart auto-wires backend to alertmanager Service (port 9093);
+  #   additionalRules would append the chart default and render 2 rules
   route:
     main:
       enabled: true

@@ -2,7 +2,6 @@
 # =============================================================================
 # scripts/lib/colors.sh — Shared ANSI color variables
 # =============================================================================
-# ANSI color variables consumed by every bash script under scripts/.
 # When stdout is not a TTY or NO_COLOR is set, every variable is left as
 # an empty string so the call sites stay neutral.
 #

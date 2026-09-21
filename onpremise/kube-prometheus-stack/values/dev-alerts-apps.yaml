@@ -3,8 +3,7 @@
 # Alert Rules (workloads) — platform apps + datastores
 #
 # Things running ON the cluster, as opposed to the cluster itself (dev-alerts.yaml).
-# Split out of dev-alerts.yaml; severity levels and field meanings are documented
-# in that file.
+# Severity levels are documented in that file.
 #
 # SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
 # it across every values file and each top-level key becomes its own PrometheusRule CR --
@@ -132,7 +131,7 @@ additionalPrometheusRulesMap:
 
   # ---------------------------------------------------------------------------
   # GitLab Runner Alerts — runner-manager self-metrics (via the build/deploy PodMonitors)
-  # Parity with the AWS side (kube-prometheus-stack-aws/values/prod-alerts*.yaml, -platform file).
+  # Parity with the AWS side (kube-prometheus-stack-aws/values/example-app-prod-alerts-platform.yaml).
   # Two differences
   # from AWS, which runs a single build-image fleet:
   #   1. On-prem runs TWO runner fleets — build-image + deploy-image (cicd/gitlab-runner values
@@ -144,7 +143,7 @@ additionalPrometheusRulesMap:
   #      edit here (else absent() goes permanently true → false critical page).
   # The aggregate rules span both fleets: saturation / errors use `sum by (job)` (name the fleet),
   # api uses `sum by (status)`, and config-load fires per-pod.
-  # Distinct from GitLabRunnerPodSurge above (a control-plane-pressure indicator from kube-state-metrics).
+  # Distinct from GitLabRunnerPodSurge in dev-alerts.yaml (a control-plane-pressure indicator from kube-state-metrics).
   # ---------------------------------------------------------------------------
   gitlab-runner-alerts:
     groups:
@@ -251,16 +250,12 @@ additionalPrometheusRulesMap:
               summary: "GitLab Runner GitLab-API error responses sustained"
               description: "The GitLab Runner managers have received HTTP {{ $labels.status }} responses from the GitLab API at {{ $value }}/sec for 15+ minutes — job pickup and status reporting may be degraded (5xx = GitLab server errors, 401/403 = revoked/expired runner token, 429 = API rate limiting). Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` and the GitLab instance health."
 
-  # ---------------------------------------------------------------------------
-  # Harbor Alerts — per-component + aggregate health (via harbor-exporter, namespace=harbor)
-  # Components: core, database, jobservice, portal, redis, registry, registryctl, trivy
-  # ---------------------------------------------------------------------------
+  # Harbor: via harbor-exporter (namespace=harbor).
   harbor-alerts:
     groups:
       - name: harbor-alerts
         rules:
 
-          # Harbor component reports harbor_up=0 for 3 minutes
           # Per-component label pinpoints which subsystem failed (e.g., registry vs jobservice)
           - alert: HarborComponentDown
             expr: harbor_up == 0
@@ -272,7 +267,6 @@ additionalPrometheusRulesMap:
               summary: "Harbor component {{ $labels.component }} is down"
               description: "Harbor component '{{ $labels.component }}' has been unhealthy for 3+ minutes (pod: {{ $labels.pod }}) — image push/pull for this subsystem is affected."
 
-          # Harbor aggregate /api/v2.0/health reports unhealthy for 3 minutes
           # Fires when core health endpoint returns non-healthy — cross-check with HarborComponentDown
           - alert: HarborOverallHealth
             expr: harbor_health == 0
@@ -292,8 +286,8 @@ additionalPrometheusRulesMap:
   # security/keycloak/values/dev-keycloak.yaml.
   #
   # Deliberately NOT a "Keycloak is down" rule: the built-in TargetDown covers the
-  # scrape vanishing, KubeStatefulSetReplicasMismatch covers the pod, and the
-  # blackbox probe on auth.example.com covers the path in. All three are active.
+  # scrape vanishing and KubeStatefulSetReplicasMismatch covers the pod. (No
+  # external probe on auth.example.com yet.)
   #
   # Also deliberately NOT a login-failure rule: the base `metrics-enabled` surface
   # has no such metric. keycloak_* is four session-expiration-task families and
@@ -368,15 +362,13 @@ additionalPrometheusRulesMap:
               summary: "SealedSecret {{ $labels.namespace }}/{{ $labels.name }} is not synced"
               description: "The sealed-secrets controller reports condition '{{ $labels.condition }}' = {{ $value }} for SealedSecret {{ $labels.namespace }}/{{ $labels.name }} (1 = synced, 0 = unknown, -1 = failed), so the plain Secret it should produce is missing or stale. Usual causes: the controller key was rotated or restored from a different cluster, or a `--scope strict` ciphertext was moved to another namespace/name — a sealed value is bound to both. Check `kubectl -n {{ $labels.namespace }} describe sealedsecret {{ $labels.name }}` and `kubectl -n sealed-secrets logs deploy/sealed-secrets`."
 
-  # ---------------------------------------------------------------------------
-  # Elasticsearch Alerts — cluster health + disk (via prometheus-elasticsearch-exporter, namespace=logging)
-  # ---------------------------------------------------------------------------
+  # Elasticsearch: via prometheus-elasticsearch-exporter (namespace=logging).
   elasticsearch-alerts:
     groups:
       - name: elasticsearch-alerts
         rules:
 
-          # Cluster health RED for 5 minutes — at least one primary shard unassigned
+          # RED = at least one primary shard unassigned.
           # Indicates potential data unavailability; queries/ingest may fail
           - alert: ElasticsearchClusterRed
             expr: elasticsearch_cluster_health_status{color="red"} == 1
@@ -388,7 +380,7 @@ additionalPrometheusRulesMap:
               summary: "Elasticsearch cluster {{ $labels.cluster }} health is RED"
               description: "Cluster {{ $labels.cluster }} has been in RED state for 5+ minutes — at least one primary shard is unassigned. Check `kubectl get pods -n logging` and ES _cluster/allocation/explain."
 
-          # Cluster health YELLOW for 15 minutes — replica shards unassigned (redundancy lost)
+          # YELLOW = replica shards unassigned (redundancy lost).
           # 15m for suppresses transient YELLOW during rolling restart / index creation.
           # Guarded by data_nodes > 1: in single-node deployments YELLOW is the steady state
           # (replica shards cannot be allocated on the same node as the primary), so this
@@ -405,7 +397,6 @@ additionalPrometheusRulesMap:
               summary: "Elasticsearch cluster {{ $labels.cluster }} health is YELLOW"
               description: "Cluster {{ $labels.cluster }} has been in YELLOW state for 15+ minutes — replica shards are unassigned, redundancy is reduced."
 
-          # Data path free space < 15% for 10 minutes
           # ES low watermark defaults to 85% used (15% free); alert before allocation is blocked
           - alert: ElasticsearchDiskLow
             expr: (elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) * 100 < 15
@@ -448,16 +439,12 @@ additionalPrometheusRulesMap:
               summary: "Elasticsearch index retention CronJob no longer exists"
               description: "The es-index-retention CronJob is not present in the logging namespace — nothing is trimming the on-prem indices. Re-apply observability/logging/elasticsearch/index-retention/manifests/cronjob.yaml and confirm with `kubectl -n logging get cronjob es-index-retention`."
 
-  # ---------------------------------------------------------------------------
-  # Redis Alerts — instance availability
-  # Covers both example-project-redis-exporter (namespace=monitoring) and valkey-redis-metrics (namespace=example-project-db-redis)
-  # ---------------------------------------------------------------------------
+  # Redis: valkey-redis-metrics (namespace=example-project-db-redis).
   redis-alerts:
     groups:
       - name: redis-alerts
         rules:
 
-          # Redis instance unreachable from exporter for 2 minutes
           # redis_up=0 means exporter cannot PING/INFO the target — Redis down or network partition
           - alert: RedisDown
             expr: redis_up == 0
@@ -469,15 +456,12 @@ additionalPrometheusRulesMap:
               summary: "Redis instance down ({{ $labels.namespace }}/{{ $labels.service }})"
               description: "Redis exporter reports redis_up=0 for 2+ minutes (instance: {{ $labels.instance }}, job: {{ $labels.job }}) — dependent apps may see cache/session failures."
 
-  # ---------------------------------------------------------------------------
-  # MySQL Alerts — instance availability (via example-project-mysql-exporter, namespace=monitoring)
-  # ---------------------------------------------------------------------------
+  # MySQL: via example-project-mysql-exporter (namespace=monitoring).
   mysql-alerts:
     groups:
       - name: mysql-alerts
         rules:
 
-          # MySQL instance unreachable from exporter for 2 minutes
           # mysql_up=0 means exporter cannot connect — DB down, credentials, or network issue
           - alert: MySQLDown
             expr: mysql_up == 0

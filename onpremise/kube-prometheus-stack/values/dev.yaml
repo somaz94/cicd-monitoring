@@ -2,15 +2,10 @@
 # =============================================================================
 # kube-prometheus-stack Custom Values — base infrastructure
 #
-# Component layout across values files:
-#   dev.yaml          — Grafana, Prometheus, node-exporter, kube-state-metrics
-#   alertmanager.yaml  — Alertmanager routing, inhibit_rules, Slack receiver
-#   alerts.yaml        — defaultRules.disabled + custom PrometheusRule groups
+# Values are split across six files; extraValueFiles in argocd/kube-prometheus-stack.yaml
+# is canonical. This file: Grafana, Prometheus, node-exporter, kube-state-metrics.
 # =============================================================================
 
-# =============================================================================
-# CRDs
-# =============================================================================
 # CRD lifecycle is owned by the dedicated `prometheus-operator-crds` helmfile
 # release (version-pinned to the operator appVersion), NOT this chart's bundled
 # `crds` subchart. Keeping this false avoids dual-ownership conflicts and lets
@@ -18,9 +13,6 @@
 crds:
   enabled: false
 
-# =============================================================================
-# Grafana
-# =============================================================================
 grafana:
   enabled: true
 
@@ -150,12 +142,8 @@ grafana:
     ingressClassName: nginx
     hosts:
       - grafana.example.com
-    # tls:
-    #   - secretName: grafana-tls
-    #     hosts:
-    #       - grafana.example.com
 
-  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
+  # Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
   # - grafana subchart natively supports the route: block (charts/grafana/templates/route.yaml)
   # - Only matches specified → chart auto-wires backend to grafana Service (port 80)
   route:
@@ -171,27 +159,14 @@ grafana:
             type: PathPrefix
             value: /
 
-  # Persistent storage for dashboards and settings
   persistence:
     enabled: true
     size: 10Gi
     storageClassName: nfs-client-server
 
-  # Default dashboards
   defaultDashboardsEnabled: true
   defaultDashboardsTimezone: Asia/Seoul
 
-  # Additional data sources (uncomment when Loki is enabled)
-  # additionalDataSources:
-  #   - name: Loki
-  #     type: loki
-  #     url: http://loki-gateway.monitoring.svc.example-cluster.local:80
-  #     access: proxy
-  #     isDefault: false
-
-# =============================================================================
-# Prometheus
-# =============================================================================
 prometheus:
   # Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. prometheus.route(below) is sole path.
   ingress:
@@ -199,12 +174,8 @@ prometheus:
     ingressClassName: nginx
     hosts:
       - prometheus.example.com
-    # tls:
-    #   - secretName: prometheus-tls
-    #     hosts:
-    #       - prometheus.example.com
 
-  # Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel rollout
+  # Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
   # - upstream chart natively supports the route: block (templates/prometheus/route.yaml)
   # - Only matches specified → chart auto-wires backend to prometheus Service (port 9090)
   route:
@@ -221,7 +192,6 @@ prometheus:
             value: /
 
   prometheusSpec:
-    # Resources
     resources:
       requests:
         cpu: 200m
@@ -237,10 +207,8 @@ prometheus:
     externalLabels:
       cluster: example-cluster
 
-    # Retention period
     retention: 15d
 
-    # Storage
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -251,7 +219,7 @@ prometheus:
               storage: 50Gi
 
     # Scrape external targets (physical servers, VMs)
-    # Install node-exporter on each server: https://github.com/prometheus/node_exporter
+    # Hosts run node_exporter from node-exporter/ansible/; the gitlab VM uses GitLab's bundled one.
     additionalScrapeConfigs:
       - job_name: "physical-servers"
         scrape_interval: 30s
@@ -318,19 +286,16 @@ prometheus:
             target_label: __address__
             replacement: ${1}:9963
 
-    # ServiceMonitor selector - pick up all ServiceMonitors in monitoring namespace
+    # Select every ServiceMonitor/PodMonitor cluster-wide, regardless of release label
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
 
     # Mount the etcd-client-cert secret into Prometheus pod for kubeEtcd ServiceMonitor mTLS scrape.
-    # Secret created out-of-band from control-01:/etc/ssl/etcd/ssl/ (admin-k8s-control-01.{pem,-key.pem}, ca.pem)
-    # — managed outside helmfile.
+    # Created out-of-band by scripts/sync-etcd-client-cert.sh (kubespray certs on control-01).
     secrets:
       - etcd-client-cert
 
-# =============================================================================
-# Kube etcd (kubespray external etcd on control-01) — mTLS scrape via 2379
-# =============================================================================
+# kubespray external etcd on control-01 — mTLS scrape via 2379.
 kubeEtcd:
   enabled: true
   # External etcd is a host systemd service, not a static pod — point endpoints at the node IP.
@@ -350,15 +315,11 @@ kubeEtcd:
     certFile: /etc/prometheus/secrets/etcd-client-cert/client.crt
     keyFile: /etc/prometheus/secrets/etcd-client-cert/client.key
 
-# =============================================================================
-# Kube Proxy (disabled — Cilium replaces kube-proxy)
-# =============================================================================
+# Cilium replaces kube-proxy.
 kubeProxy:
   enabled: false
 
-# =============================================================================
-# Node Exporter (for K8s nodes - auto deployed via DaemonSet)
-# =============================================================================
+# K8s nodes (DaemonSet); off-cluster hosts use node-exporter/ansible/.
 nodeExporter:
   enabled: true
 
@@ -371,9 +332,6 @@ prometheus-node-exporter:
       cpu: 200m
       memory: 128Mi
 
-# =============================================================================
-# Kube State Metrics (K8s object metrics - Pod, Deployment, etc.)
-# =============================================================================
 kubeStateMetrics:
   enabled: true
 

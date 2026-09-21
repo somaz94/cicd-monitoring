@@ -3,7 +3,6 @@
 # Monitors: ECK-managed Elasticsearch in logging namespace
 # =============================================================================
 
-# Elasticsearch connection
 # Username is fixed to "elastic" (ECK superuser).
 # Password from ECK-managed secret: elasticsearch-es-elastic-user (key: elastic).
 es:
@@ -15,7 +14,6 @@ extraEnvSecrets:
     secret: elasticsearch-es-elastic-user
     key: elastic
 
-# Resources
 resources:
   requests:
     cpu: 10m
@@ -24,7 +22,6 @@ resources:
     cpu: 200m
     memory: 128Mi
 
-# ServiceMonitor for Prometheus auto-discovery
 serviceMonitor:
   enabled: true
   namespace: logging

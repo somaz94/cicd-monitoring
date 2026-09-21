@@ -7,8 +7,7 @@
 #   - Service: <name>-es-http, <name>-es-internal-http, <name>-es-transport
 #   - Secrets: <name>-es-elastic-user, <name>-es-http-certs-public, <name>-es-http-certs-internal
 #   - StatefulSet pods: <name>-es-<nodeSet>-<idx>
-# MUST stay "elasticsearch" for Phase 2 migration (existing StatefulSet + PVC
-# rebind rely on unchanged naming).
+# MUST stay "elasticsearch": renaming orphans the existing StatefulSet and its PVC.
 name: elasticsearch
 
 # Elastic Stack version. Bump via ./upgrade.py for rolling upgrade. Major bumps
@@ -33,8 +32,7 @@ volumeClaimDeletePolicy: DeleteOnScaledownOnly
 # Node sets — array of StatefulSets. Single all-roles node set matches the
 # legacy (single-node, NFS) topology. Expand for HA.
 nodeSets:
-  # nodeSet name MUST stay "default" for Phase 2 — existing StatefulSet is
-  # `elasticsearch-es-default` and the PVC `elasticsearch-data-elasticsearch-es-default-0`.
+  # MUST stay "default": renaming orphans PVC elasticsearch-data-elasticsearch-es-default-0.
   - name: default
     count: 1
     roles:
@@ -52,7 +50,6 @@ nodeSets:
     config:
       # NFS + hugepages support: disable mmap (uses niofs instead).
       node.store.allow_mmap: false
-    # Resources — matches the legacy 8.5.1 baseline.
     resources:
       requests:
         cpu: "100m"
@@ -82,8 +79,7 @@ ingress:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
 
-# Gateway API HTTPRoute — Phase 3 (ingress-nginx → NGF) parallel deployment
-# - Temporary IP: 192.0.2.69 (ngf Gateway), swap to .55 at Phase 6 cutover
+# Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
 # - When backendRefs name is omitted it defaults to `<name>-es-http`, port defaults to 9200
 # - backendTLSPolicy.enabled: auto-generates BackendTLSPolicy + CA ConfigMap to verify ECK self-signed TLS (9200 HTTPS).
 #   Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
@@ -92,8 +88,6 @@ httproute:
   parentRefs:
     - name: ngf
       namespace: nginx-gateway
-      # sectionName: https
-      # port: 443
   hostnames:
     - elasticsearch.example.com
   rules:

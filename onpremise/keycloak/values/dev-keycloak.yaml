@@ -56,7 +56,6 @@ realmImport:
   enabled: false
 
 # HTTPRoute attached to NGF `ngf` Gateway https listener (wildcard-example-tls).
-# Same pattern as cicd/argo-cd, security/vaultwarden, ghost.
 httproute:
   enabled: true
   parentRefs:

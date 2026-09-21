@@ -114,8 +114,8 @@ fetch_one() {
   local label="$3"
   echo "  fetching $label ($remote)"
   if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$SSH_USER@$NODE" \
-        "sudo cat $remote" > "$local_path" 2>/tmp/etcd-cert-fetch.err; then
-    die "ssh fetch failed for $remote: $(cat /tmp/etcd-cert-fetch.err 2>/dev/null || true)"
+        "sudo cat $remote" > "$local_path" 2>"$tmpdir/fetch.err"; then
+    die "ssh fetch failed for $remote: $(cat "$tmpdir/fetch.err" 2>/dev/null || true)"
   fi
   [[ -s "$local_path" ]] || die "fetched $label is empty (sudoers / file missing?)"
 }

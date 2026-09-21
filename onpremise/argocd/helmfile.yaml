@@ -9,12 +9,8 @@ repositories:
   - name: dandydeveloper
     url: https://dandydeveloper.github.io/charts/
 
-# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
-# full rendered manifest, so 10 revisions of a large chart make helm's history query
-# return several MB in a single response and the kube-apiserver stream aborts
-# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
-# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
-# See docs/helm-release-history-bloat.md.
+# historyMax 3: 10 revisions of a large chart overflow helm's history query on the
+# apiserver stream and break helmfile diff/apply. See docs/helm-release-history-bloat.md.
 helmDefaults:
   historyMax: 3
 
@@ -29,12 +25,6 @@ releases:
       - values/dev-server.yaml        # controller, dex, server, repoServer, applicationSet
       - values/dev-redis.yaml         # redis, redis-ha, redisSecretInit
       - values/dev-notifications.yaml # notifications controller (Slack templates/triggers)
-
-# helmDefaults:
-#   wait: true
-#   timeout: 600
-#   atomic: true
-#   cleanupOnFail: true
 
 # presync hooks: refresh chart deps then ensure namespace exists (idempotent).
 hooks:

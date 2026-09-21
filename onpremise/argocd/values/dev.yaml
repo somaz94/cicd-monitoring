@@ -13,13 +13,13 @@ configs:
     # Polling interval for discovering new manifests in the repo. Two different "defaults" get
     # quoted for this key: ArgoCD's own built-in 180s, and the argo-cd chart's 120s. Only the
     # chart's applies here — it always writes this key into argocd-cm, so the built-in never
-    # takes effect. Pinned to 120s explicitly rather than omitted, because values.yaml is
+    # takes effect. Pinned explicitly rather than omitted, because values.yaml is
     # auto-managed by upgrade.py and a chart upgrade could otherwise move this silently.
     # NOT a per-sync deadline — that is controller.repo.server.timeout.seconds below.
     #
     # This is the FALLBACK path, not the primary one. GitLab push webhooks post to /api/webhook
     # (shared secret in configs.secret.gitlabSecret below) and refresh the affected apps in ~1s,
-    # covering 46 of the 54 apps — everything sourced from server/argocd-applicationset and
+    # covering every app sourced from server/argocd-applicationset and
     # server/kuberntes-infra. Polling only needs to catch what a missed webhook would drop
     # (GitLab down, network blip, argocd-server restarting mid-push), so a long interval is the
     # right choice: 600s plus the chart's 60s jitter bounds that worst case at ~11min.
@@ -32,8 +32,6 @@ configs:
     # webhook was verified. Do NOT lower this without first confirming the webhook is healthy —
     # a silently broken webhook is exactly what this interval is here to cover.
     timeout.reconciliation: 600s
-    # Hard reconciliation timeout (default: 0s, disabled).
-    # Setting to 0 prevents forced termination of reconciliation operations.
     timeout.hard.reconciliation: 0s
     # Resource tracking via the argocd.argoproj.io/tracking-id annotation instead of the default
     # app.kubernetes.io/instance label. Required before adopting helmfile-deployed infra components
@@ -141,15 +139,8 @@ configs:
       hs.status = "Progressing"
       hs.message = "Waiting to Autoscale"
       return hs
-    # =============================================================================
-    # SSO — Keycloak OpenID Connect (Phase 6, 2026-04-29+)
-    #
-    # ArgoCD dex talks OIDC to Keycloak `example` realm `argocd` client.
-    # Keycloak brokers GitLab as IdP — user credentials remain GitLab.
-    # group claim names (`server`, `global-admin`) unchanged → policy.csv below stays untouched.
-    # insecureSkipVerify: bypass wildcard self-signed cert trust (until cert-manager).
-    # Migration procedure: security/keycloak/docs/argocd-migration.md
-    # =============================================================================
+    # SSO: dex -> Keycloak `example` realm (brokers GitLab). insecureSkipVerify below: the wildcard
+    # cert is self-signed. Procedure: security/keycloak/docs/argocd-migration.md
     dex.config: |
       connectors:
         - type: oidc
@@ -178,25 +169,6 @@ configs:
             # groups: [server], breaking RBAC matching.
             insecureEnableGroups: true
 
-    # -----------------------------------------------------------------------------
-    # Legacy: GitLab-direct dex connector (pre-Phase 6) — preserved for rollback only.
-    # -----------------------------------------------------------------------------
-    # Until 2026-04-29 ArgoCD used GitLab directly as dex connector.
-    # Rollback: swap the oidc block above with the GitLab block below + re-enable dex.gitlab.* secrets.
-    #
-    # dex.config: |
-    #   connectors:
-    #     - type: gitlab
-    #       id: gitlab
-    #       name: GitLab
-    #       config:
-    #         baseURL: http://gitlab.example.com
-    #         clientID: <GITLAB_CLIENT_ID>
-    #         clientSecret: <GITLAB_CLIENT_SECRET>
-    #         redirectURI: https://argocd.example.com/api/dex/callback
-    #         groups:
-    #           - server
-
   # Shared secret authenticating GitLab push webhooks at POST /api/webhook. The chart writes
   # this into argocd-secret as `webhook.gitlab.secret`; the same value goes in the "Secret token"
   # field of each GitLab project webhook (server/argocd-applicationset, server/kuberntes-infra).
@@ -212,26 +184,14 @@ configs:
   params:
     create: true
     server.insecure: true
-    # Repo server timeout (default: 60s).
-    # Increased timeout needed for large repository synchronization.
+    # Both raised from 60s: large repos otherwise hit "Context deadline exceeded".
     server.repo.server.timeout.seconds: "180"
-    # Controller timeout for fetching manifests from repo server (default: 60s).
-    # Increase this value when "Context deadline exceeded" errors occur.
     controller.repo.server.timeout.seconds: "180"
-    # Number of status reconciliation processors (default: 20).
-    # Improves app status checking speed (Synced, Health, OutOfSync, etc.).
     controller.status.processors: "600"
-    # Number of operation processors (default: 10).
-    # Improves parallel processing of sync operations.
     controller.operation.processors: "300"
-    # Kubectl parallel execution limit (default: 20).
-    # Increases concurrent kubectl apply operations for faster deployments.
     controller.kubectl.parallelism.limit: "100"
-    # Controller sharding algorithm (default: legacy).
-    # Round-robin provides balanced workload distribution across replicas.
     controller.sharding.algorithm: "round-robin"
-    # Repo server parallelism limit (default: 0, unlimited).
-    # Unlimited can cause OOMKilled or slow manifest generation.
+    # Capped (default 0 = unlimited): unlimited risks OOMKilled repo-server pods.
     reposerver.parallelism.limit: "100"
   # SSH known hosts for Git repositories
   ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
@@ -316,19 +276,9 @@ configs:
   # the legacy `secrets:` block below is ignored. So dex client secret is inlined as plaintext in
   # dex.config above (same convention as the previous GitLab era). This block is unused.
   secrets:
-    # Legacy dex.* secrets — old path not recognized by chart 9.x; replaced by plaintext inline.
-    # dex.keycloak.clientSecret: "<KEYCLOAK_CLIENT_SECRET>"
-    # dex.gitlab.clientId: "<GITLAB_CLIENT_ID>"
-    # dex.gitlab.clientSecret: "<GITLAB_CLIENT_SECRET>"
 
-# =============================================================================
-# Extra K8s manifests rendered by the chart (templates/extra-manifests.yaml).
-#
-# Phase 6 (2026-04-29+) — sibling HTTPRoute for HTTP→HTTPS 301 redirect.
-# argo-cd chart's server.httproute renders a single HTTPRoute → inject the redirect
-# sibling via extraObjects to integrate with the helm chart lifecycle (install/upgrade/uninstall handled automatically).
-# Different from Harbor (manifests/+postsync hook) — same as vaultwarden (extraObjects inline).
-# =============================================================================
+# argocd-https-redirect: server.httproute renders a single HTTPRoute, so the HTTP->HTTPS sibling
+# rides extraObjects to share the chart lifecycle (Harbor keeps its sibling in manifests/ instead).
 extraObjects:
   - apiVersion: gateway.networking.k8s.io/v1
     kind: HTTPRoute

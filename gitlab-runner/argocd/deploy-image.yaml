@@ -1,6 +1,5 @@
 # Per-release ArgoCD metadata for the gitlab-runner DEPLOY role (helmfile release: deploy-image).
 # Consumed by the infra-applicationset git-files generator -> Application infra-deploy-image.
-# autoSync:false = enroll MANUAL; verify adopt-diff (zero recreate) then flip to true.
 component: gitlab-runner
 releaseName: deploy-image                     # MUST equal the existing helmfile release name (clean adoption)
 namespace: gitlab-runner

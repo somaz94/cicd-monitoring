@@ -3,8 +3,7 @@
 # Alert Rules (network) — MetalLB + blackbox probes
 #
 # The L2/LoadBalancer plane and the synthetic probes that watch endpoints from
-# outside. Split out of dev-alerts.yaml; severity levels and field meanings are
-# documented in that file.
+# outside. Severity levels are documented in dev-alerts.yaml.
 #
 # SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
 # it across every values file and each top-level key becomes its own PrometheusRule CR --

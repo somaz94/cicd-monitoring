@@ -39,7 +39,7 @@ OUTPUT_PATH="$COMPONENT_DIR/$OUTPUT"
 echo "[$(date)] Exporting realm '$REALM' from pod '$POD' to '$OUTPUT_PATH'..."
 
 # kc.sh export — operator-spawned Keycloak Pod has the binary at /opt/keycloak/bin/.
-# Outputs to /tmp/realm-export-<realm>/ then concatenates into a single JSON.
+# kc.sh export writes <realm>-realm.json into /tmp/realm-export; stream it back.
 kubectl -n "$NAMESPACE" exec "$POD" -- bash -c "
   rm -rf /tmp/realm-export
   /opt/keycloak/bin/kc.sh export --dir /tmp/realm-export --realm $REALM --users realm_file

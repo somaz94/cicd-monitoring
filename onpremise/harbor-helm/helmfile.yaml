@@ -1,18 +1,14 @@
 # Deploy Harbor (private container registry) via helmfile, consuming upstream harbor/harbor chart.
 # Namespace creation handled by `createNamespace: true` on the release (G11 — no duplicate presync hook).
-# Lifecycle hooks: postsync apply Gateway-API raw manifests; preuninstall clean up HTTPRoutes.
+# Lifecycle hooks: postsync apply manifests/; preuninstall deletes it.
 # Chart version pinned. Bump via ./upgrade.py after verifying the new release.
 
 repositories:
   - name: harbor
     url: https://helm.goharbor.io
 
-# Cap helm release history at 3 (helm's default is 10). Each release Secret stores the
-# full rendered manifest, so 10 revisions of a large chart make helm's history query
-# return several MB in a single response and the kube-apiserver stream aborts
-# ("stream error INTERNAL_ERROR" on EKS / "read: operation timed out" on-prem), which
-# breaks helmfile diff/apply entirely. 3 revisions still allows rollback.
-# See cicd/argo-cd/docs/helm-release-history-bloat.md.
+# historyMax 3: 10 revisions of a large chart overflow helm's history query on the
+# apiserver stream and break helmfile diff/apply. See cicd/argo-cd/docs/helm-release-history-bloat.md.
 helmDefaults:
   historyMax: 3
 
@@ -26,11 +22,9 @@ releases:
       - values/dev.yaml
 
     hooks:
-      # postsync: apply raw Gateway API resources after chart upgrade.
-      # The Harbor 1.18.3 chart with expose.type=route auto-generates the main HTTPRoute (harbor-route,
-      # path routing core/portal). Two siblings the chart does not cover are kept as raw in manifests/:
-      #   1. harbor-https-redirect HTTPRoute (HTTP listener → 301 → HTTPS)
-      #   2. harbor-route ClientSettingsPolicy (body.maxSize:"0", unlimited docker push)
+      # postsync: kubectl apply manifests/ — what the chart (expose.type=route) does not render:
+      # the HTTP→HTTPS redirect route, the ClientSettingsPolicy (unlimited docker push) and the
+      # DB backup CronJob + PVC.
       # Note: helmfile apply skips hooks when there is no chart diff. Use helmfile sync for the first hook
       # application or when only manifests/ changes.
       - events: ["postsync"]
@@ -38,20 +32,14 @@ releases:
         command: "kubectl"
         args: ["apply", "-f", "manifests/"]
 
-      # preuninstall: clean up HTTPRoute before helm uninstall — to avoid leaving stale attachment
-      # references on the parent Gateway.
+      # preuninstall: delete manifests/ (routes, policy, DB backup CronJob + PVC; the PV is Retain)
+      # so no stale attachment is left on the parent Gateway.
       - events: ["preuninstall"]
         showlogs: true
         command: "bash"
         args:
           - "-c"
           - "kubectl delete -f manifests/ --ignore-not-found=true --wait=true || true"
-
-# helmDefaults:
-#   wait: true
-#   timeout: 900  # Harbor may need more install time, so set to 15 minutes
-#   atomic: true
-#   cleanupOnFail: true
 
 # Pre-flight assertion: warn if no StorageClass available (Harbor needs PVC for DB + storage).
 # Soft check — `|| true` keeps sync flowing even on empty cluster bootstrap.

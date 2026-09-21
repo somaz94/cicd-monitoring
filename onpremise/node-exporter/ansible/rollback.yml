@@ -18,9 +18,6 @@
   # Variables are defined in group_vars/all.yml (single source of truth).
 
   tasks:
-    # ------------------------------------------------------------------
-    # 1. Check backup exists
-    # ------------------------------------------------------------------
     - name: Check if backup binary exists
       stat:
         path: "{{ node_exporter_bin }}.bak"
@@ -31,9 +28,6 @@
         msg: "No backup found at {{ node_exporter_bin }}.bak — cannot rollback"
       when: not backup_file.stat.exists
 
-    # ------------------------------------------------------------------
-    # 2. Get current version
-    # ------------------------------------------------------------------
     - name: Get current node_exporter version
       command: "{{ node_exporter_bin }} --version"
       register: current_version
@@ -44,9 +38,6 @@
       debug:
         msg: "Current: {{ current_version.stdout_lines[0] | default('not running') }}"
 
-    # ------------------------------------------------------------------
-    # 3. Stop, rollback, start
-    # ------------------------------------------------------------------
     - name: Stop node_exporter
       systemd:
         name: node_exporter
@@ -82,9 +73,6 @@
       changed_when: launchd_bootstrap.rc == 0
       when: ansible_facts.system == 'Darwin'
 
-    # ------------------------------------------------------------------
-    # 4. Verify
-    # ------------------------------------------------------------------
     - name: Wait for node_exporter to respond
       uri:
         url: "http://localhost:{{ node_exporter_port }}/metrics"
@@ -104,9 +92,6 @@
       debug:
         msg: "Rolled back {{ inventory_hostname }} ({{ ansible_host }}) → {{ rollback_version.stdout_lines[0] | default('unknown') }}"
 
-    # ------------------------------------------------------------------
-    # 5. Cleanup backup
-    # ------------------------------------------------------------------
     - name: Remove backup after successful rollback
       file:
         path: "{{ node_exporter_bin }}.bak"
