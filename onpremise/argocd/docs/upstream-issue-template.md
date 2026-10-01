@@ -8,7 +8,7 @@
 
 Template for filing a new bug report at <https://github.com/argoproj/argo-cd/issues/new/choose> (**Bug Report**) for the **application-controller goroutine leak + silent reconcile freeze** observed on Argo CD v3.3.7. This file is English-only by design (the upstream project is English).
 
-See the detailed analysis in [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23.md).
+See the detailed analysis in [ghost-alarm-incident-2026-04-23.md](ghost-alarm-incident-2026-04-23.md).
 
 <br/>
 

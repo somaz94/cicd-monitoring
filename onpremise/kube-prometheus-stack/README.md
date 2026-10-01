@@ -2,7 +2,7 @@
 
 Manages the Kubernetes cluster monitoring stack. Delivery is ArgoCD pull, and the chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/kube-prometheus-stack.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 
@@ -53,12 +53,12 @@ kube-prometheus-stack/
 
 | Topic | Document |
 |---|---|
-| Slack alert message format | [docs/slack-alert-format-en.md](docs/slack-alert-format.md) |
-| Troubleshooting | [docs/troubleshooting-en.md](docs/troubleshooting.md) |
-| External Prometheus watchdog (bastion cron) | [docs/external-watchdog-en.md](docs/external-watchdog.md) |
+| Slack alert message format | [docs/slack-alert-format.md](docs/slack-alert-format.md) |
+| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| External Prometheus watchdog (bastion cron) | [docs/external-watchdog.md](docs/external-watchdog.md) |
 
 Related external docs:
-- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23-en.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md)
+- ArgoCD ghost-alarm incident analysis and rationale for the `argocd-alerts` group: [cicd/argo-cd/docs/ghost-alarm-incident-2026-04-23.md](../argocd/docs/ghost-alarm-incident-2026-04-23.md)
   - The `argocd-alerts` group in `dev-alerts-apps.yaml` and the ArgoCD inhibit rule in `dev-alertmanager.yaml` are configured based on the "Final architecture (Option B)" decision in that document.
 
 <br/>
@@ -122,7 +122,7 @@ The two levels differ:
 
 - The role is decided from the token's `groups` claim, so a membership change only takes effect **after a re-login**.
 - Do not create users or edit roles inside Grafana — the next login reverts them to whatever `role_attribute_path` evaluates to. Adjust access via **Keycloak group membership** instead.
-- `server` → Editor only became meaningful on 2026-07-30. Before that the Keycloak IdP mapper placed **every** brokered GitLab user into `server` — background in [security/keycloak/docs/gitlab-brokering-en.md](../keycloak/docs/gitlab-brokering.md).
+- `server` → Editor only became meaningful on 2026-07-30. Before that the Keycloak IdP mapper placed **every** brokered GitLab user into `server` — background in [security/keycloak/docs/gitlab-brokering.md](../keycloak/docs/gitlab-brokering.md).
 
 **Break-glass (local admin)** — only for when the OIDC chain (Grafana → Keycloak → GitLab) is broken. The login form is deliberately left enabled: this component runs with ArgoCD `autoSync: true`, so a bad change reaches the cluster with no manual gate and this is then the only way back in.
 

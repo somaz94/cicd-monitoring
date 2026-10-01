@@ -158,9 +158,9 @@ curl -s -X POST https://auth.example.com/realms/example/protocol/openid-connect/
 
 ## Next steps
 
-- [gitlab-brokering-en.md](gitlab-brokering.md) — Add GitLab Identity Provider (existing GitLab accounts as login source)
-- [harbor-migration-en.md](harbor-migration.md) — Harbor OIDC endpoint → Keycloak (Phase 4)
-- [argocd-migration-en.md](argocd-migration.md) — ArgoCD dex connector → Keycloak OIDC (Phase 6)
+- [gitlab-brokering.md](gitlab-brokering.md) — Add GitLab Identity Provider (existing GitLab accounts as login source)
+- [harbor-migration.md](harbor-migration.md) — Harbor OIDC endpoint → Keycloak (Phase 4)
+- [argocd-migration.md](argocd-migration.md) — ArgoCD dex connector → Keycloak OIDC (Phase 6)
 
 <br/>
 

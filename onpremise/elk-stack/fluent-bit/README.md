@@ -2,7 +2,7 @@
 
 Manages the [Fluent Bit](https://fluentbit.io/) DaemonSet for Kubernetes log collection.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The deploy marker is `argocd-local/fluent-bit.yaml` with `autoSync: true` (prune + selfHeal), so a push to master is what reaches the cluster. Because the chart is vendored locally the marker carries only `chartPath`: the chart-version SSOT is the in-repo `Chart.yaml`, bumped by `upgrade.py` via the `local-with-templates` template — this is NOT the argocd-pin pattern. See the "ArgoCD-migrated components" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The deploy marker is `argocd-local/fluent-bit.yaml` with `autoSync: true` (prune + selfHeal), so a push to master is what reaches the cluster. Because the chart is vendored locally the marker carries only `chartPath`: the chart-version SSOT is the in-repo `Chart.yaml`, bumped by `upgrade.py` via the `local-with-templates` template — this is NOT the argocd-pin pattern. See the "ArgoCD-migrated components" section of docs/ci-upgrade.md.
 
 <br/>
 

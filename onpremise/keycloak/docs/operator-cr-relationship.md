@@ -72,5 +72,5 @@ Helmfile does not enforce cross-component dependencies — order is documented i
 
 ## See also
 
-- ECK same pattern: [`observability/logging/eck-operator/README-en.md`](../../elk-stack/eck-operator/README.md) + [`observability/logging/elasticsearch/README-en.md`](../../elk-stack/elasticsearch/README.md)
+- ECK same pattern: [`observability/logging/eck-operator/README.md`](../../elk-stack/eck-operator/README.md) + [`observability/logging/elasticsearch/README.md`](../../elk-stack/elasticsearch/README.md)
 - [Keycloak Operator official installation guide](https://www.keycloak.org/operator/installation)

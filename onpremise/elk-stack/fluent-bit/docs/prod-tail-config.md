@@ -2,11 +2,11 @@
 
 The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev-cluster configuration. **Using the same settings in prod risks log loss on restart**, so this document captures the recommended prod values.
 
-> **Current dev state**: Tier 1 / Phase 1a + buffer hardening applied. Note that the 2026-05-19 move from the NFS-aggregator Deployment to a per-node stdout DaemonSet replaced the RWO state PVC with a **node hostPath** (see [deployment-to-daemonset-en.md](./deployment-to-daemonset.md)).
+> **Current dev state**: Tier 1 / Phase 1a + buffer hardening applied. Note that the 2026-05-19 move from the NFS-aggregator Deployment to a per-node stdout DaemonSet replaced the RWO state PVC with a **node hostPath** (see [deployment-to-daemonset.md](./deployment-to-daemonset.md)).
 > - fluent-bit: `DB` checkpoints, `storage.type filesystem`, a node hostPath state volume (`persistentVolumeClaims.enabled: false`), OUTPUT `storage.total_limit_size 2G`. `values/dev.yaml` is the SSOT for the values actually applied.
 > - fluentd: a file buffer capped by `total_limit_size` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule alerts. `observability/logging/fluentd/values/dev.yaml` `03_outputs.conf` is the SSOT for the values actually applied.
 > - Only `Read_from_Head` remains `false` (awaiting Phase 1b promotion).
-> - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure.md).
+> - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure.md](./reingest-procedure.md).
 
 <br/>
 
@@ -152,7 +152,7 @@ Correct sequence (Phase 1a → 1b model):
 ## References
 
 - Current dev INPUT definition (Phase 1a applied): [../values/dev.yaml](../values/dev.yaml)
-- Re-ingest procedure after index loss: [reingest-procedure-en.md](./reingest-procedure.md)
+- Re-ingest procedure after index loss: [reingest-procedure.md](./reingest-procedure.md)
 - Official docs: https://docs.fluentbit.io/manual/pipeline/inputs/tail
 - DB / checkpoint: https://docs.fluentbit.io/manual/pipeline/inputs/tail#db
 - filesystem storage: https://docs.fluentbit.io/manual/administration/buffering-and-storage

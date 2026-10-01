@@ -2,7 +2,7 @@
 
 Manages the [Fluentd](https://www.fluentd.org/) **StatefulSet** — the aggregator stage of the Kubernetes log-collection pipeline (the workload kind is `kind` in `values/dev.yaml`). It receives logs from the node-level fluent-bit DaemonSet, buffers them on the `fluentd-buffer` PVC, and forwards them to Elasticsearch.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/fluentd.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/fluentd.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 
@@ -150,7 +150,7 @@ Upstream default values can be referenced in `values.yaml`.
 
 `data.requestHeader.authorization` carries `Basic base64(accountId:sessionId)` — a live credential, since the game server authenticates by comparing that `sessionId` against the Redis session. Step 4 masks it while serializing the nested `data` JSON: only the scheme token (`Basic` / `Bearer` / `Digest` / `Negotiate`) is kept, the rest becomes `[REDACTED]`, and anything not matching a known scheme is redacted whole (fail-closed). Header lookup is case-insensitive.
 
-Ported from the AWS prod pipeline ([`fluentd-aws/values/prod.yaml`](../fluentd-aws/values/prod.yaml)); the expression is byte-identical, only the tag namespace differs.
+Ported from the AWS prod pipeline (`fluentd-aws/values/prod.yaml`); the expression is byte-identical, only the tag namespace differs.
 
 - ⚠️ Applies to **new records only**. Records already in `dev-example-project-game` / `qa-example-project-game` still hold the plaintext credential — and unlike prod these indices are **not ILM-managed**, so nothing ages them out on its own.
 - ⚠️ Covers **only** `authorization` inside `data.requestHeader`. Sibling headers such as `cookie` / `x-api-key`, and the `data.requestBody` / `data.responseBody` payloads, are blind spots. The battle pipeline carries no auth header at all.

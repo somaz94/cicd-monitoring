@@ -44,7 +44,7 @@ Only the indices **named in the `INDICES` env** are processed. Because it is an 
 
 > ⚠️ **Excluding the cohort index is necessary but NOT sufficient.** The cohort transform's `first_seen` is anchored to the **`/users/create` event inside the raw `-game` index** (`scripted_metric` in `../transforms/dev-example-project-game-user-cohort.json` — returns `null` when no such doc exists). If a still-active user's `/users/create` doc ages past the retention window and is deleted from the raw index, the continuous transform re-triggers and recomputes `first_seen` as `null`, silently corrupting the cohort record.
 >
-> The delete query therefore carries a **`must_not { data.requestPath.keyword: /users/create }`** guard so the registration anchor is kept forever (one doc per registration = negligible volume). Same intent as AWS's [`bootstrap-cohort-template.sh`](../../elasticsearch-aws/scripts/bootstrap-cohort-template.sh) exempting cohort from ILM delete.
+> The delete query therefore carries a **`must_not { data.requestPath.keyword: /users/create }`** guard so the registration anchor is kept forever (one doc per registration = negligible volume). Same intent as AWS's `bootstrap-cohort-template.sh` exempting cohort from ILM delete.
 >
 > **Forbidden: adding `*-user-cohort` to `INDICES`, and removing the `/users/create` must_not guard from the delete query.**
 
@@ -131,5 +131,5 @@ Check two things: (1) did `*-user-cohort` leak into `INDICES`, and (2) was the `
 ## Related docs
 
 - [`../scripts/delete_old_indices.sh`](../scripts/delete_old_indices.sh) — manual ad-hoc cleanup script (the laptop counterpart of this CronJob).
-- [`../../elasticsearch-aws/scripts/bootstrap-ilm-template.sh`](../../elasticsearch-aws/scripts/bootstrap-ilm-template.sh) — AWS-side ILM-based automated retention (date-based indices, whole-index delete).
-- [`../transforms/README-en.md`](../transforms/README.md) — cohort transform definition (why it is excluded).
+- `../../elasticsearch-aws/scripts/bootstrap-ilm-template.sh` — AWS-side ILM-based automated retention (date-based indices, whole-index delete).
+- [`../transforms/README.md`](../transforms/README.md) — cohort transform definition (why it is excluded).

@@ -160,5 +160,5 @@ This is why `global-admin` must not be left empty — with no members, an admin-
 
 ## Next
 
-- [argocd-migration-en.md](argocd-migration.md) — switch ArgoCD dex from GitLab to Keycloak OIDC
-- [harbor-migration-en.md](harbor-migration.md) — switch the Harbor OIDC endpoint
+- [argocd-migration.md](argocd-migration.md) — switch ArgoCD dex from GitLab to Keycloak OIDC
+- [harbor-migration.md](harbor-migration.md) — switch the Harbor OIDC endpoint

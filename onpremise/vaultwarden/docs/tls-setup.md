@@ -12,7 +12,7 @@ vaultwarden only attaches to that Gateway through an HTTPRoute — **this compon
 
 - `ingress.enabled: false` in `values/dev.yaml` — the Ingress path is disabled
 - The self-signed `vaultwarden-tls` Secret was removed on 2026-04-17 as unused
-- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see [TLS Wildcard Setup](../../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md)
+- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see TLS Wildcard Setup
 
 Renewing the self-signed certificate below therefore changes nothing in the actual request path.
 

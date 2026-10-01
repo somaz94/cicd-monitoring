@@ -2,7 +2,7 @@
 
 Exports ECK-managed Elasticsearch metrics (in the logging namespace) to Prometheus.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/prometheus-elasticsearch-exporter.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/prometheus-elasticsearch-exporter.yaml`, bumped by `upgrade.py` via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 

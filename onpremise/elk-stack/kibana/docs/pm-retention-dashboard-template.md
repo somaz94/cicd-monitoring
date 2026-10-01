@@ -202,7 +202,7 @@ Key consequences (retention is computed by query-time runtime fields, not the tr
 | Name | `dev-example-project-game-user-cohort-logs` (id `410571c2-5b86-4ba9-a02e-418671d0b8e2`) |
 | Time field | `first_seen` |
 | Runtime field — `cohort_date` (keyword) | `if (doc['first_seen'].size() > 0) { emit(doc['first_seen'].value.toInstant().atZone(ZoneId.of('Asia/Seoul')).toLocalDate().toString()); }` — powers the keyword grouping of the Daily Cohort Retention table's "Date" column |
-| Runtime field — `d1_live`..`d30_live` (long) | Emit `1` if `first_seen + N day` appears in `active_dates`, otherwise `0`. The core check is `String t = (first_seen + N day).toString(); for (def d : doc['active_dates']) if (d == t) emit(1L)`. **The index mapping's `active_dates` MUST be `keyword`** — if inferred as `date`, the `String == ZonedDateTime` comparison is always false and every retention horizon emits 0 (2026-05-22 QA cohort incident). The cohort index's explicit mapping is pinned via `<id>.mapping.json` per [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson). |
+| Runtime field — `d1_live`..`d30_live` (long) | Emit `1` if `first_seen + N day` appears in `active_dates`, otherwise `0`. The core check is `String t = (first_seen + N day).toString(); for (def d : doc['active_dates']) if (d == t) emit(1L)`. **The index mapping's `active_dates` MUST be `keyword`** — if inferred as `date`, the `String == ZonedDateTime` comparison is always false and every retention horizon emits 0 (2026-05-22 QA cohort incident). The cohort index's explicit mapping is pinned via `<id>.mapping.json` per [transforms/README.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson). |
 
 Both `cohort_date` and `d{N}_live` are **Kibana data view runtime fields only** — they don't live in the underlying index mapping and are computed per cohort doc at visualization time.
 
@@ -486,7 +486,7 @@ The state file is per-environment (`pm-retention.{ENV}.state.json`) so dev and p
 1. **Develop / tune in Kibana** — edit in the UI, run `./export.sh` to capture, update `METRICS_*` / `HORIZONS` in the builder, commit.
 2. **Replay on prod** — `ENV=prod ./build-pm-retention.py` once. Humans never click in the prod Kibana UI.
 
-The UI-first stage mirrors the `export.sh` flow from [`dashboards/README-en.md`](../dashboards/README.md). The builder's job is to freeze the result into code.
+The UI-first stage mirrors the `export.sh` flow from [`dashboards/README.md`](../dashboards/README.md). The builder's job is to freeze the result into code.
 
 > Recommended rollout order: capture the live state via `export.sh` and commit first; then implement the builder incrementally — first cut covers transform + cohort data view + 6 KPI Vega; second cut adds the Trend / Table Lenses and the dashboard.
 
@@ -532,7 +532,7 @@ NAMESPACE=logging ./apply.sh --context <CTX> --file prod-example-project-game-us
 ```
 
 * `--preview-only` validates first → confirm the atomic facts (`first_seen`, `last_seen`, `active_dates`, `active_days_count`, `total_events`, `max_cleared_chapter`) match expectations before the real apply.
-* `apply.sh` auto-detects the sibling `.mapping.json` and PUTs the explicit dest-index mapping first (pinning `active_dates: keyword`) when the dest index is absent. Without this, ES dynamic mapping infers `active_dates` as `date` and dashboard retention silently renders as 0 — see [transforms/README-en.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson).
+* `apply.sh` auto-detects the sibling `.mapping.json` and PUTs the explicit dest-index mapping first (pinning `active_dates: keyword`) when the dest index is absent. Without this, ES dynamic mapping infers `active_dates` as `date` and dashboard retention silently renders as 0 — see [transforms/README.md → "Dest-index mapping"](../../elasticsearch/transforms/README.md#dest-index-mapping----idmappingjson).
 * The dashboard only shows meaningful numbers once the backfill completes. Continuous mode keeps the index fresh at `frequency` cadence.
 
 ### Step 3 — Apply the dashboard
@@ -561,7 +561,7 @@ cd observability/logging/kibana/dashboards
 > ⚠️ **"Switching" and "adding" are different jobs. This section is for switching.**
 >
 > - **Switch a zone** (move the canonical basis wholesale, e.g. KST → JST): **this section**. It overwrites the existing values, so the previous zone's view is gone.
-> - **Add a zone** (keep the existing view and serve one more): **[timezone-toggle-en.md §3](timezone-toggle.md)**. The KST (`default`) + CST (`cst`) two-Space setup in production today works this way.
+> - **Add a zone** (keep the existing view and serve one more): **[timezone-toggle.md §3](timezone-toggle.md)**. The KST (`default`) + CST (`cst`) two-Space setup in production today works this way.
 >
 > Blindly following this section and bulk-replacing `params.tz` **destroys the `default` Space's KST retention.** If the goal is "also show this to the China team", you want timezone-toggle-en.md §3, not this section.
 
@@ -759,11 +759,11 @@ The repo was exported from live on 2026-07-01, so **the previously recorded repo
 
 ## Related docs
 
-- [dashboards/README-en.md](../dashboards/README.md) — apply.sh / export.sh usage
-- [docs/dashboards-saved-objects-en.md](dashboards-saved-objects.md) — NDJSON schema, two flavours of apply.sh, data view policy
-- [docs/user-metrics-catalog-en.md](user-metrics-catalog.md) — this dashboard's 12-panel catalog (definitions + operational caveats)
-- [elasticsearch/transforms/README-en.md](../../elasticsearch/transforms/README.md) — transform management commands
-- [docs/example-project-user-metrics-overview.md](../../../../docs/example-project-user-metrics-overview.md) — pipeline-wide entry point (Korean, internal)
+- [dashboards/README.md](../dashboards/README.md) — apply.sh / export.sh usage
+- [docs/dashboards-saved-objects.md](dashboards-saved-objects.md) — NDJSON schema, two flavours of apply.sh, data view policy
+- [docs/user-metrics-catalog.md](user-metrics-catalog.md) — this dashboard's 12-panel catalog (definitions + operational caveats)
+- [elasticsearch/transforms/README.md](../../elasticsearch/transforms/README.md) — transform management commands
+- docs/example-project-user-metrics-overview.md — pipeline-wide entry point (Korean, internal)
 
 <br/>
 

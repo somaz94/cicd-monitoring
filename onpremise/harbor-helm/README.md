@@ -43,7 +43,7 @@ harbor-helm/
 - Helmfile
 - A Gateway API implementation (nginx-gateway-fabric) — assumed by `expose.type: route` in `values/dev.yaml` and by `manifests/httproutes.yaml`
 - StorageClass (e.g., `nfs-client-server`)
-- TLS certificate for HTTPS — terminated by the NGF `ngf` Gateway in the `nginx-gateway` namespace with `wildcard-example-tls`. This component owns no certificate, so nothing needs preparing here — see [`docs/tls-setup-en.md`](./docs/tls-setup.md)
+- TLS certificate for HTTPS — terminated by the NGF `ngf` Gateway in the `nginx-gateway` namespace with `wildcard-example-tls`. This component owns no certificate, so nothing needs preparing here — see [`docs/tls-setup.md`](./docs/tls-setup.md)
 
 <br/>
 
@@ -202,11 +202,11 @@ HTTPS is terminated by the NGF `ngf` Gateway in the `nginx-gateway` namespace us
 
 - The HTTP→HTTPS 301 redirect HTTPRoute and the ClientSettingsPolicy, which the chart does not render, stay as raw manifests in [`manifests/httproutes.yaml`](manifests/httproutes.yaml)
 - `expose.tls.secret.secretName` is dead config that route mode never renders — the real self-signed `harbor-tls` Secret was removed on 2026-04-17 and consolidated into `wildcard-example-tls`
-- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see [TLS Wildcard Setup](../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md)
+- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see TLS Wildcard Setup
 
 **Rollback (Ingress path)**: this cluster does not run cert-manager, so the manual self-signed pattern shared with [Vaultwarden](../vaultwarden/) is preserved as the rollback path. Restoring it means reviving the `ingress:` block commented at the top of `values/dev.yaml` and recreating the `harbor-tls` Secret; the openssl issuance steps are kept in the document below for rollback only.
 
-Full procedure (current termination point / verification / client trust / self-signed rollback): **[`docs/tls-setup-en.md`](./docs/tls-setup.md)**.
+Full procedure (current termination point / verification / client trust / self-signed rollback): **[`docs/tls-setup.md`](./docs/tls-setup.md)**.
 
 <br/>
 
@@ -215,9 +215,9 @@ Full procedure (current termination point / verification / client trust / self-s
 Harbor uses **Keycloak OIDC** instead of `db_auth` (Phase 4 replaced the previous GitLab-direct setup). Keycloak's Identity Provider brokers to GitLab, so existing user accounts/groups are preserved (`server` group filter, admin manually promoted for `admin@example.com` only).
 
 OIDC settings live in Harbor's core DB and cannot be declared via Helm values — they are injected via **Harbor REST API or Web UI**. The standard procedure:
-- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak-en.md`](./docs/oidc-setup-keycloak.md)
-- **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration-en.md`](../keycloak/docs/harbor-migration.md)
-- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab-en.md`](./docs/legacy/oidc-setup-gitlab.md)
+- **Current standard (Keycloak)**: [`docs/oidc-setup-keycloak.md`](./docs/oidc-setup-keycloak.md)
+- **Phase 4 migration procedure**: [`security/keycloak/docs/harbor-migration.md`](../keycloak/docs/harbor-migration.md)
+- **Legacy GitLab-direct (rollback reference)**: [`docs/legacy/oidc-setup-gitlab.md`](./docs/legacy/oidc-setup-gitlab.md)
 
 ⚠️ Flipping `auth_mode: oidc_auth` is **irreversible**. This cluster already flipped during the GitLab-direct era — no extra flip needed for the Keycloak switch.
 
@@ -232,7 +232,7 @@ scripts/admin/harbor-admin.sh add-member library group:server developer
 scripts/admin/harbor-admin.sh config
 ```
 
-The admin password is auto-extracted from `harborAdminPassword` in [`values/dev.yaml`](values/dev.yaml) by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/admin/README-en.md`](scripts/admin/README.md).
+The admin password is auto-extracted from `harborAdminPassword` in [`values/dev.yaml`](values/dev.yaml) by default; override with the `HARBOR_ADMIN_PASSWORD` environment variable. Full command list: [`scripts/admin/README.md`](scripts/admin/README.md).
 
 <br/>
 
@@ -240,7 +240,7 @@ The admin password is auto-extracted from `harborAdminPassword` in [`values/dev.
 
 > **Current setup already works** — containerd follows the 301 redirect and `skip_verify: true` covers the self-signed cert. The config below is a **semantic cleanup recommendation** and is not urgent.
 
-Reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../bootstrap/kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
+Reflected in `kubespray/inventory-example-cluster/group_vars/all/containerd.yml`:
 
 ```yaml
 containerd_registries_mirrors:
@@ -260,7 +260,7 @@ ansible-playbook -i inventory-example-cluster/hosts.yaml \
   cluster.yml --tags container-engine -b
 ```
 
-Details: [`docs/tls-setup-en.md`](./docs/tls-setup.md) §6
+Details: [`docs/tls-setup.md`](./docs/tls-setup.md) §6
 
 <br/>
 

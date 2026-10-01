@@ -47,14 +47,14 @@ security/keycloak/
 
 | Doc | Topic |
 |---|---|
-| [docs/architecture-en.md](docs/architecture.md) | Auth flow Before/After + LDAP migration path + user impact table + scenario comparison (read before cutover) |
-| [docs/realm-setup-en.md](docs/realm-setup.md) | Phase 3 — create the `example` realm + groups + clients (argocd, harbor, vaultwarden, example-hub) |
-| [docs/gitlab-brokering-en.md](docs/gitlab-brokering.md) | Phase 3 — register GitLab as an Identity Provider (preserve existing GitLab SSO) |
-| [docs/harbor-migration-en.md](docs/harbor-migration.md) | Phase 4 — switch the Harbor OIDC endpoint to Keycloak (moved ahead of ArgoCD in plan) |
-| [docs/argocd-migration-en.md](docs/argocd-migration.md) | Phase 6 — replace the ArgoCD dex GitLab connector with Keycloak OIDC + `argocd-https-redirect` HTTPRoute |
-| [docs/vaultwarden-migration-en.md](docs/vaultwarden-migration.md) | Switch vaultwarden's SSO authority from GitLab → Keycloak — **not applied** (two attempts on 2026-04-29, both rolled back; vaultwarden still uses GitLab direct SSO). Kept as the re-attempt recipe |
-| [docs/operator-cr-relationship-en.md](docs/operator-cr-relationship.md) | Why the Operator (sibling component) and the CR + DB (this component) are split |
-| [docs/backup-restore-en.md](docs/backup-restore.md) | PostgreSQL backup/restore + realm export procedure |
+| [docs/architecture.md](docs/architecture.md) | Auth flow Before/After + LDAP migration path + user impact table + scenario comparison (read before cutover) |
+| [docs/realm-setup.md](docs/realm-setup.md) | Phase 3 — create the `example` realm + groups + clients (argocd, harbor, vaultwarden, example-hub) |
+| [docs/gitlab-brokering.md](docs/gitlab-brokering.md) | Phase 3 — register GitLab as an Identity Provider (preserve existing GitLab SSO) |
+| [docs/harbor-migration.md](docs/harbor-migration.md) | Phase 4 — switch the Harbor OIDC endpoint to Keycloak (moved ahead of ArgoCD in plan) |
+| [docs/argocd-migration.md](docs/argocd-migration.md) | Phase 6 — replace the ArgoCD dex GitLab connector with Keycloak OIDC + `argocd-https-redirect` HTTPRoute |
+| [docs/vaultwarden-migration.md](docs/vaultwarden-migration.md) | Switch vaultwarden's SSO authority from GitLab → Keycloak — **not applied** (two attempts on 2026-04-29, both rolled back; vaultwarden still uses GitLab direct SSO). Kept as the re-attempt recipe |
+| [docs/operator-cr-relationship.md](docs/operator-cr-relationship.md) | Why the Operator (sibling component) and the CR + DB (this component) are split |
+| [docs/backup-restore.md](docs/backup-restore.md) | PostgreSQL backup/restore + realm export procedure |
 
 <br/>
 
@@ -116,7 +116,7 @@ A successful apply produces (within ~1–2 minutes):
 - `keycloak` HTTPRoute (NGF https listener) + `keycloak-https-redirect` HTTPRoute
 - Initial admin credentials: operator auto-renders the `keycloak-initial-admin` Secret
 
-Next: [docs/realm-setup-en.md](docs/realm-setup.md) for Phase 3 realm setup.
+Next: [docs/realm-setup.md](docs/realm-setup.md) for Phase 3 realm setup.
 
 ### Track new chart versions
 
@@ -232,10 +232,10 @@ curl -kI https://auth.example.com/realms/master    # expect HTTP 200
 
 ## Next steps
 
-1. [docs/realm-setup-en.md](docs/realm-setup.md) — Create the `example` realm + groups + clients (Phase 3)
-2. [docs/gitlab-brokering-en.md](docs/gitlab-brokering.md) — Register GitLab as an Identity Provider
-3. [docs/harbor-migration-en.md](docs/harbor-migration.md) — Replace Harbor OIDC (Phase 4)
-4. [docs/argocd-migration-en.md](docs/argocd-migration.md) — Replace ArgoCD dex (Phase 6)
+1. [docs/realm-setup.md](docs/realm-setup.md) — Create the `example` realm + groups + clients (Phase 3)
+2. [docs/gitlab-brokering.md](docs/gitlab-brokering.md) — Register GitLab as an Identity Provider
+3. [docs/harbor-migration.md](docs/harbor-migration.md) — Replace Harbor OIDC (Phase 4)
+4. [docs/argocd-migration.md](docs/argocd-migration.md) — Replace ArgoCD dex (Phase 6)
 
 <br/>
 

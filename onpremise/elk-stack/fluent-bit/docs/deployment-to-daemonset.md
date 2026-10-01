@@ -2,7 +2,7 @@
 
 The fluent-bit topology in `values/dev.yaml` was switched from a single-replica NFS-aggregator Deployment to a per-node stdout DaemonSet on **2026-05-19 10:18 ~ 10:32 KST**. This document captures the background, command sequence, gap measurements, and the operational procedure to reproduce the same migration in prod or any new environment.
 
-> This document is *a record of a one-time migration plus a reproduction procedure*. The current operating topology is documented in the header of `values/dev.yaml`; prod tail-option recommendations live in [prod-tail-config-en.md](./prod-tail-config.md); index recovery in [reingest-procedure-en.md](./reingest-procedure.md).
+> This document is *a record of a one-time migration plus a reproduction procedure*. The current operating topology is documented in the header of `values/dev.yaml`; prod tail-option recommendations live in [prod-tail-config.md](./prod-tail-config.md); index recovery in [reingest-procedure.md](./reingest-procedure.md).
 
 <br/>
 
@@ -129,7 +129,7 @@ PV cleaned up in this migration: `pvc-c3bca255-fdf5-44be-9230-da3643774535` (NFS
 
 So the plan's separate `kubectl delete` step for the NFS aggregator PVC/PVs is **not required** (helm handles them), and only the state-pvc's dangling PV needs one manual cleanup.
 
-> The NFS server (192.0.2.5) still holds the application log files under `/volume1/nfs/example-project/*/server/logs/` — applications keep writing to them. For stdout-vs-NFS verification or for index loss recovery, [reingest-procedure-en.md](./reingest-procedure.md) describes how to replay from the NFS originals.
+> The NFS server (192.0.2.5) still holds the application log files under `/volume1/nfs/example-project/*/server/logs/` — applications keep writing to them. For stdout-vs-NFS verification or for index loss recovery, [reingest-procedure.md](./reingest-procedure.md) describes how to replay from the NFS originals.
 
 <br/>
 
@@ -184,6 +184,6 @@ DaemonSet stability: 3 pods restart=0 / ready=true. fluentd `skip invalid event`
   - **2026-05-19 — fluentd Serilog normalization added**: the dev.battle Serilog schema (Level / Timestamp / MessageTemplate) is now normalized in fluentd's `02_filters.conf` Step 2/3. Mapping details: see §4-3 of the pino-pretty removal guide
   - **2026-05-19 — qa.game pino_pretty_extract regex updated**: now also matches NestJS routing-setup lines like `[ts] INFO: CostumesController {/costumes}: {...}`. The regex was changed to `^\[[^\]]+\]\s+\w+:\s+.*?(?<log>\{"[\w-]+":.*\})\s*$`. Backward-compatible with the original request-handling format A, also handles routing-setup format B and nested-data JSON. Plain-text lines (no JSON) are handled by the fluentd fallback. See §1-1 of the pino-pretty removal guide
   - **2026-05-22 — qa.game raw NDJSON switch complete + pino-pretty workaround full removal applied**: qa.game flipped to raw NDJSON. The `[FILTER] lua strip_ansi` + `[FILTER] parser pino_pretty_extract` + `[PARSER] pino_pretty_extract` + `luaScripts.strip_ansi.lua` block + qa.game-only example-project_json_extract branch in `values/dev.yaml` were all removed; the raw branch was consolidated back to a single `Match example-project.stdout.*` + `Key_Name message`. The `fluent-bit-luascripts` ConfigMap + the `luascripts` volumeMount were auto-pruned by helm. See [pino-pretty removal record](./pino-pretty-removal.md) for the details
-  - **2026-05-22 — reset-example-project-cohort.sh cleanup + DaemonSet-only operation confirmed**: the legacy "scenario A" macro in the ES index reset script (`--scenario-a` / `--reset-fluent-bit-checkpoint` / `--reset-fluentd-buffer` / `--force-with-fluentd-buffer`) was wired to the Deployment + PVC layout, so it was removed. Only the ES-side flow (transform stop / cohort+raw DELETE / fluent-bit DaemonSet rollout restart / transform start / verify) remains automated. Abnormal cases that need a fluent-bit/fluentd in-flight wipe are now documented as manual recipes in the "Manual cleanup" section of [reset-example-project-cohort-en.md](../../elasticsearch/docs/reset-example-project-cohort.md)
+  - **2026-05-22 — reset-example-project-cohort.sh cleanup + DaemonSet-only operation confirmed**: the legacy "scenario A" macro in the ES index reset script (`--scenario-a` / `--reset-fluent-bit-checkpoint` / `--reset-fluentd-buffer` / `--force-with-fluentd-buffer`) was wired to the Deployment + PVC layout, so it was removed. Only the ES-side flow (transform stop / cohort+raw DELETE / fluent-bit DaemonSet rollout restart / transform start / verify) remains automated. Abnormal cases that need a fluent-bit/fluentd in-flight wipe are now documented as manual recipes in the "Manual cleanup" section of [reset-example-project-cohort.md](../../elasticsearch/docs/reset-example-project-cohort.md)
 - `fluent-bit-prod-hardening` plan — prod application is a separate plan. The combination of this migration plus AWS node-ephemerality handling goes there
 - Grafana fluent-bit dashboard's DaemonSet awareness — the DaemonSet pod labels (`app.kubernetes.io/instance: fluent-bit`) are identical to the previous Deployment, so the dashboard needs no change

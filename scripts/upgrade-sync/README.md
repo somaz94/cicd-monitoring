@@ -1293,6 +1293,6 @@ A: `git checkout HEAD -- .` restores everything in one shot. Always run sync fro
 
 ## See also
 
-- Main README: [../../README-en.md](../../README.md)
+- Main README: ../../README.md
 - Canonical sources: [templates/](templates/)
 - Sync tool: [sync.py](sync.py)

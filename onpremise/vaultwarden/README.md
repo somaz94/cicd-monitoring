@@ -107,7 +107,7 @@ self-signed `vaultwarden-tls` Secret was removed on 2026-04-17 as unused.
 
 > Vaultwarden Web Vault requires HTTPS because the browser's SubtleCrypto API is only available in a secure context.
 
-Certificate issuance/renewal belongs to `network/nginx-gateway-fabric`: [TLS Wildcard Setup](../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md)
+Certificate issuance/renewal belongs to `network/nginx-gateway-fabric`: TLS Wildcard Setup
 
 Detailed guide: [TLS Setup](docs/tls-setup.md) (includes the retired Ingress + self-signed path)
 

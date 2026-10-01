@@ -42,7 +42,7 @@ The same change adds an `argocd-https-redirect` HTTPRoute via chart `extraObject
    - `configs.secrets`: comment out `dex.gitlab.*`, add `dex.keycloak.clientSecret`
    - `extraObjects`: one new `argocd-https-redirect` HTTPRoute
 2. [`cicd/argo-cd/helmfile.yaml`](../../argocd/helmfile.yaml) — refresh values comment (mention extraObjects)
-3. [`security/keycloak/docs/argocd-migration-en.md`](./argocd-migration.md) — this stub → procedure
+3. [`security/keycloak/docs/argocd-migration.md`](./argocd-migration.md) — this stub → procedure
 
 > Legacy GitLab `dex.config` and `secrets` are **kept commented** in the same values file (swap to roll back).
 
@@ -147,7 +147,7 @@ The GitLab Application stays alive throughout the brokering phase, so the legacy
 
 ## Follow-up cleanup
 
-[Phase 8 cleanup](../../../docs/keycloak-rollout-2026-04.md):
+Phase 8 cleanup:
 - Refresh `cicd/argo-cd/README.md` SSO section (GitLab-direct → Keycloak)
 - Consider removing the legacy GitLab Application (ArgoCD-direct) — consolidate to a single Keycloak-brokering Application
 
@@ -219,7 +219,7 @@ Five traps tripped in sequence during cutover. Documented so the next migration 
 >   get "clients/<argocd-client-uuid>/evaluate-scopes/generate-example-access-token?userId=<user-uuid>&scope=openid+email+profile" -r example
 > ```
 >
-> Also note that if the group claim stops arriving, `policy.default` is empty, so an **OIDC user ends up with zero permissions**. Break-glass is the local `admin` account (`argocd-initial-admin-secret`) — see the Break-glass section of [gitlab-brokering-en.md](./gitlab-brokering.md).
+> Also note that if the group claim stops arriving, `policy.default` is empty, so an **OIDC user ends up with zero permissions**. Break-glass is the local `admin` account (`argocd-initial-admin-secret`) — see the Break-glass section of [gitlab-brokering.md](./gitlab-brokering.md).
 
 When `g, admin@example.com, role:global-admin` and `g, server, role:server-admin` are both active, you cannot tell which match actually applies. Verification procedure:
 

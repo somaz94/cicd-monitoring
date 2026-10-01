@@ -1,6 +1,6 @@
 # User metrics catalog — dev-pm-retention-dashboard
 
-Definitions of all 12 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects-en.md](dashboards-saved-objects.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
+Definitions of all 12 panels of the Kibana dashboard `DEV — Game User Matric & Retention` (saved-object slug `dev-pm-retention-dashboard`), in one place. The QA counterpart (`qa-pm-retention-dashboard`) shares the same structure so this single catalog applies to both. For visualization workflow see [dashboards-saved-objects.md](dashboards-saved-objects.md); for porting to a new environment (stg / prod) see [pm-retention-dashboard-template.md](pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -178,10 +178,10 @@ Operational meaning: the user distribution of content progress. Reveals which ch
 ## Operational caveats
 
 - **Data-sparsity signal**: cohorts with NU between 1 and 5 show retention as 0% or 100% — do not generalize.
-- **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README-en.md "Data view management policy"](../dashboards/README.md#data-view-management-policy).
+- **`cohort_date` runtime-field dependency**: the row-group key for Daily Cohort Retention. Re-importing the data view wipes runtime fields — see [dashboards/README.md "Data view management policy"](../dashboards/README.md#data-view-management-policy).
 - **DAU vs DAU Trend mismatch**: caused by the KQL filter. If health-check traffic frequency varies over time, the ratio between the two will drift.
-- **Timezone**: Curve / Table cohort-day boundaries are **precomputed** by the transform, so they are independent of the viewer's browser timezone. **They split per Space** — `default` uses `params.tz = Asia/Seoul` (`active_dates`), `cst` uses `Asia/Shanghai` (`active_dates_cst`). A Space's `dateFormat:tz` does not change them ([timezone-toggle-en.md §5](timezone-toggle.md)).
-- **`/users/create` as anchor**: for other services / games with a different signup endpoint, update the NU KPI's `term` filter **and** the transform's `params.path` together — otherwise NU and Retention anchor desynchronize. Full migration recipe in [pm-retention-dashboard-template-en.md](pm-retention-dashboard-template.md).
+- **Timezone**: Curve / Table cohort-day boundaries are **precomputed** by the transform, so they are independent of the viewer's browser timezone. **They split per Space** — `default` uses `params.tz = Asia/Seoul` (`active_dates`), `cst` uses `Asia/Shanghai` (`active_dates_cst`). A Space's `dateFormat:tz` does not change them ([timezone-toggle.md §5](timezone-toggle.md)).
+- **`/users/create` as anchor**: for other services / games with a different signup endpoint, update the NU KPI's `term` filter **and** the transform's `params.path` together — otherwise NU and Retention anchor desynchronize. Full migration recipe in [pm-retention-dashboard-template.md](pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -194,4 +194,4 @@ Operational meaning: the user distribution of content progress. Reveals which ch
 | New panel (e.g. PU, ARPU) | `dev-pm-retention-dashboard.ndjson` lens/visualization + dashboard refs/grid, this catalog table |
 | Timezone **addition** | add an `active_dates_<zone>` / `active_days_count_<zone>` agg pair to the transform (do NOT edit an existing `params.tz` — that breaks the Space reading it) + an additive dest-mapping PUT + a data view / dashboard variant that reads those fields |
 
-This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README-en.md](../dashboards/README.md) + [transforms/README-en.md](../../elasticsearch/transforms/README.md).
+This table is the quick index for dashboard maintenance. The full NDJSON / JSON workflow lives in [dashboards/README.md](../dashboards/README.md) + [transforms/README.md](../../elasticsearch/transforms/README.md).

@@ -1,6 +1,6 @@
 # Kibana Dashboards — Timezone Toggle (Space Split)
 
-Operational guide for presenting the same Kibana dashboards in both KST and CST(UTC+8) views, toggled by a single click on the top-left Space switcher. Bootstrap / apply commands live in the [dashboards/README-en.md](../dashboards/README.md) "Per-Space timezone toggle" section — this document focuses on *mechanics, extensibility, and verification*.
+Operational guide for presenting the same Kibana dashboards in both KST and CST(UTC+8) views, toggled by a single click on the top-left Space switcher. Bootstrap / apply commands live in the [dashboards/README.md](../dashboards/README.md) "Per-Space timezone toggle" section — this document focuses on *mechanics, extensibility, and verification*.
 
 <br/>
 

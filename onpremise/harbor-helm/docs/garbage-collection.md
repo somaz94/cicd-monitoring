@@ -109,6 +109,6 @@ For context, the image side is healthier than it looks — `example-project/game
 
 | Document | Description |
 |---|---|
-| [`scripts/admin/README-en.md`](../scripts/admin/README.md) | Full `harbor-admin.sh` command list |
-| [`scripts/image-cleanup/README-en.md`](../scripts/image-cleanup/README.md) | Manual image cleanup scripts |
-| [`docs/db-backup-en.md`](db-backup.md) | Harbor database backup |
+| [`scripts/admin/README.md`](../scripts/admin/README.md) | Full `harbor-admin.sh` command list |
+| [`scripts/image-cleanup/README.md`](../scripts/image-cleanup/README.md) | Manual image cleanup scripts |
+| [`docs/db-backup.md`](db-backup.md) | Harbor database backup |

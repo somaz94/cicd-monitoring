@@ -2,7 +2,7 @@
 
 Manages the **custom Grafana dashboards** of the on-prem `example-cluster` through GitOps. The dashboard JSON is rendered into labelled ConfigMaps, which the kube-prometheus-stack Grafana sidecar picks up and pushes into Grafana over its API.
 
-The AWS counterpart is [`grafana-dashboards-aws`](../grafana-dashboards-aws/), which proved this design first.
+The AWS counterpart is `grafana-dashboards-aws`, which proved this design first.
 
 <br/>
 
@@ -47,7 +47,7 @@ The dashboard JSON lives directly under `dashboards/`; retired ones move to `das
 
 | Topic | Document |
 |---|---|
-| Grafana dashboard layout and delivery flow | [docs/dashboards-en.md](docs/dashboards.md) |
+| Grafana dashboard layout and delivery flow | [docs/dashboards.md](docs/dashboards.md) |
 
 <br/>
 
@@ -97,7 +97,7 @@ kubectl -n monitoring logs deploy/kube-prometheus-stack-grafana -c grafana-sc-da
 # Grafana API: GET /api/dashboards/uid/<uid> → meta.provisioned
 ```
 
-For the per-dashboard uid list and the delivery flow, see [docs/dashboards-en.md](docs/dashboards.md).
+For the per-dashboard uid list and the delivery flow, see [docs/dashboards.md](docs/dashboards.md).
 
 <br/>
 

@@ -2,7 +2,7 @@
 
 This guide describes how to install and configure GitLab Runner on Kubernetes. Deployment is driven by ArgoCD.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/<release>.yaml`; which marker files are in scope is owned by `CONFIG.ARGOCD_PIN_FILES` in `upgrade.py`. `upgrade.py` bumps them together via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of [docs/ci-upgrade.md](../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The chart-version SSOT is `chart.version` in `argocd/<release>.yaml`; which marker files are in scope is owned by `CONFIG.ARGOCD_PIN_FILES` in `upgrade.py`. `upgrade.py` bumps them together via the `argocd-pin` template (not a helmfile). See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 
@@ -172,7 +172,7 @@ Everything it had fallen behind on was caught up on 2026-08-31: the chart was br
 
 That removes any reason to pass `--exclude old-gitlab-runner`. The noise it avoided came from diffing a legacy values file against a current chart's keys, and all three releases now track the same chart.
 
-**The image tag pin was dropped on 2026-09-01 as well.** All three releases now comment out `tag:` and follow the chart's `appVersion` (the effective tag is owned by `appVersion` in `Chart.yaml`), so the old runner no longer needs raising on its own. Until then the tag was hand-matched to the gitlab-old server version, but once HOP 16 put the server on 18.2.8 **keeping the pin was the wider gap of the two** — the pinned `alpine-v16.11.4` sits two majors behind, while the chart-tracked `alpine-v19.2.0` sits one major ahead. The two land on the same minor once the path reaches 19.2.5. See the "The k8s runner that has to move with the hops" section of [scripts/gitlab/old-upgrade/UPGRADE-PATH-en.md](../../scripts/gitlab/old-upgrade/UPGRADE-PATH.md).
+**The image tag pin was dropped on 2026-09-01 as well.** All three releases now comment out `tag:` and follow the chart's `appVersion` (the effective tag is owned by `appVersion` in `Chart.yaml`), so the old runner no longer needs raising on its own. Until then the tag was hand-matched to the gitlab-old server version, but once HOP 16 put the server on 18.2.8 **keeping the pin was the wider gap of the two** — the pinned `alpine-v16.11.4` sits two majors behind, while the chart-tracked `alpine-v19.2.0` sits one major ahead. The two land on the same minor once the path reaches 19.2.5. See the "The k8s runner that has to move with the hops" section of scripts/gitlab/old-upgrade/UPGRADE-PATH.md.
 
 `--exclude` patterns match as substrings against filenames, and multiple patterns can be supplied comma-separated (e.g., `--exclude test,legacy`). Matched files are also skipped from the backup directory copy.
 

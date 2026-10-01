@@ -1,6 +1,6 @@
 # Elasticsearch Operations Scripts
 
-This directory holds shell scripts used for irregular Elasticsearch operations. All scripts follow [shell-script-conventions](../../../../docs/shell-script-conventions.md) (`bash -n` + `zsh -n` + `shellcheck` must all pass).
+This directory holds shell scripts used for irregular Elasticsearch operations. All scripts follow shell-script-conventions (`bash -n` + `zsh -n` + `shellcheck` must all pass).
 
 Detailed per-script operations guides live as KO/EN pairs under [`../docs/`](../docs/).
 
@@ -22,7 +22,7 @@ Detailed per-script operations guides live as KO/EN pairs under [`../docs/`](../
 
 | Script | One-line summary | Guide (KO) | Guide (EN) |
 |---|---|---|---|
-| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | ES-side reset of the ExampleProject raw + cohort indices (transform stop → cohort DELETE → cohort explicit-mapping PUT → raw DELETE → fluent-bit DaemonSet rollout restart → transform `_reset` → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). DaemonSet-only after the 2026-05-22 cleanup, cohort mapping PUT added 2026-05-27. | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort-en.md](../docs/reset-example-project-cohort.md) |
+| [`reset-example-project-cohort.sh`](reset-example-project-cohort.sh) | ES-side reset of the ExampleProject raw + cohort indices (transform stop → cohort DELETE → cohort explicit-mapping PUT → raw DELETE → fluent-bit DaemonSet rollout restart → transform `_reset` → transform start). Arbitrary env prefix (`--env qa\|dev\|stg\|...`). DaemonSet-only after the 2026-05-22 cleanup, cohort mapping PUT added 2026-05-27. | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) | [reset-example-project-cohort.md](../docs/reset-example-project-cohort.md) |
 | [`restart-transform.sh`](restart-transform.sh) | Stop + `_reset` + start a single ES transform (`--stop-only` / `--dry-run` / `-y` / `--yes`). `_reset` clears the in-memory checkpoint + stats so the next start replays the full source. Canonical workflow after a dest-index mapping change. | — (script `-h`) | — |
 | [`delete_old_indices.sh`](delete_old_indices.sh) | Delete docs older than the retention window in the named indices, or delete the indices outright; also `total_fields.limit` tuning and a `--status` cluster-wide listing. See `--help`. For the scheduled in-cluster counterpart, see the [`../index-retention/`](../index-retention) CronJob. | — | — |
 | [`kibana_saved_objects_migrate.sh`](kibana_saved_objects_migrate.sh) | Export Kibana saved-objects (dashboard / lens / visualization / index-pattern etc.) from SOURCE and import into TARGET. Modes: `--list` / `--export` / `--import` / `--migrate`. SOURCE password auto-fetched. | — | — |
@@ -82,6 +82,6 @@ make -C ../../../.. shell-lint STRICT=1
 
 ## Related documentation
 
-- [shell-script-conventions](../../../../docs/shell-script-conventions.md) — repo-wide shell-script conventions.
-- [../transforms/README-en.md](../transforms/README.md) — cohort transform definitions and the `apply.sh` / `export.sh` guide.
+- shell-script-conventions — repo-wide shell-script conventions.
+- [../transforms/README.md](../transforms/README.md) — cohort transform definitions and the `apply.sh` / `export.sh` guide.
 - [../docs/](../docs/) — full Elasticsearch component docs (upgrade / rollback / HA verification + the per-script guides for this directory).

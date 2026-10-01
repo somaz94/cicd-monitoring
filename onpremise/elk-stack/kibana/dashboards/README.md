@@ -46,7 +46,7 @@ Four scripts, distinct roles:
 | Cohort index | `<env>-example-project-game-user-cohort` |
 | Repo file | `<env>-pm-retention-dashboard.ndjson` |
 
-Every dashboard shares the same structure (12 panels = 9 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
+Every dashboard shares the same structure (12 panels = 9 Vega + 3 Lens). Env-specific differences: index names / saved-object id prefix / data view UUID / KPI card color palette. The procedure for adding a new environment lives in [pm-retention-dashboard-template.md](../docs/pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -78,7 +78,7 @@ URLs are derived mechanically from the slug, so they are not enumerated per envi
 | 5 | Daily Cohort Retention (table) | Lens lnsDatatable | cohort |
 | 6 | Chapter Distribution (per user latest) | Vega | cohort |
 
-Per-panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog.md). For prod migration / automation / compatibility checks see [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
+Per-panel definitions in [user-metrics-catalog.md](../docs/user-metrics-catalog.md). For prod migration / automation / compatibility checks see [pm-retention-dashboard-template.md](../docs/pm-retention-dashboard-template.md).
 
 Saved-object ID pattern (per-env prefix):
 - Dashboard: `<env>-pm-retention-dashboard` (slug)
@@ -93,7 +93,7 @@ Saved-object ID pattern (per-env prefix):
 - **Stored**: fluentd normalizes every `@timestamp` to KST (+09:00) ISO8601 → stored internally as UTC epoch in ES.
 - **Displayed**: driven per-Space by the `dateFormat:tz` Advanced Setting.
 - **Bucket boundaries**: The Lens date_histogram / Vega date math follows the display timezone above.
-- **Retention day boundary**: cohort-index D-N is independent of the display timezone — it follows the date strings the transform precomputed: `default` reads `active_dates` (`Asia/Seoul`), `cst` reads `active_dates_cst` (`Asia/Shanghai`). A Space's `dateFormat:tz` does not change it ([docs/timezone-toggle-en.md §5](../docs/timezone-toggle.md)).
+- **Retention day boundary**: cohort-index D-N is independent of the display timezone — it follows the date strings the transform precomputed: `default` reads `active_dates` (`Asia/Seoul`), `cst` reads `active_dates_cst` (`Asia/Shanghai`). A Space's `dateFormat:tz` does not change it ([docs/timezone-toggle.md §5](../docs/timezone-toggle.md)).
 
 <br/>
 
@@ -131,7 +131,7 @@ Users toggle via the Kibana Space switcher (top-left) — same NDJSON, different
 
 > ⚠️ Edit flow: always edit dashboards in the default Space → `./export.sh` to capture → re-run `./make-cst-variant.sh` → redeploy with the commands above. Editing directly in the cst Space is overwritten on the next generation.
 
-> ⚠️ **Do not push the default NDJSON into cst with `--id-prefix-for cst:cst-`.** That was the old flow, and it leaves the cst dashboards reading the KST cohort field (`active_dates`) — CST on the clock, **KST on the day boundary**. Background: [docs/timezone-toggle-en.md §5](../docs/timezone-toggle.md).
+> ⚠️ **Do not push the default NDJSON into cst with `--id-prefix-for cst:cst-`.** That was the old flow, and it leaves the cst dashboards reading the KST cohort field (`active_dates`) — CST on the clock, **KST on the day boundary**. Background: [docs/timezone-toggle.md §5](../docs/timezone-toggle.md).
 
 **Extensibility — adding more zones (JST / PST / UTC, etc.)**: `setup-spaces.sh --space NAME:TZ` and `apply.sh --space-id ID` both accept repeatable arguments, so N additional zones follow the same pattern. Example:
 
@@ -147,13 +147,13 @@ Users toggle via the Kibana Space switcher (top-left) — same NDJSON, different
 
 > ⚠️ The above only covers the **raw time-series panels** (NU/DAU/WAU/MAU). Getting the new zone's **cohort / retention** right needs the same two extra steps cst took: ① add an `active_dates_jst` / `active_days_count_jst` agg pair to the transform pivot and recreate it, ② derive a data view + dashboard variant that reads those fields (reuse `make-cst-variant.sh` with the zone / field / prefix swapped). Skip them and the jst Space shows a JST clock on a KST day boundary.
 
-For a fuller list of IANA timezones (Asia/Tokyo / America/Los_Angeles / America/New_York / Europe/Berlin / UTC etc.), operational mechanics, live URLs, and verification steps, see → [docs/timezone-toggle-en.md](../docs/timezone-toggle.md).
+For a fuller list of IANA timezones (Asia/Tokyo / America/Los_Angeles / America/New_York / Europe/Berlin / UTC etc.), operational mechanics, live URLs, and verification steps, see → [docs/timezone-toggle.md](../docs/timezone-toggle.md).
 
 <br/>
 
 ## Usage
 
-> 🔴 **`--context` is REQUIRED on `apply.sh` / `export.sh` / `setup-spaces.sh` — there is no default and no fallback to the current kube-context.** This directory and its AWS twin [`../../kibana-aws/dashboards/`](../../kibana-aws/dashboards/) drive *different clusters* with *identical resource names*: both expose `logging/elasticsearch-es-default-0` and a Kibana behind `kibana-kb-http`. A bare `kubectl` therefore succeeds against whichever context happens to be current, and because the two clusters **share cohort data-view UUIDs** (`410571c2`, `fb7b645e`, `cacd5df9`), a wrong-context run does not merely add objects — it **overwrites the other cluster's data views**, breaking its dashboards. This happened on 2026-08-03: an AWS-targeted apply landed here and clobbered the dev/qa example-project cohort views. The scripts now refuse to run without `--context`, and print the resolved cluster (not just the context name) in their startup banner — read that line before trusting the run.
+> 🔴 **`--context` is REQUIRED on `apply.sh` / `export.sh` / `setup-spaces.sh` — there is no default and no fallback to the current kube-context.** This directory and its AWS twin `../../kibana-aws/dashboards/` drive *different clusters* with *identical resource names*: both expose `logging/elasticsearch-es-default-0` and a Kibana behind `kibana-kb-http`. A bare `kubectl` therefore succeeds against whichever context happens to be current, and because the two clusters **share cohort data-view UUIDs** (`410571c2`, `fb7b645e`, `cacd5df9`), a wrong-context run does not merely add objects — it **overwrites the other cluster's data views**, breaking its dashboards. This happened on 2026-08-03: an AWS-targeted apply landed here and clobbered the dev/qa example-project cohort views. The scripts now refuse to run without `--context`, and print the resolved cluster (not just the context name) in their startup banner — read that line before trusting the run.
 
 <br/>
 
@@ -303,12 +303,12 @@ Use `./apply.sh --include-data-view` only when intentionally resetting the data 
 
 To carry the dashboard over to a new environment (e.g. stg / prod):
 
-1. **Pre-check** — confirm the raw index has the same schema (`data.userId`, `data.requestPath` + `.keyword`, `data.statusCode`). The full compatibility checklist lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md#compatibility-checklist).
+1. **Pre-check** — confirm the raw index has the same schema (`data.userId`, `data.requestPath` + `.keyword`, `data.statusCode`). The full compatibility checklist lives in [pm-retention-dashboard-template.md](../docs/pm-retention-dashboard-template.md#compatibility-checklist).
 2. **Apply the transform** — clone `elasticsearch/transforms/dev-example-project-game-user-cohort.json` with the env prefix and run `apply.sh --file`. (QA already done — see `qa-example-project-game-user-cohort.json`.)
 3. **Create the data views** — bootstrap raw + cohort data views via the Kibana API (the cohort view must include the `cohort_date` runtime field).
 4. **Substitute + apply the NDJSON** — search-and-replace the index names / saved-object ids / data view UUIDs in `dev-pm-retention-dashboard.ndjson` to the new env prefix, then run `apply.sh --file`. The QA case (already validated) lives in `qa-pm-retention-dashboard.ndjson`.
 
-The end-to-end guide (with the qa-example-project-game validated procedure) lives in [pm-retention-dashboard-template-en.md](../docs/pm-retention-dashboard-template.md).
+The end-to-end guide (with the qa-example-project-game validated procedure) lives in [pm-retention-dashboard-template.md](../docs/pm-retention-dashboard-template.md).
 
 <br/>
 
@@ -318,4 +318,4 @@ The end-to-end guide (with the qa-example-project-game validated procedure) live
 - **User LTV / billing metrics**: once payment events are standardized in the raw index, add mappings + a separate cohort or Lens.
 - **State-driven build script**: today, new-environment rollout is NDJSON substitution. The [build-pm-retention.py](../docs/pm-retention-dashboard-template.md#automation-strategy) pattern documented in the template guide codifies it.
 
-Full panel definitions in [user-metrics-catalog-en.md](../docs/user-metrics-catalog.md); workflow details in [dashboards-saved-objects-en.md](../docs/dashboards-saved-objects.md).
+Full panel definitions in [user-metrics-catalog.md](../docs/user-metrics-catalog.md); workflow details in [dashboards-saved-objects.md](../docs/dashboards-saved-objects.md).

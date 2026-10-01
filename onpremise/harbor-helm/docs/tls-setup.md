@@ -14,7 +14,7 @@ Harbor only attaches to that Gateway through an HTTPRoute — **this component o
 - `expose.tls.secret.secretName` is dead config in route mode; it is kept only for values schema compatibility
 - The self-signed `harbor-tls` Secret was removed on 2026-04-17 as unused (consolidated into `wildcard-example-tls`)
 - The HTTP→HTTPS redirect HTTPRoute and the ClientSettingsPolicy, which the chart does not generate, stay as raw manifests in [`manifests/httproutes.yaml`](../manifests/httproutes.yaml)
-- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see [TLS Wildcard Setup](../../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md)
+- Certificate issuance/renewal belongs to `network/nginx-gateway-fabric` — see TLS Wildcard Setup
 
 The wildcard certificate is self-signed too, so the client trust configuration in §6 still applies as-is.
 The `harbor-tls` procedures in §1, §2 and §5, by contrast, matter **only when rolling back to the Ingress path.**
@@ -132,7 +132,7 @@ kubectl describe httproute harbor-route -n harbor | grep -A5 "Parents:"
 
 ## 5. Renewal (before expiration) — rollback path only
 
-The certificate on the current request path is `wildcard-example-tls`; renew it with the [TLS Wildcard Setup](../../../network/nginx-gateway-fabric/docs/tls-wildcard-setup.md) procedure.
+The certificate on the current request path is `wildcard-example-tls`; renew it with the TLS Wildcard Setup procedure.
 The steps below renew `harbor-tls` and apply only after rolling back to the Ingress path.
 
 ```bash
@@ -164,7 +164,7 @@ kubectl rollout restart -n harbor deploy/harbor-core deploy/harbor-portal
 
 ### Kubespray (recommended)
 
-Already reflected in [`kubespray/inventory-example-cluster/group_vars/all/containerd.yml`](../../../bootstrap/kubespray/inventory-example-cluster/group_vars/all/containerd.yml):
+Already reflected in `kubespray/inventory-example-cluster/group_vars/all/containerd.yml`:
 
 ```yaml
 containerd_registries_mirrors:
@@ -225,12 +225,12 @@ Kaniko can be handled with `--skip-tls-verify` + `--skip-tls-verify-pull`. The c
 
 If you have a public DNS provider with API-based validation (Cloudflare, Route53, etc.), you can automate with cert-manager + Let's Encrypt. Wix DNS does not support API validation, so the current self-signed approach is the practical choice here.
 
-See the "cert-manager + Let's Encrypt" section of [`security/vaultwarden/docs/tls-setup-en.md`](../../vaultwarden/docs/tls-setup.md).
+See the "cert-manager + Let's Encrypt" section of [`security/vaultwarden/docs/tls-setup.md`](../../vaultwarden/docs/tls-setup.md).
 
 <br/>
 
 ## References
 
 - Upstream Harbor `values.yaml` `expose.tls` schema: top comments of [`../values.yaml`](../values.yaml)
-- NGF migration record: [`docs/ngf-migration/status.md`](../../../docs/ngf-migration/status.md)
+- NGF migration record: `docs/ngf-migration/status.md`
 - Harbor TLS docs: https://goharbor.io/docs/latest/install-config/configure-https/

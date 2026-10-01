@@ -2,7 +2,7 @@
 
 Kibana and Elasticsearch share the same ECK operator/webhook and are managed by the same `external-oci-cr-version` canonical template. The upgrade/rollback mechanisms are essentially identical, so **the full guide lives on the Elasticsearch side**. The OCI chart pin bump procedure is also documented there.
 
-**→ See [../../elasticsearch/docs/upgrade-rollback-en.md](../../elasticsearch/docs/upgrade-rollback.md)**
+**→ See [../../elasticsearch/docs/upgrade-rollback.md](../../elasticsearch/docs/upgrade-rollback.md)**
 
 <br/>
 
@@ -43,7 +43,7 @@ No specific order is required, but **`./upgrade.py --rollback` alone does not ro
 
 ## Related
 
-- **Main guide**: [Elasticsearch/docs/upgrade-rollback-en.md](../../elasticsearch/docs/upgrade-rollback.md)
+- **Main guide**: [Elasticsearch/docs/upgrade-rollback.md](../../elasticsearch/docs/upgrade-rollback.md)
 - [Kibana README](../README.md)
 - [Elasticsearch README](../../elasticsearch/README.md)
 - [upgrade-sync system guide](../../../../scripts/upgrade-sync/README.md)

@@ -23,7 +23,7 @@ Prunes old images in a Harbor project based on a keep-count, and reports per-pro
 ./image-cleanup/harbor-image-cleanup-en.sh --stats example-project
 ```
 
-Details: [`image-cleanup/README-en.md`](./image-cleanup/README.md)
+Details: [`image-cleanup/README.md`](./image-cleanup/README.md)
 
 <br/>
 
@@ -38,7 +38,7 @@ Manages users, project members, and OIDC group mappings via the Harbor v2.0 REST
 ./admin/harbor-admin.sh config
 ```
 
-Details: [`admin/README-en.md`](./admin/README.md)
+Details: [`admin/README.md`](./admin/README.md)
 
 <br/>
 
@@ -47,13 +47,13 @@ Details: [`admin/README-en.md`](./admin/README.md)
 - `<name>.sh` / `<name>-en.sh` — two parallel variants, kept only under `image-cleanup/`
 - `admin/harbor-admin.sh` is a single script with no variant
 
-The two variants are separated by lineage, not by language — neither emits Korean. They differ in which module set the entry script sources and in message wording. See [`image-cleanup/README-en.md`](./image-cleanup/README.md).
+The two variants are separated by lineage, not by language — neither emits Korean. They differ in which module set the entry script sources and in message wording. See [`image-cleanup/README.md`](./image-cleanup/README.md).
 
 <br/>
 
 ## Related
 
 - Harbor Helm chart: [`cicd/harbor-helm/`](../)
-- TLS (self-signed) setup: [`cicd/harbor-helm/docs/tls-setup-en.md`](../docs/tls-setup.md)
-- Keycloak OIDC SSO setup (current standard): [`cicd/harbor-helm/docs/oidc-setup-keycloak-en.md`](../docs/oidc-setup-keycloak.md)
-- GitLab OIDC direct (pre-Phase 4, rollback reference): [`cicd/harbor-helm/docs/legacy/oidc-setup-gitlab-en.md`](../docs/legacy/oidc-setup-gitlab.md)
+- TLS (self-signed) setup: [`cicd/harbor-helm/docs/tls-setup.md`](../docs/tls-setup.md)
+- Keycloak OIDC SSO setup (current standard): [`cicd/harbor-helm/docs/oidc-setup-keycloak.md`](../docs/oidc-setup-keycloak.md)
+- GitLab OIDC direct (pre-Phase 4, rollback reference): [`cicd/harbor-helm/docs/legacy/oidc-setup-gitlab.md`](../docs/legacy/oidc-setup-gitlab.md)

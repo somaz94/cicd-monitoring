@@ -268,7 +268,7 @@ kubectl -n argocd get secret -l owner=helm,name=argocd --no-headers | wc -l
 
 ## Related documents
 
-- Playbook for minimizing redelivery when changing notification rules (the main workflow that uses `helmfile diff` / `apply`): [notification-rule-change-playbook-en.md](notification-rule-change-playbook.md)
+- Playbook for minimizing redelivery when changing notification rules (the main workflow that uses `helmfile diff` / `apply`): [notification-rule-change-playbook.md](notification-rule-change-playbook.md)
 - Helm `--history-max` upstream docs: <https://helm.sh/docs/helm/helm_upgrade/>
 </content>
 </invoke>

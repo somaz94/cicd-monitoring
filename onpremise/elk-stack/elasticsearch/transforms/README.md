@@ -2,7 +2,7 @@
 
 Stores definitions of **continuous pivot transforms** that materialize analytics-friendly indices on top of raw log indices like `dev-example-project-game`. Once registered, ES incrementally updates these indices automatically.
 
-Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices. The dashboard list lives in that directory's `manifest.txt`. For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects-en.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects.md#two-flavours-of-applysh-dont-confuse-them).
+Sister component: [kibana/dashboards/](../../kibana/dashboards/) — visualizes these indices. The dashboard list lives in that directory's `manifest.txt`. For the division of responsibilities between the two `apply.sh` scripts see [kibana/docs/dashboards-saved-objects.md → "Two flavours of apply.sh"](../../kibana/docs/dashboards-saved-objects.md#two-flavours-of-applysh-dont-confuse-them).
 
 <br/>
 
@@ -30,9 +30,9 @@ Each `<env>-example-project-game` index is pivoted on `data.userId` into the coh
 | `active_dates_cst` | List of active dates (`YYYY-MM-DD` strings, CST) | The Asia/Shanghai twin of `active_dates`. **Also MUST be `keyword`** — same reason |
 | `max_cleared_chapter` | Highest chapter cleared | `max(lastClearedChapter)` — runtime field that parses `lastClearedChapter` integer from the `/adventures/clear` responseBody |
 
-> **Why bake two zones**: a cohort day boundary is **frozen the moment it is written to the index as a date string** — it cannot be re-bucketed at query time. A Kibana Space's `dateFormat:tz` only re-renders timestamps. So serving both a KST and a CST view requires the **transform to precompute both zones**. The `default` Space reads `active_dates`; the `cst` Space reads `active_dates_cst` ([kibana/docs/timezone-toggle-en.md §5](../../kibana/docs/timezone-toggle.md)).
+> **Why bake two zones**: a cohort day boundary is **frozen the moment it is written to the index as a date string** — it cannot be re-bucketed at query time. A Kibana Space's `dateFormat:tz` only re-renders timestamps. So serving both a KST and a CST view requires the **transform to precompute both zones**. The `default` Space reads `active_dates`; the `cst` Space reads `active_dates_cst` ([kibana/docs/timezone-toggle.md §5](../../kibana/docs/timezone-toggle.md)).
 
-> Retention itself (D-1 … D-30 returning flags) is **NOT computed by the transform**. The transform only freezes the two atomic facts above (`active_dates` + `first_seen`); the **Kibana data view runtime fields `d1_live..d30_live`** compute retention at visualization time by checking whether `first_seen + N day` appears in `active_dates`. See [kibana/docs/pm-retention-dashboard-template-en.md](../../kibana/docs/pm-retention-dashboard-template.md) for the full split.
+> Retention itself (D-1 … D-30 returning flags) is **NOT computed by the transform**. The transform only freezes the two atomic facts above (`active_dates` + `first_seen`); the **Kibana data view runtime fields `d1_live..d30_live`** compute retention at visualization time by checking whether `first_seen + N day` appears in `active_dates`. See [kibana/docs/pm-retention-dashboard-template.md](../../kibana/docs/pm-retention-dashboard-template.md) for the full split.
 
 Runtime configuration:
 - `frequency` — how often the sync check runs; the `frequency` key in each `<id>.json` is authoritative.
@@ -42,7 +42,7 @@ Runtime configuration:
 Key rules of the signup anchor:
 - **Anchor**: `first_seen` is not `min(@timestamp)` but the **first occurrence per user of `params.path` (`/users/create`)**.
 - **Null handling**: a user with no signup event ever yields `first_seen = null` → the data view runtime fields `d{N}_live` early-return → ES `avg()` automatically skips them → Retention Curve / Daily Table divisor naturally reduces to "signed-up users only".
-- **Timezone**: one agg pair is baked **per zone** — `active_dates` / `active_days_count` use `params.tz = "Asia/Seoul"`, `active_dates_cst` / `active_days_count_cst` use `"Asia/Shanghai"`. **Do not "switch" a zone by editing an existing `params.tz`** — that silently breaks retention for whichever Space reads it. Adding a zone means **adding** an agg pair plus a data-view variant that reads it. Full procedure in [kibana/docs/timezone-toggle-en.md §5](../../kibana/docs/timezone-toggle.md).
+- **Timezone**: one agg pair is baked **per zone** — `active_dates` / `active_days_count` use `params.tz = "Asia/Seoul"`, `active_dates_cst` / `active_days_count_cst` use `"Asia/Shanghai"`. **Do not "switch" a zone by editing an existing `params.tz`** — that silently breaks retention for whichever Space reads it. Adding a zone means **adding** an agg pair plus a data-view variant that reads it. Full procedure in [kibana/docs/timezone-toggle.md §5](../../kibana/docs/timezone-toggle.md).
 - **Adding a horizon** (e.g. D-60): add a single `d60_live` runtime field on the cohort data view (the transform stays untouched). Also extend the Retention Curve Vega's N range to match.
 
 Load: per-user partial updates are very light.
@@ -241,4 +241,4 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 
 - ES Transform docs: https://www.elastic.co/guide/en/elasticsearch/reference/current/transforms.html
 - scripted_metric aggregation: https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-metrics-scripted-metric-aggregation.html
-- Visualization side of this repo: [dashboards-saved-objects-en.md](../../kibana/docs/dashboards-saved-objects.md)
+- Visualization side of this repo: [dashboards-saved-objects.md](../../kibana/docs/dashboards-saved-objects.md)

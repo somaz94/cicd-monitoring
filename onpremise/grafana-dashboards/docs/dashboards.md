@@ -203,7 +203,7 @@ Grafana → **Dashboards** → **New** → **Import** → enter the ID → Data 
 
 ## Relationship to the AWS stack
 
-The AWS prod guide [`../../grafana-dashboards-aws/docs/dashboards-en.md`](../../grafana-dashboards-aws/docs/dashboards.md)
+The AWS prod guide `../../grafana-dashboards-aws/docs/dashboards.md`
 is the sibling that proved this design first. The two components carry different dashboard sets —
 each holds only what has a real scrape target on its own cluster.
 

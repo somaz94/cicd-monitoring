@@ -318,6 +318,6 @@ The script uses these automatically, but keep them for manual posting:
 
 ## Related documents
 
-- 2026-04-23 ghost alarm incident analysis: [ghost-alarm-incident-2026-04-23-en.md](ghost-alarm-incident-2026-04-23.md)
-- Follow-up inquiry prompt: [ghost-alarm-followup-prompt-en.md](ghost-alarm-followup-prompt.md)
+- 2026-04-23 ghost alarm incident analysis: [ghost-alarm-incident-2026-04-23.md](ghost-alarm-incident-2026-04-23.md)
+- Follow-up inquiry prompt: [ghost-alarm-followup-prompt.md](ghost-alarm-followup-prompt.md)
 - Upstream ArgoCD notifications docs: <https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/>

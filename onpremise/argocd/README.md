@@ -31,13 +31,13 @@ argo-cd/
 
 | Topic | Document |
 |---|---|
-| Resource Tracking — background for the annotation method. Prevents immutable-selector conflict during app-of-apps adoption (zero-downtime prerequisite), greenfield vs adoption distinction, why it stays permanent, apply impact | [docs/argocd-resource-tracking-en.md](docs/argocd-resource-tracking.md) |
-| SSO — Keycloak OIDC migration (Phase 6, 2026-04-29). dex.config replacement / argocd-https-redirect HTTPRoute / 5 pitfalls lessons learned | [security/keycloak/docs/argocd-migration-en.md](../keycloak/docs/argocd-migration.md) |
-| 2026-04-23 ghost-alarm incident analysis, Notification rules (Option A/B) design, Alertmanager role split | [docs/ghost-alarm-incident-2026-04-23-en.md](docs/ghost-alarm-incident-2026-04-23.md) |
-| Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook-en.md](docs/notification-rule-change-playbook.md) |
-| Helm release-history bloat (~700KB × 10 revisions) breaking `helmfile diff` / `apply` with stream error / timeout — root cause, recovery, and `historyMax` prevention | [docs/helm-release-history-bloat-en.md](docs/helm-release-history-bloat.md) |
-| Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt-en.md](docs/ghost-alarm-followup-prompt.md) |
-| Upstream issue submission record (#27516, archived) | [docs/upstream-issue-template-en.md](docs/upstream-issue-template.md) |
+| Resource Tracking — background for the annotation method. Prevents immutable-selector conflict during app-of-apps adoption (zero-downtime prerequisite), greenfield vs adoption distinction, why it stays permanent, apply impact | [docs/argocd-resource-tracking.md](docs/argocd-resource-tracking.md) |
+| SSO — Keycloak OIDC migration (Phase 6, 2026-04-29). dex.config replacement / argocd-https-redirect HTTPRoute / 5 pitfalls lessons learned | [security/keycloak/docs/argocd-migration.md](../keycloak/docs/argocd-migration.md) |
+| 2026-04-23 ghost-alarm incident analysis, Notification rules (Option A/B) design, Alertmanager role split | [docs/ghost-alarm-incident-2026-04-23.md](docs/ghost-alarm-incident-2026-04-23.md) |
+| Playbook for minimizing one-time resends when changing notification rules (also see `scripts/notify-rule-change.sh`) | [docs/notification-rule-change-playbook.md](docs/notification-rule-change-playbook.md) |
+| Helm release-history bloat (~700KB × 10 revisions) breaking `helmfile diff` / `apply` with stream error / timeout — root cause, recovery, and `historyMax` prevention | [docs/helm-release-history-bloat.md](docs/helm-release-history-bloat.md) |
+| Prompt template to re-ask Claude when similar notification issues recur | [docs/ghost-alarm-followup-prompt.md](docs/ghost-alarm-followup-prompt.md) |
+| Upstream issue submission record (#27516, archived) | [docs/upstream-issue-template.md](docs/upstream-issue-template.md) |
 
 Related external files:
 - Alertmanager `argocd-alerts` rule group: [observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml](../kube-prometheus-stack/values/dev-alerts-apps.yaml)
@@ -216,8 +216,8 @@ ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy Git
 
 OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
 
-- **Migration procedure + 5 pitfalls lessons learned**: [`security/keycloak/docs/argocd-migration-en.md`](../keycloak/docs/argocd-migration.md)
-- **Realm/Client/Mapper setup (kcadm-bootstrap.sh automation + 38/38 verify)**: [`security/keycloak/docs/realm-setup-en.md`](../keycloak/docs/realm-setup.md)
+- **Migration procedure + 5 pitfalls lessons learned**: [`security/keycloak/docs/argocd-migration.md`](../keycloak/docs/argocd-migration.md)
+- **Realm/Client/Mapper setup (kcadm-bootstrap.sh automation + 38/38 verify)**: [`security/keycloak/docs/realm-setup.md`](../keycloak/docs/realm-setup.md)
 
 ### 5 Pitfalls (discovered during Phase 6 cutover, all fixed)
 

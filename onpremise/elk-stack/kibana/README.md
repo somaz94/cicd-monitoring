@@ -4,7 +4,7 @@ Manages an ECK-backed Kibana CR. **The chart templates are NOT in this repo** �
 
 Using `elasticsearchRef` to point at the Elasticsearch CR in the same namespace lets ECK auto-inject the connection settings (hosts, credentials, CA certificate).
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/kibana.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/kibana.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 
@@ -101,7 +101,7 @@ argocd app diff infra-kibana   # review the change before it lands
 argocd app sync infra-kibana   # ⚠️ mutates the cluster — only when it has to happen now
 ```
 
-**Safety features / incident response**: See [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback-en.md](../elasticsearch/docs/upgrade-rollback.md))
+**Safety features / incident response**: See [docs/upgrade-rollback.md](docs/upgrade-rollback.md). (Shared guide: [../elasticsearch/docs/upgrade-rollback.md](../elasticsearch/docs/upgrade-rollback.md))
 
 <br/>
 

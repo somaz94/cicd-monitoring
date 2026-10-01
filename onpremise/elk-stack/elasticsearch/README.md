@@ -4,7 +4,7 @@ Manages an ECK-backed Elasticsearch CR. **The chart templates are NOT in this re
 
 The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secret resources.
 
-> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/elasticsearch.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of [docs/ci-upgrade.md](../../../docs/ci-upgrade.md).
+> **ArgoCD-managed**: this component was migrated to the ArgoCD app-of-apps pull model. The OCI chart-version pin moved to `chart.version` in `argocd/elasticsearch.yaml` (bumped by `upgrade.py --upgrade-chart`); the Stack/CR version stays in `values/dev.yaml`. See the "argocd-pin" section of docs/ci-upgrade.md.
 
 <br/>
 
@@ -62,8 +62,8 @@ There is **no local `Chart.yaml` or `templates/`** in this directory. The chart 
 | [Index replicas on a single-node cluster](docs/single-node-index-replicas.md) | Leaving replicas at the default `1` on a single node pins the cluster to `yellow` and blocks ECK rolling upgrades indefinitely. Why `0` is the correct setting there, backfilling existing indices + an index template to prevent recurrence, and managing it through GitOps |
 | [ExampleProject raw + cohort index reset](docs/reset-example-project-cohort.md) | Operations guide for `scripts/reset-example-project-cohort.sh`: transform stop → index DELETE → (optional) fluent-bit / fluentd cleanup → transform start. Arbitrary env prefix (qa/dev/stg/...) |
 | [Log-index retention CronJob](index-retention/README.md) | Guide for the `es-index-retention` CronJob: daily 04:00 KST deletion of over-retention docs from the raw log indices (the cohort `/users/create` anchor is kept via a `must_not` guard). In-cluster automation counterpart of the manual `scripts/delete_old_indices.sh` |
-| [scripts/README-en.md](scripts/README.md) | Operations-script inventory — index cleanup, Kibana saved-objects migration, cohort reset / transform restart. Every script requires `--context CTX` |
-| [transforms/README-en.md](transforms/README.md) | Continuous pivot transform inventory — per-env definitions + dest mappings, `apply.sh` / `export.sh` usage, and the split of duties with kibana/dashboards |
+| [scripts/README.md](scripts/README.md) | Operations-script inventory — index cleanup, Kibana saved-objects migration, cohort reset / transform restart. Every script requires `--context CTX` |
+| [transforms/README.md](transforms/README.md) | Continuous pivot transform inventory — per-env definitions + dest mappings, `apply.sh` / `export.sh` usage, and the split of duties with kibana/dashboards |
 
 > Role / user management (`create-elastic-role.sh` / `create-kibana-readonly-user.sh`) is cluster-agnostic and moved to the shared [`scripts/elasticsearch/`](../../../scripts/elasticsearch); see its [`docs/`](../../../scripts/elasticsearch/docs) for the guides.
 
@@ -134,7 +134,7 @@ argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when
 
 ## Stack Version Upgrades
 
-`upgrade.py` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README-en.md](../../../scripts/upgrade-sync/README.md)).
+`upgrade.py` queries the Elastic artifacts API (`https://artifacts-api.elastic.co/v1/versions`) and bumps the `version` field in `values/dev.yaml`. It is based on the `external-oci-cr-version` canonical template (see [scripts/upgrade-sync/README.md](../../../scripts/upgrade-sync/README.md)).
 
 **Pinned to 9.x major line** (`MAJOR_PIN="9"`). Adjust `MAJOR_PIN` in `upgrade.py` when ready to track 10.x.
 
@@ -164,7 +164,7 @@ argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when
 
 Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `version` together).
 
-**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and the manual ArgoCD steps a downgrade rollback prints. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md).
+**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and the manual ArgoCD steps a downgrade rollback prints. For behavior details and incident playbooks, see [docs/upgrade-rollback.md](docs/upgrade-rollback.md).
 
 <br/>
 

@@ -5,13 +5,13 @@ OIDC settings are not exposed through Helm values; they live in the **Harbor cor
 
 This document covers the **Keycloak (current production IdP)** procedure, automated via [`../scripts/admin/harbor-admin.sh`](../scripts/admin/harbor-admin.sh) `set-oidc`. The legacy GitLab-direct procedure is preserved in [§7 Rollback / Legacy GitLab procedure](#7-rollback--legacy-gitlab-procedure).
 
-> The first-time GitLab → Keycloak migration is documented separately in [`security/keycloak/docs/harbor-migration-en.md`](../../keycloak/docs/harbor-migration.md).
+> The first-time GitLab → Keycloak migration is documented separately in [`security/keycloak/docs/harbor-migration.md`](../../keycloak/docs/harbor-migration.md).
 
 <br/>
 
 ## Prerequisites
 
-- Harbor exposed over HTTPS — see [`tls-setup-en.md`](./tls-setup.md)
+- Harbor exposed over HTTPS — see [`tls-setup.md`](./tls-setup.md)
 - Keycloak instance running — Phase 2 of [`security/keycloak/`](../../keycloak/) complete
 - Realm `example` + client `harbor` + group claim mapper exist — Phase 3 complete
 - Harbor `harbor` client secret in hand ([§2 Retrieve client secret](#2-retrieve-client-secret))
@@ -186,7 +186,7 @@ Each user must log in once via OIDC to create their Harbor record.
 
 If the user is not in the `server` group filter, no Harbor user record is created.
 
-> Existing users who onboarded during the GitLab-direct era will be **created as new users** because the OIDC `sub` changes. See [`security/keycloak/docs/harbor-migration-en.md`](../../keycloak/docs/harbor-migration.md) for permission/membership re-mapping.
+> Existing users who onboarded during the GitLab-direct era will be **created as new users** because the OIDC `sub` changes. See [`security/keycloak/docs/harbor-migration.md`](../../keycloak/docs/harbor-migration.md) for permission/membership re-mapping.
 
 <br/>
 
@@ -208,7 +208,7 @@ Cluster policy: **only `admin@example.com` is promoted**. Other accounts remain 
 
 ## 7. Rollback / Legacy GitLab procedure
 
-> ⚠️ The **full pre-Phase-4 procedure** is preserved verbatim in [`legacy/oidc-setup-gitlab-en.md`](./legacy/oidc-setup-gitlab.md) — GitLab Application creation, redirect URI, user impact, troubleshooting, all there.
+> ⚠️ The **full pre-Phase-4 procedure** is preserved verbatim in [`legacy/oidc-setup-gitlab.md`](./legacy/oidc-setup-gitlab.md) — GitLab Application creation, redirect URI, user impact, troubleshooting, all there.
 
 ### 7.1. Quick rollback (existing GitLab Application still alive)
 
@@ -235,7 +235,7 @@ HARBOR_OIDC_CLIENT_SECRET='<gitlab app secret>' \
 
 Reverting the endpoint to GitLab flips the OIDC `sub` back to GitLab basis:
 - Users onboarded under Keycloak become new users again
-- See [`security/keycloak/docs/harbor-migration-en.md`](../../keycloak/docs/harbor-migration.md) for the same user re-mapping procedure (in either direction)
+- See [`security/keycloak/docs/harbor-migration.md`](../../keycloak/docs/harbor-migration.md) for the same user re-mapping procedure (in either direction)
 
 <br/>
 
@@ -263,6 +263,6 @@ The result is identical to the API, but it is not re-runnable/scriptable, so the
 
 - Harbor OIDC docs: https://goharbor.io/docs/latest/administration/configure-authentication/oidc-auth/
 - Keycloak SSO component: [`security/keycloak/`](../../keycloak/)
-- Phase 4 migration procedure (GitLab → Keycloak): [`security/keycloak/docs/harbor-migration-en.md`](../../keycloak/docs/harbor-migration.md)
+- Phase 4 migration procedure (GitLab → Keycloak): [`security/keycloak/docs/harbor-migration.md`](../../keycloak/docs/harbor-migration.md)
 - ArgoCD SSO (currently GitLab dex; will switch to Keycloak in Phase 6): [`../../argo-cd/values/dev.yaml`](../../argocd/values/dev.yaml)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`
