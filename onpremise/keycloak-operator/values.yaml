@@ -2,7 +2,7 @@
 #
 # Wraps the upstream keycloak-k8s-resources raw YAML — the CRDs (Keycloak,
 # KeycloakRealmImport), ServiceAccount, ClusterRoles / ClusterRoleBindings /
-# Role / RoleBindings, the operator Deployment and its Service. `upgrade.py`
+# Role / RoleBindings, the operator Deployment and its Service. `upgrade.sh`
 # tracks new keycloak-k8s-resources releases and refreshes the templates in
 # place.
 #
@@ -14,10 +14,10 @@
 # controller permissions are bound cluster-wide.
 
 # Pinned upstream version. Mirrors Chart.yaml `appVersion` and is rewritten by
-# upgrade.py on a successful bump. Used to render the operator image tag and
+# upgrade.sh on a successful bump. Used to render the operator image tag and
 # the RELATED_IMAGE_KEYCLOAK env value below when their corresponding tag
 # fields are left empty.
-version: "26.7.1"
+version: "26.7.4"
 
 # ---------------------------------------------------------------------------
 # Resource metadata
@@ -77,8 +77,9 @@ imagePullSecrets: []
 # ---------------------------------------------------------------------------
 replicas: 1
 
-# Container resources. Defaults match the upstream manifest at version 26.7.0
-# (request == limit on memory, generous CPU bursting).
+# Container resources. Defaults mirror the upstream operator manifest
+# (request == limit on memory, generous CPU bursting); re-check them when
+# upgrade.sh bumps appVersion.
 resources:
   requests:
     cpu: 300m

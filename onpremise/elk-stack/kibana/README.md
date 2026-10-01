@@ -88,7 +88,7 @@ Same structure as Elasticsearch — see the [Two versions to manage section in t
 ./upgrade.py --dry-run              # show latest only
 ./upgrade.py                         # bump to latest 9.x GA
 ./upgrade.py --version <X.Y.Z>      # pin to a specific version (the current Stack version lives in the `version` field of values/dev.yaml)
-./upgrade.py --rollback              # restore from backup (auto webhook handling)
+./upgrade.py --rollback              # restore from backup (a downgrade prints the manual ArgoCD steps)
 ```
 
 **Rule**: keep Kibana on the same Stack version as Elasticsearch. Upgrade order: **Elasticsearch first, Kibana second**. (Kibana against a newer ES is OK; the reverse breaks compatibility.)

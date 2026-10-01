@@ -182,9 +182,8 @@ def parse_managed_files(
             fetcher = "version-source"
             fetcher_arg = cfg.version_source
             extra_arg = cfg.major_pin
-            # `local-cr-version` historically uses VERSION_SOURCE_ARG (e.g.
-            # `elastic/eck-operator`) and `external-oci-cr-version` does not.
-            # Both go through the same column in the Row.
+            # Both CR templates carry VERSION_SOURCE_ARG (empty for
+            # elastic-artifacts) and share the same Row column.
             version_source_arg = cfg.version_source_arg
         elif template == "ansible-github-release":
             if cfg.version_file and cfg.version_key:
@@ -246,7 +245,7 @@ def helm_available() -> bool:
 
 def setup_helm_repos(helm_repos: list[str], skip_update: bool) -> None:
     """Best-effort `helm repo add` + `helm repo update`. All failures are
-    silenced (matches bash `|| true`) — the per-row fetcher will surface
+    silenced — the per-row fetcher will surface
     helm errors with a row-level ERROR status instead.
     """
     if not helm_repos:
@@ -275,7 +274,7 @@ def setup_helm_repos(helm_repos: list[str], skip_update: bool) -> None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    """Build the same surface as the bash version: --only repeatable, --no-update,
+    """CLI surface: --only repeatable, --no-update,
     --updates-only. argparse.ArgumentParser auto-generates --help."""
     parser = argparse.ArgumentParser(
         prog=Path(argv[0]).name,

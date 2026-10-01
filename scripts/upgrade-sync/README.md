@@ -261,6 +261,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Use**: Receives a chart from an external helm repo and deploys via helmfile
 - **Language**: Python. Body lives in `scripts/python/upgrade_core/external_standard.py`; the canonical is a thin wrapper.
 - **Flow**: 7 steps (current → fetch latest → download → diff Chart → diff values → check breaking → apply + backup)
+- **`--rollback`**: restores the selected backup's Chart.yaml / values / helmfile. A backed-up helmfile whose name differs from the one the component uses now (a backup from before a `helmfile.yaml` → `helmfile.yaml.gotmpl` switch) is not restored, since helmfile refuses to run with both files present; a WARNING says the chart pin was not rolled back, so set it to the backup's chart version by hand.
 - **Consumers**: the `external-standard` row of `sync.py --status` is the SSOT for the count; the `[external-standard]` rows of `sync.py --check` are the SSOT for the list. Representative consumers: `cicd/argo-cd`, `network/metallb`, `security/vaultwarden`.
 
 #### 2. [external-with-image-tag.py](templates/external-with-image-tag.py) — external + image tag auto-update
@@ -289,6 +290,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Two upstream source modes** (selected via CONFIG block):
   - **helm repo mode** (default): set `HELM_REPO_NAME`/`HELM_REPO_URL`/`HELM_CHART`, leave `CHART_GIT_REPO` empty
   - **git source mode**: set `CHART_GIT_REPO`/`CHART_GIT_PATH` (for charts not published to any helm repo). Latest version is auto-detected from git tags and the chart is fetched via git clone.
+- **`--rollback`**: restores Chart.yaml, values, `templates/` and `EXTRA_DIRS`, plus `values.schema.json` when the component keeps one. For a component ArgoCD delivers only the values files it still has come back (one deleted since the backup stays deleted); a helmfile rollback restores the whole snapshot, since the old helmfile may reference them. For a component ArgoCD delivers (an `argocd*/` marker exists) it never copies a helmfile out of the backup — one still on disk is a retired render reference, and the backed-up copy can carry hooks removed since. The kept file's chart pin, which the upgrade still bumps, is moved back to the restored version instead, and the rollback ends with the ArgoCD next step (commit + push).
 - **Consumers** (per `sync.py --status`):
   - `fluent-bit`, `fluent-bit-aws` (helm repo mode)
 
@@ -337,11 +339,11 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
   - `COMPONENT_LABEL`, `VERSION_SOURCE`, `VERSION_SOURCE_ARG`
   - `VALUES_FILE`, `VERSION_KEY`, `MAJOR_PIN`, `CHANGELOG_URL`
   - `CONTAINER_IMAGE`
-  - `CR_WEBHOOK_NAME`, `CR_OPERATOR_NS`, `CR_OPERATOR_STS`, `CR_OPERATOR_CHART_DIR` (downgrade webhook auto-handling)
+  - `CR_WEBHOOK_NAME`, `CR_OPERATOR_NS`, `CR_OPERATOR_STS`, `CR_OPERATOR_CHART_DIR` (downgrade rollback — webhook auto-handling on the helmfile path, the printed manual steps on the ArgoCD path)
   - `DEPENDENCY_CR_KIND`, `DEPENDENCY_CR_NAME` (e.g., Kibana → Elasticsearch version constraint)
 - **Safety features** (shared with local-cr-version):
   - Image registry verification with fallback auto-search
-  - Downgrade detection + operator webhook auto-handling
+  - Downgrade detection + operator webhook auto-handling (helmfile path only, as are the two items below; a component ArgoCD delivers gets manual steps printed instead)
   - Helm failed-release recovery
   - Operator / CR Ready waits
 - **OCI chart pin automation (`--check-chart` / `--upgrade-chart`)**: on top of Stack version tracking, the script can also track `helmfile.yaml.version` (the publisher's chart release tag). Setting all three CONFIG variables below activates the two sub-commands:
@@ -350,7 +352,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
   - `CHART_NAME`: release tag prefix (e.g. `"elasticsearch-eck"` → version is extracted from tags like `elasticsearch-eck-0.1.2`)
 - **`--check-chart`**: compares current pin with the latest publisher release (read-only). Prints release notes URL and suggests next commands if an update is available.
 - **`--upgrade-chart [--chart-version X.Y.Z] [--dry-run]`**: `helm pull`s both the current and target charts into a scratch directory, runs `helm template` on each with the active values file, and shows a unified diff of the rendered manifests. On confirmation, backs up `helmfile.yaml` to `backup/<TIMESTAMP>-chart/` and bumps the pin. Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched.
-- **Chart vs Stack backups**: Stack upgrades write `backup/<TIMESTAMP>/<values-file>`; chart upgrades write `backup/<TIMESTAMP>-chart/helmfile.yaml`. `--rollback` auto-detects the backup type and restores only the relevant file. Chart-pin rollback skips the operator webhook handling path since no live CR version changes.
+- **Chart vs Stack backups**: Stack upgrades write `backup/<TIMESTAMP>/<values-file>`; chart upgrades write `backup/<TIMESTAMP>-chart/helmfile.yaml`. `--rollback` auto-detects the backup type and restores only the relevant file. Chart-pin rollback skips the operator webhook handling path since no live CR version changes. A component ArgoCD delivers (an `argocd*/` marker exists) writes no chart backup — git is the record — so a chart backup there predates the move: `--rollback` refuses it and restores nothing rather than writing the retired helmfile back. `--list-backups` marks such backups `pre-ArgoCD, not restorable`. Its stack rollback ends with the ArgoCD next step. On a downgrade (checked against the live CR when `KUBE_CONTEXT` is set, else the working-tree values file) it warns and prints manual steps, since this path has no webhook auto-handling. The steps start with pushing `autoSync: false` in that cluster's operator marker on its own: the ApplicationSet reverts a hand-patched Application, so only the marker can pause it, and self-heal would otherwise undo the operator scale-down and recreate the webhook. The warning also notes that the Elastic Stack does not downgrade data a newer version has written, so a snapshot restore may be the real rollback.
 - **Consumers** (per `sync.py --status`): `observability/logging/elasticsearch` + `elasticsearch-aws` (elasticsearch-eck OCI chart consumer), `observability/logging/kibana` + `kibana-aws` (kibana-eck OCI chart consumer)
 
 #### 6. [external-oci.py](templates/external-oci.py) — external OCI chart + GitHub Releases tracking
@@ -376,7 +378,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Differences vs other templates**:
   - No Helm concepts (`Chart.yaml`, `helmfile.yaml`, `values/`)
   - Backup target: just `$VERSION_FILE`
-  - Does not apply upstream — prints `ansible-playbook upgrade.yml` as the next-step hint (same pattern as Helm templates pointing at `helmfile apply`)
+  - Does not apply upstream — prints `ansible-playbook upgrade.yml` as the next-step hint (same pattern as the Helm templates' next-step hint: `helmfile apply`, or commit + push for an ArgoCD-delivered component)
 - **Consumers**: `observability/monitoring/node-exporter` (count/list per `sync.py --status`)
 
 #### 8. [argocd-pin.py](templates/argocd-pin.py) — component migrated to the ArgoCD app-of-apps (version-pin write target redirected)
@@ -385,18 +387,20 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **How it works**: A thin dispatcher. It reuses the fetch / diff / breaking-change logic of `external_standard` (helm repo charts) or `external_oci_with_mirror` (OCI charts + Harbor image mirror) as-is, and swaps **only the version-pin write target** through the `pin_write_hook` extension point — writing `chart.version` into the ArgoCD metadata file instead of a helmfile.
 - **Specific variables** (**in addition to** the chosen base template's keys):
   - `BASE`: `"standard"` (helm repo — wraps external-standard) or `"oci"` (OCI + Harbor mirror — wraps external-oci-with-mirror)
-  - `ARGOCD_PIN_FILES`: list of ArgoCD metadata files to bump, each path relative to the component directory (where `upgrade.py` lives), e.g. `["argocd/build-image.yaml", "argocd/deploy-image.yaml"]`. Lists **only the tracked releases**; deliberately pinned releases are omitted so they are never auto-bumped (e.g. `argocd/old-build-deploy-image.yaml` in `cicd/gitlab-runner`).
+  - `ARGOCD_PIN_FILES`: list of ArgoCD metadata files to bump, each path relative to the component directory (where `upgrade.py` lives), e.g. `["argocd/build-image.yaml", "argocd/deploy-image.yaml"]`. Lists every release bumped together; a release held at a hand-picked version is left out so it is never auto-bumped.
   - The base template's keys are still required: `BASE="standard"` → `HELM_REPO_NAME` / `HELM_REPO_URL` / `HELM_CHART` / `CHANGELOG_URL` / `CHART_TYPE`; `BASE="oci"` → `GITHUB_REPO` / `GITHUB_TAG_PREFIX` / `HELM_CHART` (+ optional `do_mirror` / `print_values_summary`).
 - **The local `Chart.yaml` is an optional derived mirror, not the SSOT**:
   - Components that ship a mirror (22) have it refreshed by the base flow.
   - **Pin-only** components that ship none (`security/cert-manager-aws`, `observability/tracing/tempo-aws`, `observability/tracing/opentelemetry-operator-aws` — 3) keep none going forward: the `skip_missing_chart_mirror` flag suppresses mirror creation.
   - For pin-only components, Step 1 resolves the current version through `current_version_hook`, which reads the ArgoCD marker file directly — so it agrees with `check-versions.py`, which reads the same file. (Introduced in commit `18a09bd`; before that the current version came back empty, silently disabling the values diff and the breaking-change scan.)
+- **`--rollback`**: replaced through `rollback_hook`. It restores the backup's Chart.yaml / values (only the values files the component still has, since ArgoCD renders from git, plus the `values.schema.json` mirror when it keeps one) and then sets `chart.version` in `ARGOCD_PIN_FILES` back as well. The target version comes from `argocd-pin-version`, which an apply writes into its backup when it actually moved the pin (the pre-upgrade version); older backups without it fall back to the backed-up Chart.yaml mirror. A listed pin file that does not exist yet (a marker parked under `_pending/`) is skipped, as the apply skips it. If the version is unknown (pin-only components, helmfile-era backups) or no listed pin file exists, it restores nothing and exits 1. It never copies a helmfile out of the backup, since an old copy can bring back hooks removed since. A new-cluster bootstrap helmfile still on disk only has its literal chart pin moved to the restored version, which its header asks to keep equal to `chart.version`, and a pin already out of step is reported rather than changed. With `BASE="oci"`, a backup whose values files the mirror step had rewritten brings them back with the new image tag, so the image is not rolled back, and a WARNING says so (see #9 below). `--list-backups` shows the pin each backup would restore (`list_backups_hook`). (Before 2026-09-30 it printed "Rollback complete!" without touching the pin.)
 - **Consumers**: the most consumers of any canonical. For the exact count see `sync.py --status`; for the list see the `[argocd-pin]` rows of `sync.py --check`.
 
 #### 9. [external-oci-with-mirror.py](templates/external-oci-with-mirror.py) — external OCI chart + Harbor image mirror (library base)
 
 - **Use**: OCI charts whose upstream images must be mirrored to a private registry (Harbor) **before** the chart upgrade is applied. An 8-step flow that thinly extends `external-oci`.
 - **Differences (vs external-oci)**: `pre_apply_hook` runs as `[Step 7/8]` and drives the mirror stage; a non-zero return aborts the upgrade with no files modified (SKIPPED in dry-run). `values_summary_hook` surfaces per-values-file `image.tag` overrides at the tail of Step 1.
+- **Mirror step vs backup order**: Step 7's `do_mirror` rewrites the image tag in values first and the backup is taken at Step 8, so the backup already holds the new tag and `--rollback` does not roll the image back. This is deliberate (decided 2026-09-30): a database image rarely downgrades in place. Only when the mirror step actually changed a values file does the backup get a `mirror-rewrote-values` file naming it, which makes `--rollback` print a WARNING; the previous tag is in `git log -p -- values/`. A `do_mirror` that writes no values (the BYOI `tools/unity-mcp-server`) leaves no marker.
 - **Specific variables**: `do_mirror` (per-chart mirror function — calls `crane copy`), `print_values_summary` (optional)
 - **0 charts — this is not a dead template.** No `upgrade.py` declares this canonical in its `# upgrade-template:` header, but it is the **library base wrapped by `argocd-pin` with `BASE="oci"`**. Deleting it breaks those argocd-pin consumers.
 
@@ -626,9 +630,8 @@ cd observability/monitoring/kube-prometheus-stack
 # 3. Apply when satisfied
 ./upgrade.py
 
-# 4. Roll out via helmfile
-helmfile diff
-helmfile apply
+# 4. Roll out. kube-prometheus-stack is ArgoCD-delivered, so the push is the deploy:
+#    review `git diff`, commit, push. A helmfile component runs `helmfile diff`, then `helmfile apply`.
 ```
 
 <br/>

@@ -2,9 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Harbor Image Management Module
-# Manages image-related functions
-
 get_image_tags() {
     local repo=$1
     local page_size=100

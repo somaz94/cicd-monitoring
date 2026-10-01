@@ -250,7 +250,7 @@ cd observability/monitoring/kube-prometheus-stack
 
 See `./scripts/sync-etcd-client-cert.sh --help` for the full option list.
 
-> Prerequisite: the host running the script must be able to `ssh + sudo cat` against the target node (use the same account as kubespray's `ansible_user`). After refreshing the secret, run `kubectl -n monitoring rollout restart statefulset/prometheus-kube-prometheus-stack-prometheus` or wait for the next ArgoCD sync to remount the cert.
+> Prerequisite: the host running the script must be able to `ssh + sudo cat` against the target node (use the same account as kubespray's `ansible_user`). The etcd ServiceMonitor references this secret through `tlsConfig`, so prometheus-operator propagates a refreshed cert to Prometheus. If it does not pick it up, restart the pod with `kubectl -n monitoring rollout restart statefulset/prometheus-kube-prometheus-stack-prometheus`.
 
 <br/>
 

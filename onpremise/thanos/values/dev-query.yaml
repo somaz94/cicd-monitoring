@@ -33,7 +33,7 @@ query:
 
   ingress:
     enabled: true
-    hostname: thanos-query.example.com  # TODO: Set your domain
+    hostname: thanos-query.example.com  # TODO(2026-04-07): Set your domain
     ingressClassName: nginx
 
   # Autoscaling (enable for high query volume)

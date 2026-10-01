@@ -18,8 +18,6 @@ source "${SCRIPT_DIR}/../../../../scripts/lib/prompts.sh"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/es-helpers.sh"
 
-# Global Variables
-
 # Elasticsearch connection settings (env-overridable; localhost defaults).
 # Default targets localhost:9200 so the script works over a port-forward:
 #   kubectl -n logging port-forward svc/elasticsearch-es-http 9200:9200
@@ -35,24 +33,17 @@ ELASTIC_USER="${ELASTIC_USER:-elastic}"
 ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-}"
 ELASTIC_HOST="${ELASTIC_HOST:-https://localhost:9200}"
 
-# Index names to clean (array)
 INDEX_NAMES=()
 
-# Default indices to clean if none specified
 # Example: DEFAULT_INDICES=("logstash-*" "filebeat-*" "metricbeat-*")
 # Leave empty to require explicit index specification
 DEFAULT_INDICES=()
 
-# Retention period settings
-# Minimum number of days to keep data
 MIN_RETENTION_DAYS=7
-# Default retention period in days
 RETENTION_DAYS=90
 
-# Force merge flag
 FORCE_MERGE=false
 
-# Delete index flag
 DELETE_INDEX=false
 
 # Check index settings / Change mode flag (active only when each option is set)
@@ -64,10 +55,8 @@ UPDATE_LIMIT=""
 # (--list / --status / --check-settings) run as usual.
 DRY_RUN=0
 
-# Date format
 TODAY=$(date +%Y.%m.%d)
 
-# Help function
 show_help() {
   cat << EOF
 Usage: $(basename "$0") [OPTIONS] [INDEX_NAMES...]
@@ -181,7 +170,6 @@ if [ "$_want_help" -eq 0 ]; then
   fi
 fi
 
-# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
@@ -264,11 +252,9 @@ if [ "$CHECK_SETTINGS" = true ]; then
         echo "▶ Index: $INDEX"
         echo "------------------------------------------"
 
-        # Fetch all settings with flat_settings
         SETTINGS=$(es_curl "$ELASTIC_USER" "$ELASTIC_PASSWORD" \
             "$ELASTIC_HOST/$INDEX/_settings?flat_settings=true&pretty")
 
-        # Check if index exists
         if echo "$SETTINGS" | grep -q '"error"'; then
             echo "✗ Index not found"
             echo "---"
@@ -297,7 +283,6 @@ if [ "$CHECK_SETTINGS" = true ]; then
             echo "  created_at         : $CREATED"
         fi
 
-        # Count mapped fields
         FIELD_COUNT=$(es_curl "$ELASTIC_USER" "$ELASTIC_PASSWORD" \
             "$ELASTIC_HOST/$INDEX/_mapping?pretty" | grep '"type"' | wc -l | tr -d ' ' || true)
         echo "  mapped fields      : ~${FIELD_COUNT}"
@@ -310,7 +295,6 @@ fi
 
 # Index settings update mode
 if [ -n "$UPDATE_LIMIT" ]; then
-    # Validate numeric value
     if ! [[ "$UPDATE_LIMIT" =~ ^[0-9]+$ ]]; then
         echo "Error: total_fields.limit must be a positive integer" >&2
         exit 1
@@ -380,14 +364,12 @@ fi
 
 # Index deletion mode
 if [ "$DELETE_INDEX" = true ]; then
-    # Check if indices are specified
     if [ ${#INDEX_NAMES[@]} -eq 0 ] || [ -z "${INDEX_NAMES[0]}" ]; then
         echo "Error: No indices specified for deletion." >&2
         echo "Try '$(basename $0) --help' for more information." >&2
         exit 1
     fi
 
-    # Display indices to be deleted
     echo "=========================================="
     echo "▲  INDEX DELETION OPERATION"
     echo "=========================================="
@@ -410,11 +392,9 @@ if [ "$DELETE_INDEX" = true ]; then
     echo "Starting index deletion..."
     echo ""
 
-    # Deletion counters
     SUCCESS_COUNT=0
     FAIL_COUNT=0
 
-    # Loop through and delete specified indices
     for INDEX in "${INDEX_NAMES[@]}"; do
         echo "Deleting index: $INDEX"
 
@@ -428,7 +408,6 @@ if [ "$DELETE_INDEX" = true ]; then
             -X DELETE "$ELASTIC_HOST/$INDEX" \
             -H "Content-Type: application/json")
 
-        # Check if deletion was successful
         if echo "$RESPONSE" | grep -q '"acknowledged":true'; then
             echo "✓ Successfully deleted index: $INDEX"
             SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
@@ -452,7 +431,7 @@ if [ "$DELETE_INDEX" = true ]; then
     exit 0
 fi
 
-# Document deletion mode (original functionality)
+# Document deletion mode
 
 # Validate RETENTION_DAYS
 if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
@@ -467,12 +446,10 @@ if [ "$RETENTION_DAYS" -lt "$MIN_RETENTION_DAYS" ]; then
     exit 1
 fi
 
-# If no indices specified, use default indices
 if [ ${#INDEX_NAMES[@]} -eq 0 ]; then
     INDEX_NAMES=("${DEFAULT_INDICES[@]}")
 fi
 
-# Check if indices are actually specified (not empty)
 if [ ${#INDEX_NAMES[@]} -eq 0 ] || [ -z "${INDEX_NAMES[0]}" ]; then
     echo "Error: No indices specified for cleanup." >&2
     echo "Please specify indices using one of the following methods:" >&2
@@ -485,16 +462,12 @@ if [ ${#INDEX_NAMES[@]} -eq 0 ] || [ -z "${INDEX_NAMES[0]}" ]; then
     exit 1
 fi
 
-# Check OS type and use appropriate date command
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
     THRESHOLD_DATE=$(date -v-${RETENTION_DAYS}d -u +"%Y-%m-%dT%H:%M:%S.000Z")
 else
-    # Linux
     THRESHOLD_DATE=$(date -d "-${RETENTION_DAYS} days" -u +"%Y-%m-%dT%H:%M:%S.000Z")
 fi
 
-# Loop through specified indices and delete old documents
 echo "Indices to clean: ${INDEX_NAMES[*]}"
 echo "Retention period: ${RETENTION_DAYS} days"
 echo "Will delete documents older than: $THRESHOLD_DATE"
@@ -553,7 +526,6 @@ for INDEX in "${INDEX_NAMES[@]}"; do
             -d "$DELETE_QUERY")
     fi
 
-    # Check if deletion was successful and extract deleted count
     if echo "$RESPONSE" | grep -q '"deleted"'; then
         DELETED_COUNT=$(echo "$RESPONSE" | grep -o '"deleted":[0-9]*' | cut -d':' -f2)
         echo "✓ Successfully deleted $DELETED_COUNT documents from index: $INDEX"
@@ -562,7 +534,6 @@ for INDEX in "${INDEX_NAMES[@]}"; do
         echo "Response: $RESPONSE"
     fi
 
-    # Force merge if requested
     if [ "$FORCE_MERGE" = true ]; then
         echo "Force merging index: $INDEX..."
         if [[ "$DRY_RUN" == "1" ]]; then
@@ -573,7 +544,6 @@ for INDEX in "${INDEX_NAMES[@]}"; do
             -X POST "$ELASTIC_HOST/$INDEX/_forcemerge?only_expunge_deletes=true" \
             -H "Content-Type: application/json")
 
-        # Check if force merge was successful
         if echo "$MERGE_RESPONSE" | grep -q '"successful"'; then
             echo "✓ Successfully force merged index: $INDEX"
         else

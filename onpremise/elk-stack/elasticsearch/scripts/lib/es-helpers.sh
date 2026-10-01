@@ -3,9 +3,6 @@
 # observability/logging/elasticsearch/scripts/lib/es-helpers.sh — Shared Elasticsearch / Kibana helpers
 # =============================================================================
 # Helpers consumed by every script under observability/logging/elasticsearch/scripts/.
-# - es_curl:                    invoke curl with -s -k -u auto-applied
-# - es_pretty_json:             pretty-print JSON via python3
-# - es_fetch_password_from_k8s: read a password from a k8s secret via kubectl
 #
 # Usage:
 #   source "$(dirname "${BASH_SOURCE[0]}")/lib/es-helpers.sh"

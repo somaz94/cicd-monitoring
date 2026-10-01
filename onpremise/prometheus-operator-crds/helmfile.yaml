@@ -15,10 +15,10 @@
 #   render its Prometheus/Alertmanager CRs) blocked self-heal.
 #
 # Chart version pinned. Bump via ./upgrade.py after verifying the new release.
-# LOCKSTEP: the chart appVersion MUST equal kube-prometheus-stack's operator
-# appVersion — enforced by scripts/ci/check-crds-lockstep.py (`make lint-governance`).
-# When you bump kube-prometheus-stack, bump this release to the CRD chart whose
-# appVersion matches, in the same MR.
+# LOCKSTEP: the chart appVersion must not trail kube-prometheus-stack's operator
+# appVersion — scripts/ci/check-crds-lockstep.py (`make lint-governance`) fails when it does.
+# Decided 2026-09-30: bump this release FIRST, in its own MR, to the CRD chart matching the operator
+# you are about to take, and click wave_0 before merging kube-prometheus-stack (README, LOCKSTEP).
 
 repositories:
   - name: prometheus-community
@@ -33,14 +33,4 @@ releases:
   - name: prometheus-operator-crds
     chart: prometheus-community/prometheus-operator-crds
     namespace: monitoring
-    version: 31.0.0  # lockstep-appversion-match: observability/monitoring/kube-prometheus-stack
-
-# Ensure namespace before sync (idempotent no-op when present).
-# kubectl args aren't shell-parsed → use sh -c to evaluate || true.
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "sh"
-    args:
-      - "-c"
-      - "kubectl create namespace monitoring 2>/dev/null || true"
+    version: 32.0.1  # lockstep-appversion-match: observability/monitoring/kube-prometheus-stack

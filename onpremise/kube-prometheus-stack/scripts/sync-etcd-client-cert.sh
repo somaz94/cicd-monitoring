@@ -5,8 +5,8 @@ set -euo pipefail
 # etcd Client Cert Sync Script
 # Pulls the kubespray-managed etcd CA + admin client cert/key from a
 # control-plane node via SSH and creates/updates a Kubernetes Secret
-# that the kube-prometheus-stack ServiceMonitor mounts into the
-# Prometheus pod for the mTLS scrape of etcd metrics (port 2379).
+# that the kube-prometheus-stack etcd ServiceMonitor references via
+# tlsConfig for the mTLS scrape of etcd metrics (port 2379).
 #
 # Idempotent — uses `kubectl apply` with a dry-run rendered manifest,
 # so repeat runs converge to the desired state without hot-conflict.

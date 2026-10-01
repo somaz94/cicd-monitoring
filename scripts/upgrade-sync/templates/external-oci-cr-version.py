@@ -69,10 +69,9 @@ CONFIG = {
     # E.g., Kibana must be <= the linked Elasticsearch version. Empty = skip.
     "DEPENDENCY_CR_KIND":     "__DEPENDENCY_CR_KIND__",
     "DEPENDENCY_CR_NAME":     "__DEPENDENCY_CR_NAME__",
-    # OCI chart pin tracking (for --check-chart / --upgrade-chart).
-    # When all three are set, the script can detect and bump the chart version in
-    # helmfile.yaml. Leave CHART_SOURCE_TYPE empty ("") to disable chart tracking
-    # (the script then only manages the Stack/component version in VALUES_FILE).
+    # OCI chart pin tracking (for --check-chart / --upgrade-chart). When all three
+    # are set the pin is bumped in argocd*/<release>.yaml (helmfile.yaml if present).
+    # Empty CHART_SOURCE_TYPE disables chart tracking (VALUES_FILE version only).
     "CHART_SOURCE_TYPE":      "__CHART_SOURCE_TYPE__",   # "github-releases" or ""
     "CHART_SOURCE_REPO":      "__CHART_SOURCE_REPO__",   # "<owner>/<repo>"
     "CHART_NAME":             "__CHART_NAME__",          # tag prefix (e.g. "elasticsearch-eck")

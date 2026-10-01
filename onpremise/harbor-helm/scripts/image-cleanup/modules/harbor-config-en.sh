@@ -2,9 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Harbor Configuration Module
-# Manages configuration-related functions
-
 
 DEFAULT_HARBOR_URL="harbor.example.com"           # Default Harbor registry URL
 DEFAULT_HARBOR_PROTOCOL="https"                  # Default protocol (http/https) for Harbor API — matches harbor-helm externalURL

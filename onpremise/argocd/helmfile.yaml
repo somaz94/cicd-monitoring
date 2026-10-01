@@ -1,7 +1,6 @@
 # Deploy Argo CD via helmfile, consuming upstream argo/argo-cd chart.
 # Multi-file values split: global / server / redis / notifications.
 # Chart version pinned. Bump via ./upgrade.py after verifying the new release.
-# Lifecycle hooks: presync → helm dep update + ensure namespace.
 
 repositories:
   - name: argo
@@ -19,28 +18,9 @@ releases:
     namespace: argocd
     createNamespace: true
     chart: argo/argo-cd
-    version: 10.3.2
+    version: 10.9.2
     values:
       - values/dev.yaml               # global, configs (cm/params/ssh/rbac/secrets), extraObjects
       - values/dev-server.yaml        # controller, dex, server, repoServer, applicationSet
       - values/dev-redis.yaml         # redis, redis-ha, redisSecretInit
       - values/dev-notifications.yaml # notifications controller (Slack templates/triggers)
-
-# presync hooks: refresh chart deps then ensure namespace exists (idempotent).
-hooks:
-  # helm dependency update — pulls subchart tarballs declared in Chart.yaml.
-  - events: ["presync"]
-    showlogs: true
-    command: "helm"
-    args:
-      - "dependency"
-      - "update"
-      - "."
-
-  # Ensure namespace before sync (kubectl args aren't shell-parsed → use sh -c).
-  - events: ["presync"]
-    showlogs: true
-    command: "sh"
-    args:
-      - "-c"
-      - "kubectl create namespace argocd 2>/dev/null || true"

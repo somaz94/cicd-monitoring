@@ -16,7 +16,6 @@
   hosts: node_exporter
   become: true
 
-  # Variables are defined in group_vars/all.yml (single source of truth).
   # Override per-run with: -e "node_exporter_version=1.12.0"
 
   tasks:

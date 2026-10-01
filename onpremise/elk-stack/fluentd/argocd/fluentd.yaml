@@ -18,7 +18,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: https://fluent.github.io/helm-charts
   name: fluentd
-  version: "0.5.3"
+  version: "0.6.0"
 valueFile: observability/logging/fluentd/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
 createNamespace: false                          # 'logging' already exists (helmfile presync `kubectl create namespace` was an idempotent no-op)
 autoSync: true                                  # adopt-diff verified clean (STS = tracking-id annotation only, zero recreate; PrometheusRule + ServiceMonitor created from drift) -> auto-sync (prune+selfHeal) on

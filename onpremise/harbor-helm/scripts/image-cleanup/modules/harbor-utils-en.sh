@@ -2,9 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Harbor Utilities Module
-# Manages utility functions
-
 debug_print() {
     if [ "$DEBUG" = true ]; then
         echo -e "${YELLOW}DEBUG: $1${NC}"

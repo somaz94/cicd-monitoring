@@ -5,26 +5,9 @@
 # The L2/LoadBalancer plane and the synthetic probes that watch endpoints from
 # outside. Severity levels are documented in dev-alerts.yaml.
 #
-# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
-# it across every values file and each top-level key becomes its own PrometheusRule CR --
-# the file boundary has no effect at runtime, it exists so a 76K file stops being one
-# reviewable unit.
-#
-#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
-#                            control-plane)
-#   dev-alerts-network.yaml  metallb, blackbox
-#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
-#                            elasticsearch, redis, mysql
-#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
-#
-# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
-# key in two files does not combine the two rule lists -- the later file replaces the
-# earlier one wholesale and the dropped rules disappear silently.
-#
-# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
-# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
-# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
-# **/values/*.yaml.
+# 🔴 A group key must appear in EXACTLY ONE file: helm merges the map by key, so the same
+# key in a later file replaces the earlier rule list wholesale and silently drops its rules.
+# See dev-alerts.yaml for the file table.
 # =============================================================================
 
 additionalPrometheusRulesMap:
@@ -167,11 +150,15 @@ additionalPrometheusRulesMap:
           # login at all, a 5xx means the portal is merely broken. Both need
           # attention; only the first is a security incident.
           #
+          # Status 0 is no HTTP response (DNS, connection, TLS or timeout) and `< 400`
+          # alone matches it, so it is excluded explicitly. The status code is the
+          # left operand because `a and b` returns a's value, the {{ $value }} shown.
+          #
           # Every app behind that gate holds admin credentials (Keycloak master
           # admin, Harbor admin, an SSH private key, a GitLab admin token), and
           # nothing else in this cluster watches for this condition.
           - alert: ExampleHubAuthGateBypassed
-            expr: probe_success{target="example-hub-auth-gate"} == 0 and probe_http_status_code{target="example-hub-auth-gate"} < 400
+            expr: probe_http_status_code{target="example-hub-auth-gate"} > 0 < 400 and probe_success{target="example-hub-auth-gate"} == 0
             for: 5m
             labels:
               severity: critical
@@ -180,16 +167,18 @@ additionalPrometheusRulesMap:
               summary: "example-hub served a proxied app without redirecting to OIDC login"
               description: "An unauthenticated request to /apps/es-ops/healthz returned status {{ $value }} instead of a 302 to /oidc/login. A 2xx here means the portal is proxying to a privileged app with NO login — treat as an active security incident and check example-hub's auth middleware wiring immediately."
 
-          # Same probe failing with a server error rather than an open gate.
+          # The remaining failures: 4xx/5xx means the portal is erroring, and status 0
+          # means no response, so the gate's state is unknown. `eq $value 0.0` must
+          # stay a float: `0` fails only at render time, where alert-lint cannot see.
           - alert: ExampleHubAuthGateProbeFailed
-            expr: probe_success{target="example-hub-auth-gate"} == 0 and probe_http_status_code{target="example-hub-auth-gate"} >= 400
+            expr: (probe_http_status_code{target="example-hub-auth-gate"} == 0 or probe_http_status_code{target="example-hub-auth-gate"} >= 400) and probe_success{target="example-hub-auth-gate"} == 0
             for: 5m
             labels:
               severity: warning
               group: blackbox
             annotations:
-              summary: "example-hub auth-gate probe is failing with status {{ $value }}"
-              description: "The auth-gate probe expects a 302 to /oidc/login but got {{ $value }}. This is the portal erroring rather than the gate being open — check `kubectl -n example-hub logs deploy/example-hub`."
+              summary: "example-hub auth-gate probe is failing with {{ if eq $value 0.0 }}no HTTP response{{ else }}status {{ $value }}{{ end }}"
+              description: "The auth-gate probe expects a 302 to /oidc/login but got {{ if eq $value 0.0 }}no HTTP response at all (DNS, connection, TLS or timeout), so the gate's state is unknown{{ else }}status {{ $value }} — the portal is erroring rather than serving the app{{ end }}. If ExampleHubPortalProbeFailed is firing too, start there; otherwise check `kubectl -n example-hub logs deploy/example-hub`."
 
           # Certificate expiry on the wildcard. Measured 2026-08-05: 2036-04-14, so
           # this is quiet for a decade — it exists because a missed renewal has no

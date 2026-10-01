@@ -172,7 +172,6 @@ process_repository() {
     
     echo -e "${YELLOW}Found $ARTIFACT_COUNT artifacts. Will keep the newest $IMAGES_TO_KEEP artifacts and delete the oldest $DELETE_COUNT artifacts.${NC}"
     
-    # If we're just displaying stats (dry run with no image fetching), continue
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}DRY RUN MODE: Would delete $DELETE_COUNT artifacts (not actually deleting)${NC}"
         return
@@ -192,7 +191,6 @@ process_repository() {
     
     echo -e "${YELLOW}Successfully fetched $TOTAL_IMAGES artifacts of the reported $ARTIFACT_COUNT${NC}"
     
-    # Handle case when we got fewer images than reported by API
     if [ "$TOTAL_IMAGES" -lt "$ARTIFACT_COUNT" ]; then
         echo -e "${YELLOW}Warning: Fetched fewer artifacts ($TOTAL_IMAGES) than reported by API ($ARTIFACT_COUNT)${NC}"
         ARTIFACT_COUNT=$TOTAL_IMAGES
@@ -225,7 +223,6 @@ process_repository() {
     
     IMAGES_TO_DELETE=$(echo -e "$IMAGES" | tail -n $DELETE_COUNT)
     
-    # Clean the IMAGES_TO_DELETE by filtering out invalid digests
     IMAGES_TO_DELETE_FILTERED=""
     while IFS=$'\t' read -r DIGEST PUSH_TIME TAGS_COUNT TAG_NAMES; do
         if [ -z "$DIGEST" ]; then

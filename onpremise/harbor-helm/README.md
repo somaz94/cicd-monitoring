@@ -49,6 +49,14 @@ harbor-helm/
 
 ## Quick Start
 
+> 🔴 **`apply` / `sync` / `destroy` need `KUBE_CONTEXT`.** The postsync / preuninstall hooks apply and delete `manifests/` with a raw `kubectl`, and helmfile passes `--kube-context` to helm only — never into a hook. The hooks therefore refuse with exit 2 when `KUBE_CONTEXT` is empty. On `apply` / `sync` a presync hook refuses first, so it stops before the chart is upgraded. `lint` / `diff` do not run these hooks.
+
+```bash
+export KUBE_CONTEXT="<target>"   # list candidates: kubectl config get-contexts -o name
+```
+
+Run the commands below as `helmfile --kube-context "$KUBE_CONTEXT" <cmd>`.
+
 ```bash
 # Validate configuration
 helmfile lint
@@ -141,10 +149,10 @@ upgrade.py automatically performs the following:
 
 ```bash
 # Review changes
-helmfile diff
+helmfile --kube-context "$KUBE_CONTEXT" diff
 
-# Apply
-helmfile apply
+# Apply (needs KUBE_CONTEXT — see Quick Start)
+helmfile --kube-context "$KUBE_CONTEXT" apply
 
 # Check pod status
 kubectl get pods -n harbor

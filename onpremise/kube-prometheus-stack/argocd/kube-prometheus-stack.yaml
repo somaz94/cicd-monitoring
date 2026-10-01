@@ -42,7 +42,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: https://prometheus-community.github.io/helm-charts
   name: kube-prometheus-stack
-  version: "88.3.0"
+  version: "91.8.0"
 # Primary values file (repo-root-relative; pulled via the kuberntes-infra $values multi-source ref).
 valueFile: observability/monitoring/kube-prometheus-stack/values/dev.yaml
 # Extra values files merged after the primary (generator-v2 multi-valueFile support). Order matters:

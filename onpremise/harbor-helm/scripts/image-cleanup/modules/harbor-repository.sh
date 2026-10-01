@@ -2,9 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Harbor repository module
-# Manages repository-related functions
-
 get_repositories() {
     local url="${HARBOR_PROTOCOL}://${HARBOR_URL}/api/v2.0/projects/$PROJECT_NAME/repositories"
     local response

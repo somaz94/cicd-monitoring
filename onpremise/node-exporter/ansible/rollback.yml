@@ -15,8 +15,6 @@
   hosts: node_exporter
   become: true
 
-  # Variables are defined in group_vars/all.yml (single source of truth).
-
   tasks:
     - name: Check if backup binary exists
       stat:

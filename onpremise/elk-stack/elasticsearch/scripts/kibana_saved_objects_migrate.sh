@@ -40,10 +40,8 @@ TARGET_USER="elastic"
 # repo and a cross-cluster hazard now that --context makes the cluster selectable.
 TARGET_PASSWORD=""
 
-# Saved object types to migrate (comma-separated)
 SAVED_OBJECT_TYPES="dashboard,visualization,search,index-pattern,lens,map,canvas-workpad,tag"
 
-# NDJSON export/import file path
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 NDJSON_FILE="/tmp/kibana-saved-objects-${TIMESTAMP}.ndjson"
 
@@ -56,7 +54,6 @@ LIST_TARGET=false
 # but not executed; export + list paths are read-only and run as usual.
 DRY_RUN=0
 
-# Help function
 show_help() {
   cat << EOF
 Usage: $(basename "$0") [OPTIONS]
@@ -170,14 +167,12 @@ fetch_target_password() {
     echo ""
 }
 
-# Build a JSON array literal from a comma-separated type list
 build_types_json() {
     echo "$1" | awk -F',' '{
         for (i=1; i<=NF; i++) printf "\"%s\"%s", $i, (i==NF ? "" : ",")
     }'
 }
 
-# Pretty-print JSON — delegates to lib es_pretty_json
 pretty_json() {
     es_pretty_json "$1"
 }

@@ -82,7 +82,6 @@ ingress:
 # Gateway API HTTPRoute (sole traffic path since the 2026-04-17 cutover)
 # - When backendRefs name is omitted it defaults to `<name>-es-http`, port defaults to 9200
 # - backendTLSPolicy.enabled: auto-generates BackendTLSPolicy + CA ConfigMap to verify ECK self-signed TLS (9200 HTTPS).
-#   Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
 httproute:
   enabled: true
   parentRefs:
@@ -102,7 +101,5 @@ httproute:
 
 # BackendTLSPolicy — verifies the ECK self-signed HTTPS cert from the Gateway.
 # Replaces the previous Ingress `backend-protocol: HTTPS` annotation.
-# Schema note: the new chart exposes this as a top-level toggle (was
-# `httproute.backendTLS.enabled` in the legacy local chart).
 backendTLSPolicy:
   enabled: true

@@ -121,7 +121,6 @@ _KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
 require_kube_context
 
-# Build the Space URL prefix. Default Space has no prefix; named Spaces use "/s/<id>".
 if [ "$SPACE_ID" = "default" ]; then
   SPACE_PREFIX=""
 else
@@ -133,7 +132,6 @@ if [ ${#ARG_IDS[@]} -ne ${#ARG_OUTS[@]} ]; then
   exit 2
 fi
 
-# Build the (id, file) work list
 declare -a IDS=()
 declare -a FILES=()
 if [ ${#ARG_IDS[@]} -gt 0 ]; then
@@ -202,7 +200,6 @@ export_one() {
   local out="$2"
   local raw="$WORKDIR/$(basename "$out").raw"
 
-  # Resolve out to absolute path
   case "$out" in
     /*) ;;  # already absolute
     *)  out="$DASHBOARDS_DIR/$out" ;;
@@ -233,7 +230,6 @@ export_one() {
     return 1
   fi
 
-  # Detect error responses (Kibana returns JSON with statusCode on failure)
   if head -1 "$raw" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); sys.exit(0 if d.get('statusCode') else 1)" 2>/dev/null; then
     err "  Kibana error response:"
     cat "$raw"

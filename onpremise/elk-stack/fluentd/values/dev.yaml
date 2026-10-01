@@ -1,4 +1,3 @@
-# DaemonSet, Deployment or StatefulSet
 kind: "StatefulSet"
 # variant aligns with fluent-plugin-elasticsearch supported builds.
 # No elasticsearch9 variant is published upstream; elasticsearch8 variant is
@@ -85,7 +84,7 @@ metrics:
           summary: "Fluentd metrics scrape missing"
           description: "suspected ServiceMonitor / Service / Pod label mismatch"
 
-      # Buffer queue length high (~40% of queue_limit_length 128)
+      # Chunk backlog, not fill level: the cap is in bytes (total_limit_size), which FluentdBufferDiskHigh watches
       - alert: FluentdBufferQueueHigh
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 50
         for: 5m
@@ -94,9 +93,8 @@ metrics:
           severity: warning
         annotations:
           summary: "Fluentd ES output buffer queue rising"
-          description: "queue={{ $value }}/128 chunks. suspected ES throughput or fluentd flush_thread limit. {{ $labels.pod }}"
+          description: "queue={{ $value }} chunks. suspected ES throughput or fluentd flush_thread limit. {{ $labels.pod }}"
 
-      # Buffer queue critical — almost full (~78%)
       - alert: FluentdBufferQueueCritical
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 100
         for: 1m
@@ -104,8 +102,8 @@ metrics:
           context: fluentd
           severity: critical
         annotations:
-          summary: "Fluentd ES buffer queue near limit"
-          description: "queue={{ $value }}/128. overflow imminent -> will block back to fluent-bit. inspect ES immediately"
+          summary: "Fluentd ES buffer backlog critical"
+          description: "queue={{ $value }} chunks. ES is not draining; input blocks back to fluent-bit once the buffer reaches 4GB. inspect ES immediately"
 
       # Buffer disk size > 75% of total_limit_size (4GB → 3GB threshold)
       - alert: FluentdBufferDiskHigh
@@ -118,8 +116,9 @@ metrics:
           summary: "Fluentd buffer disk usage > 3GB"
           description: "buffer={{ $value | humanize1024 }}B / 4GB. PVC has space but approaching total_limit_size"
 
+      # [10m] outlasts one capped retry wait (retry_max_interval 5m + randomize); [5m] flaps during a long outage
       - alert: FluentdRetryRising
-        expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[5m]) > 0
+        expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[10m]) > 0
         for: 10m
         labels:
           context: fluentd
@@ -192,16 +191,13 @@ fileConfigs:
     </source>
 
   02_filters.conf: |-
-    # Step 1: Fallback JSON parsing
-    # Fallback for when fluent-bit's example-project_json parser fails
+    # Step 1: the pipeline's only JSON parse. Since 7db80f4 (2026-08-06) fluent-bit's cri
+    # multiline parser stores the raw line in `log`, so its `Key_Name message` filter is a
+    # no-op. On a parse miss (plain text) `log` stays for Step 2 to use as the message.
     #
-    # 🔴 DO NOT change key_name to `message`. It was tried on 2026-08-06 (with
-    # remove_key_name_field true) on the theory that `log` is a key nothing in this
-    # pipeline produces, so the net never fires. That is true, but the replacement
-    # STRIPPED `data` off every record within minutes of rolling out on the prod-example-app
-    # twin — 100% of documents landed with data=null — and had to be reverted. `log` is
-    # inert and harmless; `message` is actively destructive here. Re-derive the whole
-    # filter (and test it outside a live cluster) before touching this again.
+    # 🔴 DO NOT change key_name to `message`. Tried on 2026-08-06 (with
+    # remove_key_name_field true): 100% of prod-example-app documents landed with data=null
+    # within minutes and it was reverted. Test outside a live cluster before touching this.
     <filter example-project.**>
       @type parser
       key_name log
@@ -221,15 +217,18 @@ fileConfigs:
     #   - ZLogger (.NET):   LogLevel is capital-LL String (Microsoft.Extensions.Logging
     #                       enum: "Information"/"Warning"/"Critical"/...),
     #                       Message is the already-rendered body
-    #   - Plain text (ASP.NET Core bootup, fluent-bit JSON-parse miss): no keyspace
-    #                       present → level="info", message=raw text
+    #   - Plain text (entrypoint / ASP.NET Core bootup, Step 1 parse miss): no level
+    #                       key → level="info", message=`log`
     # Serilog "Fatal" and ZLogger "Critical" both map to fluentd "fatal".
+    # `log` is used only for a line with no level key that does not look like JSON: a parsed record
+    # still carries its raw line in `log`, and an unparsed JSON fragment would bypass Step 4's redaction.
+    # Keep this in the same <record> block as `level` — the guard must see the pre-normalized record.
     <filter example-project.**>
       @type record_transformer
       enable_ruby true
       <record>
         level ${if record["level"].is_a?(Integer); {10=>"trace",20=>"debug",30=>"info",40=>"warn",50=>"error",60=>"fatal"}[record["level"]] || "info"; elsif record["Level"].is_a?(String); {"Verbose"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Fatal"=>"fatal"}[record["Level"]] || record["Level"].downcase; elsif record["LogLevel"].is_a?(String); {"Trace"=>"trace","Debug"=>"debug","Information"=>"info","Warning"=>"warn","Error"=>"error","Critical"=>"fatal","None"=>"info"}[record["LogLevel"]] || record["LogLevel"].downcase; else; record["level"] || "info"; end}
-        message ${m = record["msg"] || record["message"] || record["MessageTemplate"] || record["Message"] || ""; m.is_a?(String) ? m.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
+        message ${m = record["msg"] || record["message"] || record["MessageTemplate"] || record["Message"] || ((record["level"] || record["Level"] || record["LogLevel"]) ? nil : ((l = record["log"].to_s.scrub) =~ /"[\w@.]+"\s*:/ ? nil : l)) || ""; m.is_a?(String) ? m.scrub.gsub(/[\x00-\x1f\x7f]/, '') : m.to_s}
         label ${record["label"] || "unknown"}
       </record>
     </filter>
@@ -398,23 +397,32 @@ fileConfigs:
         flush_mode interval
         flush_interval 10s
         flush_thread_count 4
+        # Also the bulk request size cap, since bulk_message_request_threshold -1 sends one request per chunk
         chunk_limit_size 16MB
-        # chunk count cap matches disk cap: 128 × 16MB = 2GB
-        queue_limit_length 128
         retry_type exponential_backoff
         retry_wait 1s
+        # Without a cap each wait grows to about the outage length so far, so delivery lags that long after ES recovers
+        retry_max_interval 5m
         # Retry forever to align with fluent-bit Retry_Limit no_limits
         retry_forever true
         # Block input on overflow so backpressure pushes back to fluent-bit storage
         overflow_action block
+        # Never add queue_limit_length: fluentd then overrides this with chunk_limit_size × queue_limit_length,
+        # which held the buffer at 2GB until 2026-09-29.
         total_limit_size 4GB
         flush_at_shutdown true
       </buffer>
 
-      # Performance settings
-      bulk_message_request_threshold 1024
+      # -1 = never split a chunk into several bulk requests: a failed split request is swallowed
+      # per record instead of failing the chunk, so records drop with no retry. Decided 2026-09-29.
+      bulk_message_request_threshold -1
+      # A whole-chunk bulk can outlast the 5s default on a backlog replay; a timeout after ES indexed
+      # it re-sends the chunk and duplicates records that have no _doc_id.
+      request_timeout 60s
 
-      # Safety net for unrecoverable records; retry_forever keeps recoverable ones in the primary buffer
+      # Receives only chunks that fail outside the bulk call, e.g. a buffer file that no longer decodes.
+      # A 429 / out_of_memory_error item does not come here: send_bulk rethrows it as recoverable, so the
+      # whole chunk retries. Per-record 400s become error events and are dropped (no <label @ERROR>).
       <secondary>
         @type file
         path /var/log/failed-records

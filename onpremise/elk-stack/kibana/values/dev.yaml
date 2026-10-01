@@ -36,18 +36,13 @@ resources:
     cpu: "1000m"
     memory: "2Gi"
 
-# TLS on the Kibana pod's http endpoint (the 5601 port the ingress/Gateway
-# backends to). Schema changed in new chart:
-#   http.tls.selfSignedCertificate.disabled: true  → pod serves plain HTTP.
-#     Cookie secureCookies/sameSiteCookies auto-injected by the chart.
-#   http.tls.selfSignedCertificate: {}            → ECK self-signed HTTPS (default when block omitted).
-# Current dev mode: plain HTTP (migration from legacy `tls.enabled: false`).
+# Pod serves plain HTTP; TLS terminates at the Gateway.
 http:
   tls:
     selfSignedCertificate:
       disabled: true
 
-# Ingress disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
+# Ingress disabled after the 2026-04-17 cutover — NGF owns .55. HTTPRoute(below) is sole path.
 # `backend-protocol` annotation kept for rollback reference.
 ingress:
   enabled: false

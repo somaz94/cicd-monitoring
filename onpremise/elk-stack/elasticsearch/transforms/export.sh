@@ -71,7 +71,6 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Resolve target id list
 declare -a IDS=()
 if [ ${#ARG_IDS[@]} -gt 0 ]; then
   IDS=("${ARG_IDS[@]}")
@@ -120,7 +119,6 @@ for id in "${IDS[@]}"; do
   resp=$(kctl -n "$NAMESPACE" exec "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -sk -u "${ES_USER}:${PASS}" "${ES_URL}/_transform/${id}")
 
-  # Detect not-found
   if echo "$resp" | python3 -c "
 import json, sys
 d = json.loads(sys.stdin.read())
@@ -134,7 +132,6 @@ if not d.get('transforms'):
     continue
   fi
 
-  # Extract only the user-supplied definition fields (drop create_time, version, etc.)
   out_file="$TRANSFORMS_DIR/${id}.json"
   tmp_in=$(mktemp)
   printf '%s' "$resp" > "$tmp_in"

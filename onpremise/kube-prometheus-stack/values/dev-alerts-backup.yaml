@@ -4,30 +4,13 @@
 #
 # Every backup Stale/Missing pair in one place, because they share one idiom and one
 # question: is there still a recovery point? Most read
-# kube_cronjob_status_last_successful_time; gitlab-old is the exception (a systemd
-# timer on a non-cluster host, so it reads node_exporter instead).
+# kube_cronjob_status_last_successful_time; the gitlab-* rules are the exception
+# (non-cluster hosts, so they read node_exporter instead).
 # Severity levels are documented in dev-alerts.yaml.
 #
-# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
-# it across every values file and each top-level key becomes its own PrometheusRule CR --
-# the file boundary has no effect at runtime, it exists so a 76K file stops being one
-# reviewable unit.
-#
-#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
-#                            control-plane)
-#   dev-alerts-network.yaml  metallb, blackbox
-#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
-#                            elasticsearch, redis, mysql
-#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
-#
-# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
-# key in two files does not combine the two rule lists -- the later file replaces the
-# earlier one wholesale and the dropped rules disappear silently.
-#
-# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
-# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
-# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
-# **/values/*.yaml.
+# 🔴 A group key must appear in EXACTLY ONE file: helm merges the map by key, so the same
+# key in a later file replaces the earlier rule list wholesale and silently drops its rules.
+# See dev-alerts.yaml for the file table.
 # =============================================================================
 
 additionalPrometheusRulesMap:

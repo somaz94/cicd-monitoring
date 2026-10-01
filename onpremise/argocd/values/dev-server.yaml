@@ -20,7 +20,6 @@ controller:
     requests:
       cpu: 1000m
       memory: 3Gi
-  # ServiceMonitor (Prometheus metrics)
   metrics:
     enabled: true
     serviceMonitor:
@@ -32,29 +31,22 @@ controller:
 
 ## Dex
 dex:
-  # -- Enable dex
   enabled: true
 
 ## Server
 server:
   replicas: 1
-  # Argo CD server ingress configuration
-  # Disabled after Phase 6 cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
+  # Disabled since the NGF cutover (2026-04-17) — NGF owns .55. HTTPRoute(below) is sole path.
   ingress:
-    # -- Enable an ingress resource for the Argo CD server
     enabled: false
-    ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/ingress/#option-1-ssl-passthrough
     annotations:
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"   # Disable SSL redirection
-      nginx.ingress.kubernetes.io/ssl-passthrough: "false"      # Disable SSL passthrough
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/ssl-passthrough: "false"
 
-    # -- Defines which ingress controller will implement the resource
     ingressClassName: "nginx"
 
-    # -- The path to Argo CD server
     path: /
 
-    # -- Ingress path type. One of `Exact`, `Prefix` or `ImplementationSpecific`
     pathType: Prefix
 
   # sectionName: https only — the HTTP listener belongs to the argocd-https-redirect route (dev.yaml extraObjects).
@@ -71,7 +63,6 @@ server:
           - path:
               type: PathPrefix
               value: /
-  # ServiceMonitor (Prometheus metrics)
   metrics:
     enabled: true
     serviceMonitor:
@@ -100,7 +91,6 @@ repoServer:
     requests:
       cpu: 500m
       memory: 1Gi
-  # ServiceMonitor (Prometheus metrics)
   metrics:
     enabled: true
     serviceMonitor:

@@ -3,7 +3,7 @@
 
 ---
 # Sibling HTTPRoute: 301 redirect from the HTTP listener to HTTPS.
-# Not included in the chart-native templates → kept as raw. Replaces the previous Ingress `force-ssl-redirect: true`.
+# Replaces the previous Ingress `force-ssl-redirect: true`.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -24,7 +24,7 @@ spec:
             statusCode: 301
 ---
 # ClientSettingsPolicy: allow large docker push images (replaces the previous Ingress `proxy-body-size: "0"`).
-# targetRef points to the chart-generated `harbor-route` HTTPRoute. The chart templates have no Policy → kept as raw.
+# targetRef points to the chart-generated `harbor-route` HTTPRoute.
 # body.maxSize: "0" → unlimited (NGF maps this to nginx's client_max_body_size 0).
 apiVersion: gateway.nginx.org/v1alpha1
 kind: ClientSettingsPolicy

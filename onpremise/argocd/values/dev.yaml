@@ -1,6 +1,4 @@
 global:
-  # -- Default domain used by all components
-  ## Used for ingresses, certificates, SSO, notifications, etc.
   domain: argocd.example.com
   # Pin networkPolicy.create to false (chart 10.0.0 flipped the default false -> true).
   # Preserves the pre-10.0 behavior (no bundled NetworkPolicies); adopt NP separately
@@ -196,12 +194,10 @@ configs:
   # SSH known hosts for Git repositories
   ## Ref: https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#ssh-known-host-public-keys
   ssh:
-    # -- Additional known hosts for private repositories
     extraHosts: |
       gitlab.example.com ssh-rsa <GITLAB_SSH_RSA_PUBLIC_KEY>
       gitlab.example.com ecdsa-sha2-nistp256 <GITLAB_SSH_ECDSA_PUBLIC_KEY>
       gitlab.example.com ssh-ed25519 <GITLAB_SSH_ED25519_PUBLIC_KEY>
-  # Add RBAC settings
   rbac:
     create: true
     # Use email + groups for RBAC matching (default uses only 'sub' claim from dex)

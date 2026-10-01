@@ -29,7 +29,7 @@ Color: Yellow (warning)
 ### Firing (Critical) — Pod Alert
 
 ```
-🔴 [example-cluster] [CRITICAL] DiskSpaceCritical
+🔴 [example-cluster] [CRITICAL] PodCrashLooping
 
 Namespace: monitoring
 Pod: prometheus-kube-prometheus-stack-prometheus-0
@@ -37,8 +37,8 @@ Container: prometheus
 Instance: 10.244.1.20:9090
 Severity: critical
 
-Summary: Disk usage is critical
-Description: Disk usage is above 95% on /data (current: 97%)
+Summary: Pod is in CrashLoopBackOff
+Description: Container prometheus has been in CrashLoopBackOff for at least 5 minutes
 
 Source: Prometheus
 ```
@@ -181,6 +181,7 @@ The format SSOT is the `slack-infra-alerts` receiver under `alertmanager.config.
 |-------|--------|
 | `Watchdog` | Pipeline health check (always firing) |
 | `InfoInhibitor` | Suppresses info-level alerts |
+| `HighCPUUsage`, `NodeHighSystemLoad` (`job="build-machines"` only) | A Unity build pins CPU and load for minutes, which is normal on the build machine. Its memory-pressure, disk, external-SSD and TargetDown alerts still reach Slack |
 
 <br/>
 

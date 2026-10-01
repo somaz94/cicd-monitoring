@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Export the `example` realm config from a running Keycloak server to manifests/realm-example.json.
 #
-# Used after Phase 3 (realm + brokering created via UI/kcadm) to capture state for declarative re-deploy.
+# Used after the realm + brokering are created via UI/kcadm, to capture state for declarative re-deploy.
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [-h]
@@ -31,7 +31,6 @@ POD="${POD:-keycloak-0}"                          # operator-spawned StatefulSet
 REALM="${REALM:-example}"
 OUTPUT="${OUTPUT:-manifests/realm-example.json}"
 
-# Resolve script root (repo-relative).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPONENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_PATH="$COMPONENT_DIR/$OUTPUT"

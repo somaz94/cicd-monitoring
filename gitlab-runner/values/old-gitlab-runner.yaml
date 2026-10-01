@@ -2,7 +2,7 @@
 image:
   registry: registry.gitlab.com
   image: gitlab-org/gitlab-runner
-  # tag: alpine-v{{.Chart.AppVersion}}
+  # tag unset: image follows chart appVersion.
 
 replicas: 1
 
@@ -82,13 +82,7 @@ serviceAccount:
   create: true
 
 runners:
-  # `request_concurrency` below is a CEILING, not the limit that is actually enforced. Runner 19.x
-  # also computes an adaptive request-concurrency limit and enforces the LOWER of the two, and on
-  # this fleet the adaptive one measured lower — so raising the number below does not by itself
-  # widen poll concurrency, and a burst can still serialize. Live figures and the full analysis sit
-  # next to the GitLabRunnerConcurrentLimitReached rule in
-  # observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml; that alert used to
-  # be justified by this setting and no longer reads the request-concurrency counter at all.
+  # Ceiling only; runner 19.x enforces the lower adaptive limit, see GitLabRunnerConcurrentLimitReached in observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml.
   # This note lives ABOVE `config:` on purpose: comments inside the block are literal TOML, so they
   # land in the rendered ConfigMap and every edit rolls the runner managers. Out here they are free.
   config: |

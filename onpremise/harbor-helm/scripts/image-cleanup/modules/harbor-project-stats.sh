@@ -2,9 +2,6 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Harbor project stats module — simple version
-# Description: fetches per-repository artifact counts for a given Harbor project
-
 show_project_repositories_stats() {
     local project_name="$1"
 

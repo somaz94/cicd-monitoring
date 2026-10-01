@@ -32,7 +32,7 @@ serviceMonitor:
   interval: 30s
   jobLabel: "example-project-redis"  # Displayed as job name in Grafana dashboards
   labels:
-    release: kube-prometheus-stack  # Must match Prometheus serviceMonitorSelector
+    release: kube-prometheus-stack  # Not required (selector is {}); kept for chart-default parity
 
   # Multi-target: scrape env-specific Redis instances
   # valkey-redis excluded (has its own metrics sidecar)

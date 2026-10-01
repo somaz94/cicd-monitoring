@@ -48,34 +48,45 @@ defaultRules:
     # Network errors — replaced by custom NodeNetworkErrors (combined RX+TX)
     NodeNetworkReceiveErrs: true
     NodeNetworkTransmitErrs: true
+    # CPU / memory / load — replaced by custom HighCPUUsage / HighMemoryUsage / NodeHighSystemLoad (which also cover off-cluster hosts)
+    NodeCPUHighUsage: true
+    NodeMemoryHighUtilization: true
+    NodeSystemSaturation: true
+  # The chart's network group holds only NodeNetworkInterfaceFlapping, which the custom rule of the same name replaces.
+  # Disabling that one rule renders an empty group (`rules: null`) the PrometheusRule CRD rejects (ArgoCD ComparisonError, 2026-10-01).
+  rules:
+    network: false
 
 additionalPrometheusRulesMap:
 
-  # K8s nodes + physical servers (via node-exporter).
+  # K8s nodes + physical servers (via node-exporter). Every rule aggregates with `max by`: it keeps job (to silence or
+  # route build-machines) and drops the DaemonSet pod labels, which split Slack grouping by namespace and reset `for`
+  # on every redeploy. max, not sum, so the old and new exporter pods of a rollout never add up.
   node-alerts:
     groups:
       - name: node-alerts
         rules:
 
+          # Busy modes only: iowait is waiting, not work.
           - alert: HighCPUUsage
-            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+            expr: max by (instance, job, env) (sum without (mode) (avg without (cpu) (rate(node_cpu_seconds_total{mode!~"idle|iowait"}[5m])))) * 100 > 85
             for: 5m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "High CPU usage on {{ $labels.instance }}"
-              description: "CPU usage is above 85% for 5 minutes (current: {{ $value }}%)"
+              description: "CPU usage is above 85% for 5 minutes (current: {{ $value | humanize }}%)"
 
           - alert: HighMemoryUsage
-            expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+            expr: max by (instance, job, env) ((1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100) > 85
             for: 5m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "High memory usage on {{ $labels.instance }}"
-              description: "Memory usage is above 85% for 5 minutes (current: {{ $value }}%)"
+              description: "Memory usage is above 85% for 5 minutes (current: {{ $value | humanize }}%)"
 
           # The selector excludes filesystems whose fullness is not actionable.
           # tmpfs/overlay are container ephemeral storage. The rest are macOS
@@ -92,72 +103,67 @@ additionalPrometheusRulesMap:
           # in-cluster targets and the macOS clauses would be dead conditions.
           # That divergence is intentional -- do not "sync" it.
           - alert: DiskSpaceRunningLow
-            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 80
+            expr: max by (instance, job, env, device, mountpoint) ((1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100) > 80
             for: 10m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "Disk space running low on {{ $labels.instance }}"
-              description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+              description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value | humanize }}%)"
 
           - alert: DiskSpaceCritical
-            expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 95
+            expr: max by (instance, job, env, device, mountpoint) ((1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100) > 95
             for: 5m
             labels:
               severity: critical
               group: node
             annotations:
               summary: "Disk space critical on {{ $labels.instance }}"
-              description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+              description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value | humanize }}%)"
 
-          # Many small files can exhaust inodes even with free disk space
           - alert: NodeFilesystemInodesRunningLow
-            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 80
+            expr: max by (instance, job, env, device, mountpoint) ((1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100) > 80
             for: 10m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "Filesystem inodes running low on {{ $labels.instance }}"
-              description: "Inode usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+              description: "Inode usage is above 80% on {{ $labels.mountpoint }} (current: {{ $value | humanize }}%)"
 
-          # Almost no inodes left — new file creation will fail
           - alert: NodeFilesystemInodesCritical
-            expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100 > 95
+            expr: max by (instance, job, env, device, mountpoint) ((1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"} / node_filesystem_files{fstype!~"tmpfs|overlay|nullfs|devfs|autofs", mountpoint!~"/System/Volumes/.*|/Library/Developer/.*"})) * 100) > 95
             for: 5m
             labels:
               severity: critical
               group: node
             annotations:
               summary: "Filesystem inodes critical on {{ $labels.instance }}"
-              description: "Inode usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value }}%)"
+              description: "Inode usage is above 95% on {{ $labels.mountpoint }} (current: {{ $value | humanize }}%)"
 
-          # Sustained network errors indicate cable, driver, or NIC problems
           - alert: NodeNetworkErrors
-            expr: (rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m])) > 10
+            expr: max by (instance, job, env, device) (rate(node_network_receive_errs_total[5m]) + rate(node_network_transmit_errs_total[5m])) > 10
             for: 5m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "Network errors detected on {{ $labels.instance }}"
-              description: "Interface {{ $labels.device }} has {{ $value }} errors/sec (RX+TX combined over 5m)"
+              description: "Interface {{ $labels.device }} has {{ $value | humanize }} errors/sec (RX+TX combined over 5m)"
 
-          # Indicates system is overloaded — processes are waiting for CPU
           - alert: NodeHighSystemLoad
-            expr: node_load5 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+            expr: max by (instance, job, env) (node_load5 / count without(cpu, mode) (node_cpu_seconds_total{mode="idle"})) > 2
             for: 10m
             labels:
               severity: warning
               group: node
             annotations:
               summary: "High system load on {{ $labels.instance }}"
-              description: "5-minute load average is {{ $value }}x the number of CPUs"
+              description: "5-minute load average is {{ $value | humanize }}x the number of CPUs"
 
-          # Frequent carrier changes suggest unstable link (bad cable, switch port)
           - alert: NodeNetworkInterfaceFlapping
-            expr: changes(node_network_carrier{device!~"veth.*|lxc.*|cali.*|flannel.*|cni.*"}[10m]) > 2
+            expr: max by (instance, job, env, device) (changes(node_network_carrier{device!~"veth.*|lxc.*|cali.*|flannel.*|cni.*"}[10m])) > 2
             for: 5m
             labels:
               severity: warning
@@ -224,7 +230,7 @@ additionalPrometheusRulesMap:
               group: build-machine
             annotations:
               summary: "Memory pressure on the build machine {{ $labels.instance }}"
-              description: "Unreclaimable memory (wired + compressed) is above 80% of RAM for 15 minutes (current: {{ $value }}%). Builds may start failing or thrashing swap."
+              description: "Unreclaimable memory (wired + compressed) is above 80% of RAM for 15 minutes (current: {{ $value | humanize }}%). Builds may start failing or thrashing swap."
 
   pod-alerts:
     groups:
@@ -260,7 +266,6 @@ additionalPrometheusRulesMap:
       - name: cilium-alerts
         rules:
 
-          # Non-ready endpoints cannot send or receive traffic via Cilium
           - alert: CiliumEndpointNotReady
             expr: sum by(instance) (cilium_endpoint_state{endpoint_state!="ready"}) > 0
             for: 10m
@@ -271,7 +276,6 @@ additionalPrometheusRulesMap:
               summary: "Cilium endpoints not ready on {{ $labels.instance }}"
               description: "{{ $value }} endpoints are in non-ready state for 10 minutes"
 
-          # High drop rates may indicate policy misconfiguration or network issues
           - alert: CiliumDropRateHigh
             expr: sum by(instance, reason) (rate(cilium_drop_count_total[5m])) > 50
             for: 5m
@@ -280,9 +284,8 @@ additionalPrometheusRulesMap:
               group: cilium
             annotations:
               summary: "High Cilium packet drop rate on {{ $labels.instance }}"
-              description: "Cilium is dropping {{ $value }} packets/sec (reason: {{ $labels.reason }})"
+              description: "Cilium is dropping {{ $value | humanize }} packets/sec (reason: {{ $labels.reason }})"
 
-          # An unhealthy agent cannot enforce network policies
           - alert: CiliumAgentUnhealthy
             expr: cilium_agent_unhealthy > 0
             for: 5m
@@ -293,7 +296,6 @@ additionalPrometheusRulesMap:
               summary: "Cilium agent unhealthy on {{ $labels.instance }}"
               description: "Cilium agent has been reporting unhealthy status for 5 minutes"
 
-          # The operator manages CiliumIdentity, CiliumEndpoint CRDs and IP allocation
           - alert: CiliumOperatorDown
             expr: absent(cilium_operator_process_start_time_seconds)
             for: 5m
@@ -363,7 +365,7 @@ additionalPrometheusRulesMap:
               description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>800ms) for 15m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard."
 
           # gitlab-runner ns pod count > 15 sustained 3m — leading indicator of CI burst that drives etcd/apiserver latency.
-          # concurrent=5 per release × 2 releases → steady-state ~10; sustained >15 means burst incoming.
+          # build 3×3 + deploy 2×5 job slots + 5 manager pods → up to ~24 at full load, above this threshold.
           - alert: GitLabRunnerPodSurge
             expr: count(kube_pod_info{namespace="gitlab-runner"}) > 15
             for: 3m

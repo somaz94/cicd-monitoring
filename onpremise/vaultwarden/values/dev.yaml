@@ -1,6 +1,6 @@
 # Vaultwarden (guerzon/vaultwarden chart): server, SQLite, backup CronJob.
 
-# DOMAIN env var — use https:// with self-signed certificate
+# DOMAIN env var — TLS terminates at the NGF Gateway (wildcard-example-tls).
 domain: "https://vault.example.com"
 
 fullnameOverride: "vaultwarden"
@@ -14,18 +14,9 @@ adminToken:
   value: "exampleAdminPassword"
 
 # =============================================================================
-# SSO — GitLab OpenID Connect (active, post Phase 5 retry rollback 2026-04-29)
+# SSO — GitLab direct OIDC (Keycloak cutover rolled back 2026-04-29, see top)
 # =============================================================================
-# Active config: GitLab direct OIDC (Keycloak cutover rolled back 2026-04-29; see the note at the top).
-#
-# Original setup steps:
-#   1. GitLab Admin → Applications → New Application
-#      - Name: Vaultwarden
-#      - Redirect URI: https://vault.example.com/identity/connect/oidc-signin
-#      - Confidential: Yes
-#      - Scopes: openid, email, profile
-#   2. Copy Application ID → clientId.value
-#   3. Copy Secret → clientSecret.value
+# GitLab application redirect URI: /identity/connect/oidc-signin
 # =============================================================================
 sso:
   enabled: true
@@ -82,17 +73,6 @@ ingress:
   path: /
   pathType: Prefix
 
-# ── HTTPS with cert-manager + Let's Encrypt (alternative) ──
-# Prerequisites:
-#   1. Install cert-manager: https://cert-manager.io/docs/installation/
-#   2. Create ClusterIssuer (e.g., cloudflare-issuer)
-# Ref: https://github.com/dani-garcia/vaultwarden/wiki/Enabling-HTTPS
-#
-# ingress:
-#   additionalAnnotations:
-#     cert-manager.io/cluster-issuer: "cloudflare-issuer"
-#   tlsSecret: "vaultwarden-tls"
-
 resources:
   requests:
     cpu: 100m
@@ -104,22 +84,12 @@ resources:
 serviceAccount:
   create: true
 
-# Backup CronJob (via extraObjects)
-#
-# Backup Strategy:
-#   - CronJob runs daily at KST 03:00 (UTC 18:00)
-#   - Date-stamped files: db-YYYYMMDD.sqlite3, rsa_key-YYYYMMDD.pem
-#   - `sqlite3 VACUUM INTO` (NOT cp) + PRAGMA integrity_check at write time
-#   - Retention: 30 days (older backups auto-deleted)
-#   - Both PVCs mounted readWrite — a WAL database cannot be opened read-only
-#
-# Restore: ./scripts/restore.sh [YYYYMMDD|latest]
+# Backup CronJob (extraObjects). Restore: ./scripts/restore.sh [YYYYMMDD|latest]
 extraObjects:
-  # Note: 2026-04-17 self-signed `vaultwarden-tls` Secret removed (unused after Phase 6 cutover).
+  # Note: 2026-04-17 self-signed `vaultwarden-tls` Secret removed (unused after the NGF cutover).
   # HTTPS termination is handled by `wildcard-example-tls` on NGF ngf Gateway (nginx-gateway ns).
   # If re-introduction is needed: see Git history or `network/nginx-gateway-fabric/docs/tls-wildcard-setup.md`.
 
-  # Backup PVC
   - apiVersion: v1
     kind: PersistentVolumeClaim
     metadata:
@@ -237,7 +207,7 @@ extraObjects:
                   persistentVolumeClaim:
                     claimName: vaultwarden-backup-data
 
-  # Gateway API HTTPRoute — sole traffic path since the Phase 6 cutover (2026-04-17).
+  # Gateway API HTTPRoute — sole traffic path since the NGF cutover (2026-04-17).
   # ingress-nginx annotations map to the timeouts / redirect / policies below; limit-connections was dropped (no NGF equivalent).
   # Not the chart's native httpRoute: it renders one route (no redirect sibling, no NGF policies) and,
   # with fullnameOverride=vaultwarden, would collide with the `vaultwarden` route below.

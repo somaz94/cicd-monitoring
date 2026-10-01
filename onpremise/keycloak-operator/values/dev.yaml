@@ -17,7 +17,7 @@ crds:
   keep: true
 
 # Resource sizing for dev — single operator pod, modest workload (one Keycloak CR).
-# Operator may briefly spike on first reconcile; do not lower memory below the upstream default (450Mi).
+# Operator may briefly spike on first reconcile; keep the memory limit at or above the upstream default (450Mi).
 resources:
   requests:
     cpu: 100m

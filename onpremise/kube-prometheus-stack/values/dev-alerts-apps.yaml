@@ -5,26 +5,9 @@
 # Things running ON the cluster, as opposed to the cluster itself (dev-alerts.yaml).
 # Severity levels are documented in that file.
 #
-# SPLIT ACROSS FOUR FILES. `additionalPrometheusRulesMap` is a MAP, so helm deep-merges
-# it across every values file and each top-level key becomes its own PrometheusRule CR --
-# the file boundary has no effect at runtime, it exists so a 76K file stops being one
-# reviewable unit.
-#
-#   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
-#                            control-plane)
-#   dev-alerts-network.yaml  metallb, blackbox
-#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
-#                            elasticsearch, redis, mysql
-#   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
-#
-# 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
-# key in two files does not combine the two rule lists -- the later file replaces the
-# earlier one wholesale and the dropped rules disappear silently.
-#
-# 🔴 A NEW FILE HERE IS NOT PICKED UP ON ITS OWN. Add it to `extraValueFiles` in
-# argocd/kube-prometheus-stack.yaml; the infra-applicationset templatePatch ranges over
-# that list. `make alert-lint` needs no change -- extract-alert-rules.py globs
-# **/values/*.yaml.
+# 🔴 A group key must appear in EXACTLY ONE file: helm merges the map by key, so the same
+# key in a later file replaces the earlier rule list wholesale and silently drops its rules.
+# See dev-alerts.yaml for the file table.
 # =============================================================================
 
 additionalPrometheusRulesMap:
@@ -80,18 +63,27 @@ additionalPrometheusRulesMap:
           # series paged critical for a fully healthy controller (local destination was reconciling
           # 283 times per 30m at the time).
           #
+          # Decided 2026-09-30: the `offset 30m` clause requires the series to have existed for the
+          # whole increase() window. A restarted controller (new pod IP) or a destination new to
+          # Prometheus starts a fresh series that stays flat until its next reconcile
+          # (timeout.reconciliation + jitter), so restarts routinely went pending on all three
+          # clusters; on-prem held it 06:17-06:26Z on 2026-09-28, one minute short of `for: 10m`.
+          # A controller stuck from boot still pages ~40 min after start; a crash loop is
+          # PodCrashLooping's job.
+          #
           - alert: ArgoCDControllerReconcileStuck
             expr: |
               (increase(argocd_app_reconcile_count{dest_server!=""}[30m]) == 0)
               and ((time() - timestamp(argocd_app_reconcile_count{dest_server!=""})) < 300)
               and on(dest_server) (count by (dest_server) (argocd_app_info) > 0)
+              and (argocd_app_reconcile_count{dest_server!=""} offset 30m)
             for: 10m
             labels:
               severity: critical
               group: argocd
             annotations:
-              summary: "ArgoCD application-controller reconcile stuck (no activity 30+ min)"
-              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue / sharding issue or v3.3.7 goroutine leak (see ghost-alarm-incident-2026-04-23.md, Post-incident follow-up section). Recover with: kubectl rollout restart statefulset/argocd-application-controller -n argocd"
+              summary: "ArgoCD application-controller reconcile stuck for {{ $labels.dest_server }} (no activity 30+ min)"
+              description: "No reconcile activity for 30+ minutes (expected 3-10 min interval). Controller may have work queue / sharding issue or v3.3.7 goroutine leak (see ghost-alarm-incident-2026-04-23.md, Post-incident follow-up section). Recover with: kubectl rollout restart statefulset/argocd-application-controller -n argocd. A restart mutes this alert for ~30 min, so confirm recovery with increase(argocd_app_reconcile_count[15m]) > 0 for this destination."
 
           # --- Option A rules (disabled by default) ---
           # Uncomment the block below to enable Option A (move app-level health to Alertmanager)
@@ -222,7 +214,7 @@ additionalPrometheusRulesMap:
               group: gitlab-runner
             annotations:
               summary: "GitLab Runner error-level log rate sustained"
-              description: "The {{ $labels.job }} fleet has logged error/fatal/panic entries at a non-zero rate for 15+ minutes ({{ $value }}/sec) — job handling or GitLab API communication may be degraded. Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` / `deploy-image-gitlab-runner`."
+              description: "The {{ $labels.job }} fleet has logged error/fatal/panic entries at a non-zero rate for 15+ minutes ({{ printf \"%.3g\" $value }}/sec) — job handling or GitLab API communication may be degraded. Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` / `deploy-image-gitlab-runner`."
 
           # A config.toml (re)load failed — a manager could not apply its configuration. The runner config is
           # managed via cicd/gitlab-runner/values/{build,deploy}.yaml, so a malformed edit rendering bad TOML
@@ -235,7 +227,7 @@ additionalPrometheusRulesMap:
               group: gitlab-runner
             annotations:
               summary: "GitLab Runner failed to load its configuration"
-              description: "gitlab_runner_configuration_loading_error_total increased by {{ $value }} in the last 10 minutes on {{ $labels.pod }} — this runner manager could not (re)load config.toml and may be running stale/default settings, so a recent change may not have taken effect. Review the latest change to cicd/gitlab-runner/values/{build,deploy}.yaml and check `kubectl -n gitlab-runner logs {{ $labels.pod }}`."
+              description: "gitlab_runner_configuration_loading_error_total increased by {{ printf \"%.3g\" $value }} in the last 10 minutes on {{ $labels.pod }} — this runner manager could not (re)load config.toml and may be running stale/default settings, so a recent change may not have taken effect. Review the latest change to cicd/gitlab-runner/values/{build,deploy}.yaml and check `kubectl -n gitlab-runner logs {{ $labels.pod }}`."
 
           # Sustained non-success GitLab API responses. status is the HTTP code; normal job polling returns
           # 204/201 (excluded). sum BY (status) so the alert names the dominant code — 5xx / 401·403 / 429
@@ -248,7 +240,7 @@ additionalPrometheusRulesMap:
               group: gitlab-runner
             annotations:
               summary: "GitLab Runner GitLab-API error responses sustained"
-              description: "The GitLab Runner managers have received HTTP {{ $labels.status }} responses from the GitLab API at {{ $value }}/sec for 15+ minutes — job pickup and status reporting may be degraded (5xx = GitLab server errors, 401/403 = revoked/expired runner token, 429 = API rate limiting). Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` and the GitLab instance health."
+              description: "The GitLab Runner managers have received HTTP {{ $labels.status }} responses from the GitLab API at {{ printf \"%.3g\" $value }}/sec for 15+ minutes — job pickup and status reporting may be degraded (5xx = GitLab server errors, 401/403 = revoked/expired runner token, 429 = API rate limiting). Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` and the GitLab instance health."
 
   # Harbor: via harbor-exporter (namespace=harbor).
   harbor-alerts:
@@ -406,7 +398,7 @@ additionalPrometheusRulesMap:
               group: elasticsearch
             annotations:
               summary: "Elasticsearch disk low on {{ $labels.name }}"
-              description: "Node {{ $labels.name }} has only {{ $value }}% free space on {{ $labels.path }} — approaching ES low watermark (85% used). Shard allocation will be blocked at 85%."
+              description: "Node {{ $labels.name }} has only {{ printf \"%.3g\" $value }}% free space on {{ $labels.path }} — approaching ES low watermark (85% used). Shard allocation will be blocked at 85%."
 
           # es-index-retention is the only thing keeping the on-prem indices from
           # growing without bound: unlike the AWS cluster, on-prem writes into

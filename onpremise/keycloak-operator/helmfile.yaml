@@ -10,16 +10,6 @@ releases:
   - name: keycloak-operator
     namespace: keycloak-system
     chart: oci://ghcr.io/somaz94/charts/keycloak-operator
-    version: "0.2.1"
+    version: "0.2.4"
     values:
       - values/dev.yaml
-
-# Ensure target namespace exists before sync (idempotent no-op when present).
-# kubectl args do not get shell-interpreted, so sh -c is required for `|| true` to work.
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "sh"
-    args:
-      - "-c"
-      - "kubectl create namespace keycloak-system 2>/dev/null || true"

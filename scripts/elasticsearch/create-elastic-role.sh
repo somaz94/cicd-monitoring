@@ -4,11 +4,7 @@
 # but reusable for any role flavor — read-only, read-write, custom — through the
 # permission flags below.
 #
-# Defaults compose a safe read-only role:
-#   cluster=[monitor]
-#   indices.names=[*]   privileges=[read, view_index_metadata]
-#   applications=[ kibana-.kibana priv=[read] resources=[*] ]
-# Override any of these via the flags below.
+# Defaults compose a safe read-only role (see usage() for each default).
 #
 # Examples (--context is REQUIRED, including for --dry-run):
 #   # default — read_only_role over all indices

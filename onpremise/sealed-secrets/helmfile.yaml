@@ -28,8 +28,7 @@ releases:
     namespace: sealed-secrets
     createNamespace: true
     chart: sealed-secrets/sealed-secrets
-    # Chart version reference (keep in sync with upgrade.py output).
-    version: 2.19.1
+    version: 2.20.0
     # wait for the controller Deployment to be Ready so the SealedSecret CRD and the
     # signing key are available before any downstream `kubeseal` / SealedSecret apply.
     wait: true

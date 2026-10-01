@@ -143,6 +143,12 @@ alertmanager:
         - receiver: 'null'
           matchers:
             - alertname = "InfoInhibitor"
+        # A Unity build pins the build machine's CPU and load for minutes, so these two are normal there;
+        # its memory-pressure, disk, external-SSD and TargetDown alerts still reach Slack.
+        - receiver: 'null'
+          matchers:
+            - job = "build-machines"
+            - alertname =~ "HighCPUUsage|NodeHighSystemLoad"
     receivers:
       - name: 'null'
       - name: 'slack-infra-alerts'
@@ -150,37 +156,13 @@ alertmanager:
           - api_url: "https://hooks.slack.com/services/<TEAM>/<CHANNEL>/<TOKEN>"
             channel: "#infra-alerts"
             send_resolved: true
-            # Three severities, three looks. Before this, `info` fell into the
-            # else-branch and was indistinguishable from `warning` in both the
-            # colour bar and the title emoji.
+            # Three severities, three looks: `info` gets its own colour bar and emoji, distinct from `warning`.
             color: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "info" }}#439FE0{{ else }}warning{{ end }}{{ else }}good{{ end }}'
             title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}:red_circle:{{ else if eq .CommonLabels.severity "info" }}:large_blue_circle:{{ else }}:large_yellow_circle:{{ end }} [{{ .CommonLabels.cluster }}] [{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}{{ else }}:white_check_mark: [{{ .CommonLabels.cluster }}] [RESOLVED] {{ .CommonLabels.alertname }}{{ end }}'
-            # Layout is three blocks separated by blank lines: WHERE (labels),
-            # WHAT (summary, description, runbook), then the Prometheus link.
-            # When several alerts group into one notification a rule divides
-            # them — without it the blocks run together and it is easy to
-            # misread one alert's instance as another's.
-            #
-            # `{{ if $i }}` emits the divider only between alerts, never before
-            # the first or after the last.
-            #
-            # At most 10 alerts are rendered. `group_by` carries `namespace`,
-            # but node-level alerts have no namespace label, so a single disk
-            # event collapses every node into one notification — DiskSpace*
-            # spans dozens of instance x mountpoint series on its own.
-            # Alertmanager truncates `title` at 1024 runes but sends `text`
-            # whole, so past Slack's ~8000-character attachment limit Slack cuts
-            # mid-alert with nothing to say it did. Ten whole alerts plus a
-            # count of the rest can be read; a message that stops in the
-            # middle of one cannot.
-            #
-            # `.Labels.env` never renders on the AWS clusters — that label is
-            # attached by the on-prem additionalScrapeConfigs and exists
-            # nowhere else. The branch is kept so all three cluster files stay
-            # byte-identical, which C4 of `make lint-governance` enforces.
-            # The leading blank line is load-bearing: Slack renders `title` and
-            # `text` as one run, so without it the first field lands on the
-            # title line ("... [INFO] AlertNameNamespace: foo").
+            # Blocks: labels / summary+description+runbook / Prometheus link; `{{ if $i }}` puts a divider between grouped alerts only.
+            # Capped at 10: node alerts have no per-node namespace, so one disk event groups every node and Slack silently cuts `text` past ~8000 chars.
+            # `.Labels.env` exists on-prem only; kept so all three files stay identical (C4, make lint-governance).
+            # The leading blank line is load-bearing: without it the first field lands on the title line.
             text: |-
 
 

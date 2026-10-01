@@ -802,7 +802,7 @@ if [[ -n "$GITLAB_BROKERING_CLIENT_ID" && -n "$GITLAB_BROKERING_CLIENT_SECRET" ]
   # name only, so a mapper carrying the right name but the wrong providerId was skipped forever and
   # the over-grant could never be corrected by re-running this script. Matching on type alone has
   # the same hole one level deeper (right type, tampered `claims`/`group`/`syncMode`), so the
-  # verdict below compares every field that decides who gets the group.
+  # verdict in reconcile_group_mapper compares every field that decides who gets the group.
   #
   # Target state is exactly ONE fully-matching mapper per group. Anything else — wrong type, wrong
   # config, duplicates, or a correct one alongside a stale one — deletes every same-named mapper and
@@ -812,11 +812,8 @@ if [[ -n "$GITLAB_BROKERING_CLIENT_ID" && -n "$GITLAB_BROKERING_CLIENT_SECRET" ]
   # FAIL CLOSED. A parse failure or a missing python3 must NOT be reported as "absent": that would
   # take the create-without-delete path, leaving an over-granting mapper attached while the log
   # claims success. `set -e` cannot catch it either, because `||` disarms it. Hence the explicit
-  # `error` verdict and the `exit 1` below. stderr is deliberately NOT silenced so the traceback
+  # `error` verdict and the `exit 1` in reconcile_group_mapper. stderr is deliberately NOT silenced so the traceback
   # reaches the operator (it does not pollute the verdict — only stdout is captured).
-  #
-  # Fetched once and reused for every group: the mapper list is realm-wide, and re-fetching per
-  # group would only widen the window in which the list and the verdict disagree.
   existing_idp_mappers=$($KCADM get "identity-provider/instances/gitlab/mappers" -r "$REALM" 2>/dev/null || echo "[]")
 
   for group in $GITLAB_MAPPED_GROUPS; do

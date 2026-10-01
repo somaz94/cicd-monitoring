@@ -26,13 +26,8 @@ node_exporter_pkg_arch: "{{ 'arm64' if ansible_facts.system == 'Darwin' else nod
 node_exporter_dist: "node_exporter-{{ node_exporter_version }}.{{ node_exporter_os }}-{{ node_exporter_pkg_arch }}"
 node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/{{ node_exporter_dist }}.tar.gz"
 
-# Account the exporter runs as.
-#
-# Linux creates a dedicated `node_exporter` nologin system user. macOS has no
-# equivalent the `user` module can create portably (it needs dscl and manual UID
-# allocation), so a macOS host group overrides this with an existing
-# unprivileged login — see group_vars/build_machines.yml. Nothing the exporter collects on
-# darwin requires root.
+# Account the exporter runs as. Linux gets a dedicated nologin system user; macOS
+# overrides it with an existing login — see group_vars/build_machines.yml for why.
 node_exporter_run_user: "node_exporter"
 node_exporter_run_group: "{{ 'staff' if ansible_facts.system == 'Darwin' else 'node_exporter' }}"
 

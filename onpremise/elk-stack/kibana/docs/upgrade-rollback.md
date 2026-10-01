@@ -37,7 +37,7 @@ This means **Elasticsearch must be upgraded first** before Kibana can be upgrade
 
 ### Rollback order
 
-No specific order is required, but **`./upgrade.py --rollback` alone does not roll anything back** — it rewrites local files only, so each component's result has to land on master as a revert commit before the cluster follows. For downgrades, the role of the auto-handlers (webhook release and so on) is described in the main guide's rollback section.
+No specific order is required, but **`./upgrade.py --rollback` alone does not roll anything back** — it rewrites local files only, so each component's result has to land on master as a revert commit before the cluster follows. A downgrade gets no automatic handling: follow the manual ArgoCD steps `--rollback` prints (starting with `autoSync: false` in the eck-operator marker); the note at the top of the main guide explains why.
 
 <br/>
 

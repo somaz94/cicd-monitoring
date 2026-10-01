@@ -5,12 +5,10 @@
 #   1) creates the Space if missing (idempotent)
 #   2) pins `dateFormat:tz` Advanced Setting (Space-scoped)
 #
-# Dashboard/lens/visualization/data view objects are NOT cross-Space-shared by
-# this script. Kibana 9.x treats those types as single-namespace, so the same
-# saved-object id literally cannot live in two Spaces. Instead, `apply.sh`
-# imports identical NDJSON into each Space — same titles/panels/indices, but
-# the cst Space's objects receive auto-generated UUIDs. The NDJSON files in
-# this directory remain the single source of truth.
+# Dashboard/lens/visualization objects are single-namespace in Kibana 9.x, so
+# the cst Space gets derived copies from make-cst-variant.sh (cst-<id> ids).
+# Data views are shared into each Space, not copied (share_data_views_to).
+# The NDJSON files in this directory remain the single source of truth.
 #
 # Default mapping:
 #   default → Asia/Seoul   (KST,  built-in space)
@@ -124,7 +122,6 @@ fi
 
 KIBANA_URL="${KIBANA_SCHEME}://${KIBANA_SVC}:${KIBANA_PORT}"
 
-# Look up elastic password
 if [ "$DRY_RUN" != "1" ]; then
   PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   if [ -z "$PASS" ]; then
@@ -133,7 +130,6 @@ if [ "$DRY_RUN" != "1" ]; then
   fi
 fi
 
-# Build the Space URL prefix. Default Space has no prefix; named Spaces use "/s/<id>".
 space_prefix() {
   local id="$1"
   if [ "$id" = "default" ]; then
@@ -224,13 +220,11 @@ share_data_views_to() {
     return 0  # default is the share source
   fi
 
-  # Find every index-pattern in the default Space.
   local list_json
   list_json=$(kctl -n "$NAMESPACE" exec -i "$ES_POD" -c "$ES_CONTAINER" -- \
     curl -s -u "${ES_USER}:${PASS}" "${KBN_HEADERS[@]}" \
       "${KIBANA_URL}/api/saved_objects/_find?type=index-pattern&per_page=100&fields=title")
 
-  # Build the objects array from the find result.
   local objs
   objs=$(printf '%s' "$list_json" | python3 -c "
 import json, sys

@@ -42,10 +42,10 @@ Components that consume the CRDs this foundation provides. All of them require t
 
 ## Relationship to kube-prometheus-stack (LOCKSTEP)
 
-- A CRD's schema is tied to the **Prometheus Operator version**. This chart's `appVersion` **MUST equal** the operator `appVersion` that kube-prometheus-stack runs.
+- A CRD's schema is tied to the **Prometheus Operator version**. Keep this chart's `appVersion` equal to the operator `appVersion` that kube-prometheus-stack runs; at the least it must **not trail** it — an operator ahead of its CRDs is the schema skew.
 - kube-prometheus-stack sets `crds.enabled: false` to disable its bundled CRD subchart, making this component the single owner of the CRDs.
-- The invariant is enforced by [`scripts/ci/check-crds-lockstep.py`](../../../scripts/ci/check-crds-lockstep.py) under `make lint-governance` (hence `make ci`). The helmfile pin's `# lockstep-appversion-match:` annotation names the component whose `Chart.yaml appVersion` must equal this component's `appVersion`; CI fails on mismatch.
-- **On upgrade**: when you bump kube-prometheus-stack, bump this component to the CRD chart version whose appVersion matches, **in the same MR**. (Deliberately NOT in an auto-upgrade tier — an independent auto-bump would break the lockstep.)
+- The invariant is enforced by [`scripts/ci/check-crds-lockstep.py`](../../../scripts/ci/check-crds-lockstep.py) under `make lint-governance` (hence `make ci`). The helmfile pin's `# lockstep-appversion-match:` annotation names the component whose `Chart.yaml appVersion` this component's `appVersion` must not be lower than; CI fails when it is (CRDs leading is allowed).
+- **On upgrade**: bump this component **first, in its own MR**, to the CRD chart whose appVersion equals the operator appVersion of the kube-prometheus-stack chart you are about to take. Merge it, click `deploy:wave_0_bootstrap` (it applies every wave_0 component at master, so read the job's diff for the siblings too), confirm the CRDs, and only then merge the kube-prometheus-stack MR — kube-prometheus-stack is ArgoCD `autoSync: true`, so its merge is the deploy, and landing the CRDs first leaves no window where the operator runs ahead of them. C1 lets the CRDs lead, so the CRD MR passes on its own; the kube-prometheus-stack MR's `validate:upgrade_mr` runs C1 as well, so it passes only once the CRD bump is on master (rebase it if it was opened earlier). (Deliberately NOT in an auto-upgrade tier — the auto-bump would take the newest CRD chart, not the one matching the operator.)
 
 <br/>
 
@@ -67,16 +67,15 @@ prometheus-operator-crds/
 
 ```bash
 cd observability/monitoring/prometheus-operator-crds
-./upgrade.py --check-chart              # check for a newer version
-./upgrade.py --upgrade-chart --dry-run  # preview + render diff
-./upgrade.py --upgrade-chart            # apply (updates Chart.yaml + helmfile pin)
+./upgrade.py --dry-run --version <X.Y.Z>   # preview the appVersion-matched version, often not the latest
+./upgrade.py --version <X.Y.Z>             # apply it (updates Chart.yaml + helmfile pin)
 ```
 
-After upgrading, confirm the new `appVersion` matches the `appVersion` of the kube-prometheus-stack component named in the helmfile pin's `# lockstep-appversion-match:` annotation. A mismatch fails `make lint-governance`.
+Pick `<X.Y.Z>` so the new `appVersion` equals the operator `appVersion` of the kube-prometheus-stack chart you will take next (`helm search repo prometheus-community/kube-prometheus-stack --versions` shows it; `helm search repo prometheus-community/prometheus-operator-crds --versions` shows which CRD chart carries that appVersion). CRDs that trail the component named in the helmfile pin's `# lockstep-appversion-match:` annotation fail `make lint-governance`.
 
 <br/>
 
 ## Operational notes
 
 - The CRDs carry a `helm.sh/resource-policy: keep` annotation to protect them from accidental deletion by helm (a safety belt added after the 2026-06-12 outage).
-- Recovery if the CRDs disappear: apply this component first (or `helm upgrade --install prometheus-operator-crds prometheus-community/prometheus-operator-crds --version <ver> -n monitoring`), then apply kube-prometheus-stack to recreate the Prometheus/Alertmanager CRs. The data PVCs are preserved.
+- Recovery if the CRDs disappear: `helmfile sync` this component first — `helmfile apply` diffs the stored release, sees no change and skips it — (or `helm upgrade --install prometheus-operator-crds prometheus-community/prometheus-operator-crds --version <ver> -n monitoring`), then Sync kube-prometheus-stack in ArgoCD to recreate the Prometheus/Alertmanager CRs. The data PVCs are preserved.

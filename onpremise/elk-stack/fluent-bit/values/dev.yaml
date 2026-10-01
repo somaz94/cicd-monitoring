@@ -1,9 +1,5 @@
 ---
-# Fluent Bit DaemonSet — stdout collection (post-transition, single release)
-# Replaces the previous NFS aggregator (single Deployment with 4 RWX PVCs
-# mounted from the NFS server) with per-node stdout tailing. /var/log/containers/
-# is the kubelet-managed symlink directory; this DaemonSet uses the standard
-# cri parser to read CRI-formatted container output.
+# Fluent Bit DaemonSet — tails /var/log/containers/ on every node with the cri parser.
 #
 # Coverage (5 INPUTs):
 #   - dev game    (ns dev-example-project)     → log_source dev-example-project-game
@@ -29,13 +25,9 @@
 # removed 2026-05-19 (staging-example-project namespace has zero pods); to bring it
 # back, re-add an INPUT + modify filter and tag with example-project.stdout.stg.game.*.
 #
-# pino-pretty workaround retired 2026-05-22 — qa.game switched to raw NDJSON
-# matching dev.game/dev.battle, so the lua strip_ansi + pino_pretty_extract
-# chain was removed and example-project_json_extract consolidated back to a single
-# block (Match example-project.stdout.*, Key_Name message). dev.battle still uses
-# Serilog schema (Level / Timestamp / MessageTemplate) and is normalized in
-# fluentd values/dev.yaml 02_filters.conf Step 2/3. History in
-# docs/pino-pretty-removal-en.md.
+# pino-pretty workaround retired 2026-05-22 — history in docs/pino-pretty-removal-en.md.
+# dev.battle is Serilog-shaped (Level / Timestamp / MessageTemplate); fluentd
+# values/dev.yaml 02_filters.conf Step 2/3 normalizes it.
 
 kind: DaemonSet
 
@@ -233,18 +225,10 @@ config:
         K8S-Logging.Parser Off
         K8S-Logging.Exclude Off
 
-    # Raw-JSON parser — every component emits valid JSON as the first character
-    # of stdout: the game components are Pino NDJSON (qa.game since 2026-05-22),
-    # the battle components emit a .NET structured-logging shape. Parse straight from `message` (the cri
-    # parser key). The Match uses a single wildcard pattern example-project.stdout.*
-    # because fluent-bit's [FILTER] Match is a single-pattern string (unlike
-    # [OUTPUT] routing) — space-separated multi-patterns silently match nothing.
-    # dev.battle uses a different key shape (Level / Timestamp / MessageTemplate
-    # / Properties); fluentd's 02_filters.conf normalizes that to level /
-    # @timestamp / message. Plain-text bootup lines (ASP.NET Core "Now
-    # listening on: ...", "info: Microsoft.Hosting.Lifetime[0]") fail JSON
-    # parse here and pass through unchanged — fluentd treats the raw text as
-    # the message body and falls back to level=info / @timestamp=receive time.
+    # No-op since 7db80f4 (2026-08-06): `multiline.parser cri` stores the payload under `log`,
+    # not `message`, so this matches no key. fluentd 02_filters.conf Step 1 does the JSON parse
+    # and Step 2 takes plain-text lines' body from `log` — re-test both before pointing this at
+    # `log`. Match is one wildcard because a [FILTER] Match takes a single pattern, not a list.
     [FILTER]
         Name parser
         Match example-project.stdout.*
@@ -325,12 +309,7 @@ config:
         Time_as_Integer On
 
   customParsers: |
-    # JSON parser for raw NDJSON payload. Used by the single example-project.stdout.*
-    # branch above (Key_Name message) for all 3 components — dev.game (Pino
-    # NDJSON), dev.battle (Serilog JSON), qa.game (Pino NDJSON since
-    # 2026-05-22). Time parsing intentionally omitted — Pino's "time" (Unix ms
-    # int) and Serilog's "Timestamp" (ISO8601 string) are both normalized in
-    # fluentd's record_transformer to "@timestamp" in Asia/Seoul ISO 8601.
+    # Referenced only by the example-project.stdout.* parser filter above, which is a no-op (see its comment).
     [PARSER]
         Name example-project_json_extract
         Format json

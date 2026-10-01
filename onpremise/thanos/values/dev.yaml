@@ -72,7 +72,7 @@ receive:
 
 # =============================================================================
 # Object Storage Configuration
-# TODO: Configure your object storage (MinIO, S3, GCS)
+# TODO(2026-04-07): Configure your object storage (MinIO, S3, GCS)
 # =============================================================================
 objstoreConfig: |-
   type: S3

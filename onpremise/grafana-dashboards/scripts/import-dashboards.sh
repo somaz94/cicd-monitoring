@@ -31,7 +31,6 @@ CHART_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "${SCRIPT_DIR}/../../../../scripts/lib/kube-context.sh"
 DASHBOARDS_DIR="${DASHBOARDS_DIR:-$CHART_DIR/dashboards}"
 
-# Replace $HOME with ~ for display purposes only
 _tilde() {
   local p="$1"
   [[ "$p" == "$HOME"* ]] && printf '~%s' "${p#$HOME}" || printf '%s' "$p"
@@ -135,20 +134,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Default mode when nothing was specified
 [[ -z "$MODE" ]] && MODE="all"
 
-# --except is only meaningful with --all
 if [[ "$MODE" == "file" && -n "$EXCEPT" ]]; then
   die "--except is only valid with --all"
 fi
 
-# Can't combine -f with --all explicitly
 if [[ "$MODE" == "all" && ${#FILES[@]} -gt 0 ]]; then
   die "-f/--file and --all are mutually exclusive"
 fi
 
-# Required tools
 need_bins=(python3)
 if [[ $DRY_RUN -eq 0 ]]; then
   need_bins+=(curl)
@@ -172,7 +167,6 @@ if [[ $FROM_SECRET -eq 1 && $DRY_RUN -eq 0 ]]; then
   [[ -z "$PASSWORD" ]] && die "secret $SECRET_NS/$SECRET_NAME returned empty $SECRET_KEY"
 fi
 
-# Resolve file list
 if [[ "$MODE" == "all" ]]; then
   [[ -d "$DASHBOARDS_DIR" ]] || die "dashboards directory not found: $DASHBOARDS_DIR"
   # Build FILES tolerating an empty match. Uses find instead of bash-only `shopt -s nullglob` so the script works under zsh too.
@@ -205,7 +199,6 @@ fi
 
 [[ ${#FILES[@]} -gt 0 ]] || die "no dashboard JSON files to import"
 
-# Password required for real runs
 if [[ $DRY_RUN -eq 0 && -z "$PASSWORD" ]]; then
   die "password required: use -p/--password, GRAFANA_PASSWORD env, or --from-secret"
 fi

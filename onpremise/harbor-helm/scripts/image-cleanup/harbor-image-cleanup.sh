@@ -172,7 +172,6 @@ process_repository() {
 
     printf "${YELLOW}Found %s artifacts. Keeping the latest %s and deleting %s older artifacts.${NC}\n" "$ARTIFACT_COUNT" "$IMAGES_TO_KEEP" "$DELETE_COUNT"
 
-    # Stats-only path (dry-run without fetching individual images)
     if [ "$DRY_RUN" = true ]; then
         printf "${YELLOW}Dry-run mode: would delete %s artifacts (no actual deletion)${NC}\n" "$DELETE_COUNT"
         return
@@ -192,7 +191,6 @@ process_repository() {
 
     printf "${YELLOW}Successfully retrieved %s of %s reported artifacts${NC}\n" "$TOTAL_IMAGES" "$ARTIFACT_COUNT"
 
-    # Handle case where fewer images were retrieved than reported by the API
     if [ "$TOTAL_IMAGES" -lt "$ARTIFACT_COUNT" ]; then
         printf "${YELLOW}Warning: retrieved artifacts (%s) is less than what the API reports (%s)${NC}\n" "$TOTAL_IMAGES" "$ARTIFACT_COUNT"
         ARTIFACT_COUNT=$TOTAL_IMAGES
@@ -225,7 +223,6 @@ process_repository() {
 
     IMAGES_TO_DELETE=$(echo -e "$IMAGES" | tail -n $DELETE_COUNT)
 
-    # Filter out invalid digests
     IMAGES_TO_DELETE_FILTERED=""
     while IFS=$'\t' read -r DIGEST PUSH_TIME TAGS_COUNT TAG_NAMES; do
         if [ -z "$DIGEST" ]; then

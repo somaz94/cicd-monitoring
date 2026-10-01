@@ -2,7 +2,7 @@ annotations:
   artifacthub.io/category: security
   artifacthub.io/changes: |
     - kind: changed
-      description: Bump appVersion from 26.7.0 to 26.7.1 (refresh templates/crd-*.yaml from upstream)
+      description: Bump appVersion from 26.7.3 to 26.7.4 (refresh templates/crd-*.yaml from upstream)
   artifacthub.io/license: Apache-2.0
   artifacthub.io/links: |
     - name: Source
@@ -17,9 +17,9 @@ annotations:
   artifacthub.io/operatorCapabilities: Seamless Upgrades
   artifacthub.io/prerelease: "false"
 apiVersion: v2
-appVersion: 26.7.1
+appVersion: 26.7.4
 description: Keycloak Operator install (CRDs + Deployment + RBAC + Service) wrapped
-  from the upstream keycloak-k8s-resources raw YAML. Pin upstream releases via upgrade.py;
+  from the upstream keycloak-k8s-resources raw YAML. Pin upstream releases via upgrade.sh;
   operate Keycloak instances with the keycloak-cr chart.
 home: https://github.com/somaz94/helm-charts
 keywords:
@@ -41,5 +41,5 @@ sources:
 - https://github.com/keycloak/keycloak-k8s-resources
 - https://github.com/keycloak/keycloak
 type: application
-version: 0.2.1
+version: 0.2.4
 

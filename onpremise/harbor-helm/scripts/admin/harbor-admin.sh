@@ -6,13 +6,6 @@
 # Harbor v2.0 REST API. Designed for the example.com self-signed HTTPS setup.
 #
 # Dependencies: curl, python3 (stdlib only)
-#
-# Environment overrides:
-#   HARBOR_URL              default: https://harbor.example.com
-#   HARBOR_IP               default: 192.0.2.55   (for --resolve bypass)
-#   HARBOR_ADMIN            default: admin
-#   HARBOR_ADMIN_PASSWORD   default: read from ../../values/dev.yaml (harbor-helm chart)
-#   HARBOR_NO_RESOLVE=1     skip --resolve (use OS DNS)
 # =============================================================================
 # bash + zsh compatible: re-exec under bash if invoked through zsh BEFORE
 # enabling shell options. `declare -A` (associative arrays) requires bash 4+
@@ -302,7 +295,6 @@ cmd_remove_member() {
   if [[ "$target" =~ ^[0-9]+$ ]]; then
     mid="$target"
   else
-    # find by name
     mid=$(api GET "/api/v2.0/projects/$project/members?page_size=100" | python3 -c "
 import json, sys
 needle = sys.argv[1].lower()

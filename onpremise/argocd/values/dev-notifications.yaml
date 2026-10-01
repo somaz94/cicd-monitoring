@@ -1,6 +1,5 @@
 ## Notifications controller
 notifications:
-  # -- Enable notifications controller
   enabled: true
 
   # Values injected into every notification template as `.context.<key>`; the chart's own

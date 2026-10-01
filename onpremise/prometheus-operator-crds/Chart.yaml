@@ -10,7 +10,7 @@ annotations:
     - name: QuentinBisson
       email: quentin.bisson@gmail.com
 apiVersion: v2
-appVersion: v0.93.0
+appVersion: v0.94.1
 dependencies:
 - name: crds
   repository: ""
@@ -39,4 +39,5 @@ name: prometheus-operator-crds
 sources:
 - https://github.com/prometheus-community/helm-charts
 type: application
-version: 31.0.0
+version: 32.0.1
+

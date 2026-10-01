@@ -7,7 +7,7 @@ syncWave: "5"
 chart:
   repoURL: https://charts.gitlab.io
   name: gitlab-runner
-  version: "0.91.0"
+  version: "0.93.0"
 valueFile: cicd/gitlab-runner/values/deploy.yaml
 createNamespace: false                        # 'gitlab-runner' already exists
 autoSync: true

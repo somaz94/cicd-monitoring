@@ -7,6 +7,8 @@
 # Operator + CRDs must be installed first via ../keycloak-operator/.
 # Chart versions pinned. ./upgrade.py (external-oci template) bumps keycloak-cr only;
 # keycloak-postgresql is bumped by hand.
+# DB credentials Secret is chart-managed by the keycloak-postgresql release (auth.user/password/secretKeys in values/dev-postgresql.yaml).
+# Realm import is handled via UI/kcadm — not auto-applied here.
 
 # historyMax 3: 10 revisions of a large chart overflow helm's history query on the
 # apiserver stream and break helmfile diff/apply. See cicd/argo-cd/docs/helm-release-history-bloat.md.
@@ -33,14 +35,3 @@ releases:
       - keycloak/keycloak-postgresql
     values:
       - values/dev-keycloak.yaml
-
-# Ensure target namespace exists before sync (idempotent no-op when present).
-# DB credentials Secret is chart-managed by the keycloak-postgresql release (auth.user/password/secretKeys in values/dev-postgresql.yaml).
-# Realm import is handled in Phase 3 via UI/kcadm — not auto-applied here.
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "sh"
-    args:
-      - "-c"
-      - "kubectl create namespace keycloak 2>/dev/null || true"

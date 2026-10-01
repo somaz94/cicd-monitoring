@@ -146,12 +146,10 @@ _KC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 source "${_KC_LIB_DIR}/../../../../scripts/lib/kube-context.sh"
 require_kube_context
 
-# Default to the built-in default Space when no --space-id provided.
 if [ ${#SPACE_IDS[@]} -eq 0 ]; then
   SPACE_IDS=("default")
 fi
 
-# Resolve target file list.
 # Data-view bootstrap NDJSONs are emitted FIRST so dashboards on a fresh Space
 # can resolve their data-view references on the very first import.
 resolve_files() {
@@ -168,7 +166,6 @@ resolve_files() {
     done
     return
   fi
-  # Auto-discover *.ndjson in this directory.
   shopt -s nullglob
   # Pass 1: data-view bootstrap files (only when --include-data-view).
   if [ "$INCLUDE_DATA_VIEW" = "true" ]; then
@@ -199,7 +196,6 @@ if [ ${#FILES[@]} -eq 0 ]; then
   exit 0
 fi
 
-# Look up elastic password from the ECK-managed secret.
 if [ "$DRY_RUN" != "1" ]; then
   PASS=$(kctl -n "$NAMESPACE" get secret "$ES_SECRET" -o jsonpath="{.data.${ES_USER}}" | base64 -d)
   if [ -z "$PASS" ]; then
@@ -211,7 +207,6 @@ fi
 KIBANA_URL="${KIBANA_SCHEME}://${KIBANA_SVC}:${KIBANA_PORT}"
 IMPORT_PATH="/api/saved_objects/_import?overwrite=${OVERWRITE}"
 
-# Build the Space URL prefix. Default Space has no prefix; named Spaces use "/s/<id>".
 space_prefix() {
   local id="$1"
   if [ "$id" = "default" ]; then
@@ -221,7 +216,6 @@ space_prefix() {
   fi
 }
 
-# Look up the configured id-prefix for the given Space (empty when unset).
 id_prefix_for() {
   local target="$1"
   for spec in "${ID_PREFIX_SPECS[@]+"${ID_PREFIX_SPECS[@]}"}"; do
@@ -289,7 +283,7 @@ import_one() {
   fi
 
   # When --id-prefix-for matches this Space, transform NDJSON before upload.
-  # Otherwise upload the file as-is (pre-existing fast path).
+  # Otherwise upload the file as-is.
   local resp
   if [ -n "$id_prefix" ]; then
     resp=$(transform_ndjson "$id_prefix" < "$file" | \

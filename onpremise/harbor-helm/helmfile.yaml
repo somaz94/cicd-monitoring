@@ -1,6 +1,6 @@
 # Deploy Harbor (private container registry) via helmfile, consuming upstream harbor/harbor chart.
 # Namespace creation handled by `createNamespace: true` on the release (G11 — no duplicate presync hook).
-# Lifecycle hooks: postsync apply manifests/; preuninstall deletes it.
+# Lifecycle hooks: presync gates on KUBE_CONTEXT; postsync applies manifests/; preuninstall deletes it.
 # Chart version pinned. Bump via ./upgrade.py after verifying the new release.
 
 repositories:
@@ -21,7 +21,23 @@ releases:
     values:
       - values/dev.yaml
 
+    # helmfile passes --kube-context to helm only, so these hooks refuse (exit 2) rather than hit the current context.
+    # Messages go to stdout: showlogs relays only a hook's stdout.
     hooks:
+      # presync: gate only — refuse before helm upgrades the release, not after (postsync needs the context).
+      - events: ["presync"]
+        showlogs: true
+        command: "bash"
+        args:
+          - "-c"
+          - |
+            if [ -z "${KUBE_CONTEXT:-}" ]; then
+              echo "ERROR: KUBE_CONTEXT is not set -- refusing to sync harbor (postsync needs it for manifests/)."
+              echo "  Run: KUBE_CONTEXT=<ctx> helmfile --kube-context <ctx> sync"
+              echo "  Contexts here: kubectl config get-contexts -o name"
+              exit 2
+            fi
+
       # postsync: kubectl apply manifests/ — what the chart (expose.type=route) does not render:
       # the HTTP→HTTPS redirect route, the ClientSettingsPolicy (unlimited docker push) and the
       # DB backup CronJob + PVC.
@@ -29,8 +45,19 @@ releases:
       # application or when only manifests/ changes.
       - events: ["postsync"]
         showlogs: true
-        command: "kubectl"
-        args: ["apply", "-f", "manifests/"]
+        command: "bash"
+        args:
+          - "-c"
+          - |
+            set -e
+            if [ -z "${KUBE_CONTEXT:-}" ]; then
+              echo "ERROR: KUBE_CONTEXT is not set -- refusing to apply manifests/ to an implicit context."
+              echo "  Run: KUBE_CONTEXT=<ctx> helmfile --kube-context <ctx> sync"
+              echo "  Contexts here: kubectl config get-contexts -o name"
+              exit 2
+            fi
+            echo "=== target kube-context: ${KUBE_CONTEXT} ==="
+            kubectl --context "${KUBE_CONTEXT}" apply -f manifests/
 
       # preuninstall: delete manifests/ (routes, policy, DB backup CronJob + PVC; the PV is Retain)
       # so no stale attachment is left on the parent Gateway.
@@ -39,14 +66,19 @@ releases:
         command: "bash"
         args:
           - "-c"
-          - "kubectl delete -f manifests/ --ignore-not-found=true --wait=true || true"
-
-# Pre-flight assertion: warn if no StorageClass available (Harbor needs PVC for DB + storage).
-# Soft check — `|| true` keeps sync flowing even on empty cluster bootstrap.
-hooks:
-  - events: ["presync"]
-    showlogs: true
-    command: "sh"
-    args:
-      - "-c"
-      - "kubectl get sc --no-headers 2>/dev/null || true"
+          - |
+            # Unlike a failed delete (`|| true` below), a missing or unknown context aborts the
+            # uninstall: `|| true` would swallow a mistyped one and leave manifests/ in the cluster.
+            if [ -z "${KUBE_CONTEXT:-}" ]; then
+              echo "ERROR: KUBE_CONTEXT is not set -- refusing to delete manifests/ from an implicit context."
+              echo "  Run: KUBE_CONTEXT=<ctx> helmfile --kube-context <ctx> destroy"
+              echo "  Contexts here: kubectl config get-contexts -o name"
+              exit 2
+            fi
+            if ! kubectl config get-contexts "${KUBE_CONTEXT}" >/dev/null 2>&1; then
+              echo "ERROR: kube-context '${KUBE_CONTEXT}' does not exist -- refusing to skip the manifests/ delete."
+              echo "  Contexts here: kubectl config get-contexts -o name"
+              exit 2
+            fi
+            echo "=== target kube-context: ${KUBE_CONTEXT} ==="
+            kubectl --context "${KUBE_CONTEXT}" delete -f manifests/ --ignore-not-found=true --wait=true || true

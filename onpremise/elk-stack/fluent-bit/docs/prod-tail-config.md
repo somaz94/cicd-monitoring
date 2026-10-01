@@ -4,7 +4,7 @@ The fluent-bit `tail` input options in `values/dev.yaml` reflect the current dev
 
 > **Current dev state**: Tier 1 / Phase 1a + buffer hardening applied. Note that the 2026-05-19 move from the NFS-aggregator Deployment to a per-node stdout DaemonSet replaced the RWO state PVC with a **node hostPath** (see [deployment-to-daemonset-en.md](./deployment-to-daemonset.md)).
 > - fluent-bit: `DB` checkpoints, `storage.type filesystem`, a node hostPath state volume (`persistentVolumeClaims.enabled: false`), OUTPUT `storage.total_limit_size 2G`. `values/dev.yaml` is the SSOT for the values actually applied.
-> - fluentd: buffer `queue_limit_length 128` + `total_limit_size 4GB` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule with 7 alerts.
+> - fluentd: a file buffer capped by `total_limit_size` + `retry_forever true` + `<secondary>` JSON format + PrometheusRule alerts. `observability/logging/fluentd/values/dev.yaml` `03_outputs.conf` is the SSOT for the values actually applied.
 > - Only `Read_from_Head` remains `false` (awaiting Phase 1b promotion).
 > - Detailed change log: see the git log for fluent-bit-related commits. For re-ingest after index loss, see [reingest-procedure-en.md](./reingest-procedure.md).
 

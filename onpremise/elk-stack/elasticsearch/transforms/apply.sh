@@ -169,13 +169,11 @@ transform_exists() {
   [ "$code" = "200" ]
 }
 
-# Read transform's dest.index from the JSON definition (stdlib python).
 dest_index_of() {
   local file="$1"
   python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['dest']['index'])" "$file"
 }
 
-# Returns 0 if the index already exists in ES.
 index_exists() {
   local idx="$1"
   if [ "$DRY_RUN" = "1" ]; then return 1; fi
@@ -228,7 +226,6 @@ apply_one() {
   log ""
   log "→ Transform id=$id  file=$(basename "$file")"
 
-  # --preview-only: call _preview and stop
   if [ "$PREVIEW_ONLY" = "1" ]; then
     log "  preview only"
     if [ "$DRY_RUN" = "1" ]; then
@@ -252,7 +249,6 @@ for row in preview[:3]:
     return 0
   fi
 
-  # If existing transform and --replace, stop & delete first
   if transform_exists "$id"; then
     if [ "$REPLACE" = "1" ]; then
       log "  existing → stop + delete (--replace)"
@@ -267,10 +263,8 @@ for row in preview[:3]:
     fi
   fi
 
-  # Ensure dest index carries explicit mapping (when sibling <name>.mapping.json exists).
   apply_dest_mapping_if_any "$file" || return 1
 
-  # PUT (register)
   log "  PUT  ${ES_URL}/_transform/${id}"
   if [ "$DRY_RUN" = "1" ]; then
     log "    (dry-run)"

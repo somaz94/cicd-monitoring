@@ -19,8 +19,6 @@
   hosts: node_exporter
   become: true
 
-  # Variables are defined in group_vars/all.yml (single source of truth).
-
   tasks:
     - name: Check if port {{ node_exporter_port }} is already in use
       shell: "{{ node_exporter_port_check_cmd }} || true"
@@ -37,10 +35,7 @@
         - port_check.stdout | length > 0
         - "'node_exporter' not in port_check.stdout"
 
-    # macOS has no portable way to create a nologin service account through the
-    # `user` module (it needs dscl plus manual UID allocation), so darwin hosts
-    # run the exporter as an existing unprivileged login instead — see
-    # node_exporter_run_user in group_vars/all.yml.
+    # Darwin hosts run as an existing login instead (see group_vars/build_machines.yml).
     - name: Create node_exporter system user
       user:
         name: node_exporter

@@ -17,7 +17,7 @@ Both ES and Kibana use the `external-oci-cr-version` canonical template, so this
 > - `helm rollback` / `helmfile apply` → **selfHeal reverts it immediately.** The cluster keeps following git master.
 > - `./upgrade.py --rollback` → rewrites local files only and pushes nothing, so **the cluster never sees it.**
 >
-> **The only real rollback path is git**: land a revert commit on master and ArgoCD applies it. But **an ES downgrade is still blocked by the admission webhook**, so the webhook-release steps below (Step 1/7, 2/7, 5/7) are still needed manually, *alongside* the revert commit.
+> **The only real rollback path is git**: land the values file `./upgrade.py --rollback` restored (or a revert commit) on master and ArgoCD applies it. But **an ES downgrade is still blocked by the admission webhook, and this path has no automatic handling.** On a downgrade `--rollback` prints the manual steps; follow them in order. The first is setting `autoSync: false` in that cluster's eck-operator marker and pushing only that — the ApplicationSet reverts a hand-patched Application, so the marker is the only way to pause it, and without the pause selfHeal undoes the operator scale-down and recreates the webhook. The helmfile 7-step flow below (Step 1/7, 2/7, 5/7) does not apply on this path. And the Elastic Stack does not downgrade data a newer version has written, so a snapshot restore may be the real rollback.
 >
 > Kibana is additionally **effectively one-way**: starting 9.5.x migrates its saved objects, and reverting to an older version afterwards can make it refuse to boot. Export **both** Spaces (`default` and `cst`) before upgrading — an export without a Space prefix only covers `default`.
 >

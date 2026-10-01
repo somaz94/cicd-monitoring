@@ -28,12 +28,9 @@ expose:
         namespace: nginx-gateway
         sectionName: https
   clusterIP:
-    # The name of ClusterIP service
     name: harbor
     ports:
-      # The service port Harbor listens on when serving HTTP
       httpPort: 80
-      # The service port Harbor listens on when serving HTTPS
       httpsPort: 443
 
 externalURL: https://harbor.example.com
@@ -71,15 +68,12 @@ persistence:
     type: filesystem
     filesystem:
       rootdirectory: /storage
-      #maxthreads: 100
 
 existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
 harborAdminPassword: "exampleAdminPassword"
 
-# debug, info, warning, error or fatal
 logLevel: info
 
-# Run the migration job via helm hook
 enableMigrateHelmHook: false
 
 metrics:
@@ -95,13 +89,10 @@ trace:
   enabled: false
 
 cache:
-  # default is not enabled.
   enabled: true
-  # default keep cache for one day.
   expireHours: 24
 
 
-# If service exposed via "ingress", the Nginx will not be used
 nginx:
   image:
     repository: goharbor/nginx-photon
@@ -192,9 +183,7 @@ registry:
 trivy:
   enabled: true
   image:
-    # repository the repository for Trivy adapter image
     repository: goharbor/trivy-adapter-photon
-    # tag the tag for Trivy adapter image
     tag: v2.15.2
   replicas: 1
   resources:
@@ -212,7 +201,6 @@ database:
       repository: goharbor/harbor-db
       tag: v2.15.2
     password: "exampleAdminPassword"
-    # shmSizeLimit: 512Mi
     shmSizeLimit: 2048Mi
     resources:
       requests:

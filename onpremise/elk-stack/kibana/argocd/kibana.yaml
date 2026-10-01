@@ -21,7 +21,7 @@ syncWave: "4"                                   # observability tier (mirrors he
 chart:
   repoURL: ghcr.io/somaz94/charts               # registered OCI repo (no scheme) -> ArgoCD appends chart name
   name: kibana-eck
-  version: "0.1.7"
+  version: "0.1.10"
 valueFile: observability/logging/kibana/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
 createNamespace: false                          # 'logging' already exists
 autoSync: true                                  # adopt-diff verified (CR cpu 1000m==1 normalized by operator, zero kibana roll; HTTPRoute tracking-id only) -> auto-sync (prune+selfHeal) on

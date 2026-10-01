@@ -148,7 +148,7 @@ argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when
 # Pin to a specific version (the current Stack version lives in the `version` field of values/dev.yaml)
 ./upgrade.py --version <X.Y.Z>
 
-# Roll back using a previous backup (auto webhook handling)
+# Roll back using a previous backup (a downgrade prints the manual ArgoCD steps)
 ./upgrade.py --rollback
 ```
 
@@ -164,7 +164,7 @@ argocd app sync infra-elasticsearch   # ⚠️ mutates the cluster — only when
 
 Keep Kibana on the **same Stack version** (bump `kibana/values/dev.yaml` `version` together).
 
-**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and automatic webhook handling for rollbacks. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md).
+**Safety features / incident response**: `upgrade.py` includes image verification, cluster health pre-check, major bump warning, and the manual ArgoCD steps a downgrade rollback prints. For behavior details and incident playbooks, see [docs/upgrade-rollback-en.md](docs/upgrade-rollback.md).
 
 <br/>
 
