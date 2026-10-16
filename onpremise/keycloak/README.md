@@ -199,8 +199,9 @@ kubectl -n keycloak logs sts/keycloak | grep -i "PostgreSQL\|database product"
 2. Edit `values/dev-postgresql.yaml` `image.tag` (e.g. `17-alpine` → `18-alpine`)
 3. **For major upgrades**, take a backup first:
    ```bash
-   kubectl -n keycloak exec deploy/keycloak-postgresql -- pg_dump -U keycloak -d keycloak > backup/$(date +%Y%m%d)-keycloak-pre-pg-bump.sql
+   kubectl --context onprem-dev -n keycloak exec deploy/keycloak-postgresql -- pg_dump -U keycloak -d keycloak --clean --if-exists -Fp > backup/$(date +%Y%m%d)-keycloak-pre-pg-bump.sql
    ```
+   `scripts/restore.sh` needs `--clean --if-exists -Fp` to restore it. `.gitignore` keeps the dump out of git; never commit it, and delete it once you are done.
 4. `helmfile diff` → `apply` (user approval)
 5. `kubectl -n keycloak rollout status deploy/keycloak-postgresql`
 6. Major bumps (e.g. 17 → 18) require a PostgreSQL catalog upgrade — a plain image bump is **not** sufficient. Use `pg_upgrade` or a dump/restore. Minor bumps (17.3 → 17.4) are direct.

@@ -2,7 +2,7 @@
 #
 # Wraps the upstream keycloak-k8s-resources raw YAML — the CRDs (Keycloak,
 # KeycloakRealmImport, KeycloakOIDCClient, KeycloakSAMLClient), ServiceAccount, ClusterRoles / ClusterRoleBindings /
-# Role / RoleBindings, the operator Deployment and its Service. `upgrade.sh`
+# RoleBindings, the operator Deployment and its Service. `upgrade.sh`
 # tracks new keycloak-k8s-resources releases and refreshes the templates in
 # place.
 #
@@ -22,7 +22,7 @@ commonLabels: {}
 commonAnnotations: {}
 
 # Per-resource label/annotation overrides. Keys: serviceAccount, deployment,
-# service, role, clusterRoles, roleBinding, clusterRoleBindings.
+# service, clusterRoles, roleBinding, clusterRoleBindings (role is deprecated, see below).
 resourceMetadata:
   serviceAccount:
     labels: {}
@@ -33,6 +33,8 @@ resourceMetadata:
   service:
     labels: {}
     annotations: {}
+  # Deprecated since 0.2.7 and ignored: the namespaced Role it labelled is no longer rendered
+  # (upstream dropped it in 26.7.1). Kept so existing values files still pass the schema.
   role:
     labels: {}
     annotations: {}
@@ -166,7 +168,7 @@ serviceAccount:
 # ---------------------------------------------------------------------------
 # RBAC
 # ---------------------------------------------------------------------------
-# The operator needs both namespace-scoped (Role/RoleBinding) and
+# The operator needs both namespace-scoped (RoleBinding) and
 # cluster-scoped (ClusterRole/ClusterRoleBinding) permissions. Disable RBAC
 # only when policies are managed externally; the upstream rules are required.
 rbac:

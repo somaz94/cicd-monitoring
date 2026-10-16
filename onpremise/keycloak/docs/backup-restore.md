@@ -15,12 +15,14 @@ PostgreSQL is captured via pg_dump; the realm via `kc.sh export`.
 
 ```bash
 TS=$(date +%Y%m%d_%H%M%S)
-kubectl -n keycloak exec deploy/keycloak-postgresql -- \
+kubectl --context onprem-dev -n keycloak exec deploy/keycloak-postgresql -- \
   pg_dump -U keycloak -d keycloak --clean --if-exists -Fp \
   > backup/${TS}-keycloak-pgdump.sql
 
 ls -lh backup/${TS}-keycloak-pgdump.sql
 ```
+
+> 🔴 A dump holds password hashes and client secrets. `backup/` is tracked for upgrade.py rollbacks, so only `.sql` is kept out of git by `.gitignore`. Never commit a dump, and delete it once you are done with it.
 
 > 🔴 Plain SQL (`-Fp`) is required. `scripts/restore.sh` has no `pg_restore` path and no format detection — it always `kubectl cp`s the dump into the pod and pipes it through `psql -v ON_ERROR_STOP=1 --single-transaction`. A dump taken with `-Fc` (custom format) cannot be restored by the only restore tool in this repo.
 

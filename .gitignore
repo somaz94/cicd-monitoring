@@ -44,3 +44,7 @@ config/local_settings.py
 Chart.lock
 **/charts/*.tgz
 
+# Keycloak manual pg_dump output (onpremise/keycloak/docs/backup-restore.md). Same reason as above:
+# the upstream root rule never arrives, and a dump holds password hashes and client secrets.
+onpremise/keycloak/backup/*.sql
+
