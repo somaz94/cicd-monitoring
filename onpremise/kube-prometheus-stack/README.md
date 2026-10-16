@@ -37,9 +37,9 @@ kube-prometheus-stack/
 │   ├── watchdog-check.sh         # External Prometheus watchdog (bastion cron)
 │   └── watchdog-rbac.yaml        # Minimal RBAC for the watchdog
 ├── docs/                   # Detailed guides
-│   ├── external-watchdog-en.md
-│   ├── slack-alert-format-en.md
-│   └── troubleshooting-en.md
+│   ├── external-watchdog.md
+│   ├── slack-alert-format.md
+│   └── troubleshooting.md
 ├── upgrade.py              # Version upgrade script
 ├── backup/                 # Auto backup on upgrade
 └── README.md

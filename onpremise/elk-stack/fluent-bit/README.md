@@ -22,8 +22,7 @@ fluent-bit/
 ├── upgrade.py          # Version upgrade script
 ├── backup/             # Auto-backup during upgrades (holds the retired helmfile.yaml)
 ├── docs/               # Topic-specific guides (Korean + English mirror)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 > **Note:** This chart uses the local chart (`chart: .`) approach, managing templates/ directly.

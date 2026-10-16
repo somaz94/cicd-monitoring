@@ -18,8 +18,7 @@ dashboards/
 ├── cst/                                        # ── generated. never hand-edit ──
 │   ├── example-project-game-data-view-cst.ndjson      #   CST cohort data views (same index, read active_dates_cst)
 │   └── <env>-pm-retention-dashboard-cst.ndjson #   Per-environment CST dashboard (cst- prefixed ids), 1:1 with the default original
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 The actual dashboard files and environments are not listed here — `manifest.txt` and the directory itself are the SSOT.

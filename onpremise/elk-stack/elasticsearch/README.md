@@ -45,8 +45,7 @@ elasticsearch/
 ├── index-retention/            # Log-index document retention CronJob (README + manifests/cronjob.yaml)
 ├── backup/
 │   └── helmfile.yaml           # retired (was the helmfile deploy path)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 There is **no local `Chart.yaml` or `templates/`** in this directory. The chart source is maintained in [somaz94/helm-charts](https://github.com/somaz94/helm-charts/tree/main/charts/elasticsearch-eck) and published on release to OCI (`ghcr.io/somaz94/charts/elasticsearch-eck`) + HTTP (`https://charts.somaz.blog`).

@@ -52,12 +52,10 @@ node-exporter/
 │       ├── node_exporter.service.j2     # systemd unit template (Linux)
 │       └── node_exporter.plist.j2       # launchd LaunchDaemon template (macOS)
 ├── docs/
-│   ├── troubleshooting.md               # Troubleshooting guide
-│   └── troubleshooting-en.md
+│   └── troubleshooting.md               # Troubleshooting guide
 ├── upgrade.py                           # Version-bump helper (managed by upgrade-sync)
 ├── backup/                              # Previous value snapshots left by upgrade.py
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

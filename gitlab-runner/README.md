@@ -20,8 +20,7 @@ gitlab-runner/
 │   └── backup/
 ├── upgrade.py
 ├── backup/
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

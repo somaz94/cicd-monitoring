@@ -44,10 +44,8 @@ kibana/
 │   ├── export.sh               # live Kibana → repo NDJSON
 │   └── *.ndjson                # Saved Object definitions
 ├── docs/
-│   ├── upgrade-rollback.md     # Kibana-specific notes + link to shared guide (Korean)
-│   └── upgrade-rollback-en.md  # English mirror
-├── README.md
-└── README-en.md
+│   └── upgrade-rollback.md     # Kibana-specific notes + link to shared guide
+└── README.md
 ```
 
 There is **no local `Chart.yaml` or `templates/`** in this directory. The chart source is maintained in [somaz94/helm-charts](https://github.com/somaz94/helm-charts/tree/main/charts/kibana-eck).

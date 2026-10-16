@@ -19,8 +19,7 @@ harbor-helm/
 ├── manifests/          # Resources the upstream chart does not render (HTTPRoute, DB backup)
 ├── scripts/            # Operational scripts (admin, image-cleanup)
 ├── docs/               # Detailed guides (TLS, OIDC, DB backup, etc.)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

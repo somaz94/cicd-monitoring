@@ -22,8 +22,7 @@ eck-operator/
 ├── upgrade.py                  # external-standard version-tracking script
 ├── backup/
 │   └── helmfile.yaml           # retired (was the helmfile deploy path)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

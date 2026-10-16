@@ -11,7 +11,7 @@ This lets registry credentials — notably the **Harbor robot `dockerconfigjson`
 ## Directory layout
 
 ```
-security/sealed-secrets/
+onpremise/sealed-secrets/
 ├── Chart.yaml             # upstream chart vendoring (drift-detection reference)
 ├── values.yaml            # upstream chart vendoring (default values reference)
 ├── helmfile.yaml          # single release: sealed-secrets @ sealed-secrets ns
@@ -19,8 +19,7 @@ security/sealed-secrets/
 │   └── dev.yaml          # dev (example dev) overrides (resources, metrics)
 ├── upgrade.py             # external-standard template (tracks bitnami chart version)
 ├── backup/                # rollback trail written by upgrade.py --rollback
-├── README.md              # Korean version
-└── README-en.md           # (this file)
+└── README.md              # (this file)
 ```
 
 <br/>

@@ -21,8 +21,7 @@ argo-cd/
 ├── docs/                       # Topic guides — see the Documentation table below for the list
 ├── scripts/
 │   └── notify-rule-change.sh                   # Rule-change helper (check/pre/post/status)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

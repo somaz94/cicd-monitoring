@@ -62,8 +62,7 @@ thanos/
 ├── upgrade.sh
 ├── backup/
 ├── .helmignore
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>

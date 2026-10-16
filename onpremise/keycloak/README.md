@@ -17,7 +17,7 @@ Mirroring the ECK operator/CR split, the **Operator + CRDs must be installed fir
 ## Directory layout
 
 ```
-security/keycloak/
+onpremise/keycloak/
 ├── Chart.yaml                          # Component metadata
 ├── helmfile.yaml                       # 2 releases: keycloak-postgresql + keycloak (needs)
 ├── values-postgresql.yaml              # OCI chart vendoring — somaz94/postgresql defaults
@@ -37,8 +37,7 @@ security/keycloak/
 ├── docs/                               # Korean / English pairs
 ├── upgrade.py                          # external-oci template (tracks somaz94/keycloak-cr)
 ├── backup/                             # upgrade.py rollback trail
-├── README.md                           # Korean version
-└── README-en.md                        # (this file)
+└── README.md                           # (this file)
 ```
 
 <br/>

@@ -15,9 +15,8 @@ blackbox-exporter covers that gap.
 ## Directory structure
 
 ```
-observability/monitoring/blackbox-exporter/
-├── README.md          # Korean version
-├── README-en.md       # This document (English)
+onpremise/blackbox-exporter/
+├── README.md          # This document
 ├── Chart.yaml         # Upstream chart metadata (managed by upgrade.py)
 ├── values.yaml        # Upstream defaults (managed by upgrade.py)
 ├── values/dev.yaml    # Operational overrides — probe modules and targets

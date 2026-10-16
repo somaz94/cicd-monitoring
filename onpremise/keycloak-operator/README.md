@@ -9,7 +9,7 @@ Mirrors the operator/CR split used by ECK (`observability/logging/eck-operator/`
 ## Directory layout
 
 ```
-security/keycloak-operator/
+onpremise/keycloak-operator/
 ├── Chart.yaml             # OCI chart vendoring (drift-detection reference)
 ├── values.yaml            # OCI chart vendoring (default values reference)
 ├── values.schema.json     # OCI chart vendoring (Draft-07 schema reference)
@@ -18,8 +18,7 @@ security/keycloak-operator/
 │   └── dev.yaml          # dev (example dev) overrides (watchNamespaces, resources)
 ├── upgrade.py             # external-oci template (tracks somaz94 OCI chart version)
 ├── backup/                # rollback trail written by upgrade.py
-├── README.md              # Korean version
-└── README-en.md           # (this file)
+└── README.md              # (this file)
 ```
 
 <br/>

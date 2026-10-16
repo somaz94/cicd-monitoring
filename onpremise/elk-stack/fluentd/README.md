@@ -19,8 +19,7 @@ fluentd/
 ├── upgrade.py          # Version upgrade script
 ├── docs/               # Topic guides (KO+EN pairs) — listed in the Documentation table below
 ├── backup/             # Auto-backup during upgrades (holds the retired helmfile.yaml)
-├── README.md
-└── README-en.md
+└── README.md
 ```
 
 <br/>
