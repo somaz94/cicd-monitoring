@@ -1,52 +1,82 @@
 #!/usr/bin/env bash
-# Export the `example` realm config from a running Keycloak server to manifests/realm-example.json.
+# Export the `example` realm from a running Keycloak server to a local backup outside the repo.
 #
-# Used after the realm + brokering are created via UI/kcadm, to capture state for declarative re-deploy.
+# A full export carries client secrets, IdP client secrets and user credentials, so it never lands in a tracked path by default.
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [-h]
 
-Export the running Keycloak realm to a JSON file (kc.sh export). The output is
-intended to be re-applied via the realmImport CRD on the next helmfile run, e.g.:
+Export the running Keycloak realm to a local JSON backup (kc.sh export, users
+included). The file holds client secrets, IdP client secrets and user
+credentials: it is a local backup / diff artefact. Never commit it.
 
-  git diff manifests/realm-example.json
-  helmfile -f helmfile.yaml diff \\
-    --set realmImport.enabled=true \\
-    --set-file realmImport.realm=manifests/realm-example.json
+Default output:
+  \${REALM_EXPORT_DIR:-\$HOME/keycloak-exports}/realm-<REALM>-<YYYYmmdd_HHMMSS>.json
+  The directory is created mode 0700, the file is written mode 0600.
 
 Env overrides (with defaults):
-  NAMESPACE  keycloak namespace                                  (default: keycloak)
-  POD        operator-spawned StatefulSet pod                    (default: keycloak-0)
-  REALM      realm to export                                     (default: example)
-  OUTPUT     output path, relative to the component dir          (default: manifests/realm-example.json)
+  NAMESPACE         keycloak namespace                  (default: keycloak)
+  POD               operator-spawned StatefulSet pod    (default: keycloak-0)
+  REALM             realm to export                     (default: example)
+  REALM_EXPORT_DIR  output directory                    (default: \$HOME/keycloak-exports)
+  OUTPUT            explicit output file, replaces the default path entirely
+                    (relative to the current directory; keep it outside the repo)
 
-Note: the export contains client secrets — keep the file out of public repos.
+Compare two exports to see realm drift:
+  diff <(jq -S . OLDER.json) <(jq -S . NEWER.json)
+
+The realmImport path (--set-file realmImport.realm=...) needs a sanitized realm
+file with secrets supplied separately. This raw export is not that file.
+
+There is no --dry-run: any argument other than -h/--help is rejected. The export
+is written to a temp file in the output directory and moved into place only on success.
 EOF
 }
-[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && { usage; exit 0; }
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    *)         echo "ERROR: unknown argument: $1" >&2; usage; exit 1 ;;
+  esac
+done
 set -euo pipefail
+umask 077
 
 NAMESPACE="${NAMESPACE:-keycloak}"
 POD="${POD:-keycloak-0}"                          # operator-spawned StatefulSet pod
 REALM="${REALM:-example}"
-OUTPUT="${OUTPUT:-manifests/realm-example.json}"
+REALM_EXPORT_DIR="${REALM_EXPORT_DIR:-$HOME/keycloak-exports}"
+OUTPUT_PATH="${OUTPUT:-$REALM_EXPORT_DIR/realm-$REALM-$(date +%Y%m%d_%H%M%S).json}"
+OUTPUT_DIR="$(dirname "$OUTPUT_PATH")"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-COMPONENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_PATH="$COMPONENT_DIR/$OUTPUT"
+mkdir -p "$OUTPUT_DIR"
+if git -C "$OUTPUT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "[$(date)] WARN: $OUTPUT_DIR is inside a git work tree — never commit this export." >&2
+fi
 
 echo "[$(date)] Exporting realm '$REALM' from pod '$POD' to '$OUTPUT_PATH'..."
 
+# Same directory as the output so the final mv is a rename; a failed export never touches an existing file.
+TMP_PATH="$(mktemp "$OUTPUT_DIR/.$(basename "$OUTPUT_PATH").XXXXXX")"
+trap 'rm -f "$TMP_PATH"' EXIT
+chmod 600 "$TMP_PATH"
+
 # kc.sh export — operator-spawned Keycloak Pod has the binary at /opt/keycloak/bin/.
 # kc.sh export writes <realm>-realm.json into /tmp/realm-export; stream it back.
-kubectl -n "$NAMESPACE" exec "$POD" -- bash -c "
+if ! kubectl -n "$NAMESPACE" exec "$POD" -- bash -c "
   rm -rf /tmp/realm-export
   /opt/keycloak/bin/kc.sh export --dir /tmp/realm-export --realm $REALM --users realm_file
   cat /tmp/realm-export/$REALM-realm.json
-" > "$OUTPUT_PATH"
+" > "$TMP_PATH"; then
+  echo "[$(date)] ERROR: export failed — nothing written to $OUTPUT_PATH." >&2
+  exit 1
+fi
+if [[ ! -s "$TMP_PATH" ]]; then
+  echo "[$(date)] ERROR: export produced no output — nothing written to $OUTPUT_PATH." >&2
+  exit 1
+fi
+mv "$TMP_PATH" "$OUTPUT_PATH"
 
-echo "[$(date)] Wrote $OUTPUT_PATH ($(wc -l < "$OUTPUT_PATH") lines, $(wc -c < "$OUTPUT_PATH") bytes)."
+echo "[$(date)] Wrote $OUTPUT_PATH ($(wc -l < "$OUTPUT_PATH") lines, $(wc -c < "$OUTPUT_PATH") bytes, mode 0600)."
 echo ""
-echo "Next steps:"
-echo "  git diff $OUTPUT"
-echo "  helmfile -f helmfile.yaml -e dev diff --set realmImport.enabled=true --set-file realmImport.realm=$OUTPUT"
+echo "Keep it local — never commit it. To see drift against an earlier export:"
+echo "  diff <(jq -S . <older>.json) <(jq -S . $OUTPUT_PATH)"

@@ -44,28 +44,22 @@ fluent-bit/
 ## Prerequisites
 
 - Kubernetes cluster
-- Helm 3
-- Helmfile
+- Helm 3 (for local renders)
+- ArgoCD (`infra-local-applicationset` in `argocd-applicationset`)
 - Elasticsearch (log destination)
 
 <br/>
 
 ## Quick Start
 
-> 🔴 **The live deploy path is ArgoCD auto-sync** (`argocd-local/fluent-bit.yaml`). The `helmfile` commands below are **retired, reference-only** — `helmfile.yaml` lives in `backup/`. Pushing to master is what reaches the cluster.
+ArgoCD deploys this as the Application `infra-fluent-bit` (auto-sync, prune + selfHeal). Push a values or chart change to master and it lands on its own, so helmfile is not used. The retired `helmfile.yaml` survives in `backup/` as a record only.
 
 ```bash
-# Validate configuration
-helmfile lint
+# Check sync state
+kubectl -n argocd get application infra-fluent-bit -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 
-# Preview changes
-helmfile diff
-
-# Deploy
-helmfile apply
-
-# Destroy
-helmfile destroy
+# Render before pushing (the same helm template ArgoCD runs)
+helm template fluent-bit . -n logging -f values/dev.yaml
 ```
 
 <br/>
@@ -115,16 +109,10 @@ Do not set `image.tag` in `values/dev.yaml`. The chart default renders the tag f
 
 ### Deploy After Upgrade
 
-> Retired, reference-only. In practice you commit + push the bump and ArgoCD auto-syncs it (only the pod-status command below still applies as-is).
+Commit the bump and push to master; ArgoCD auto-syncs `infra-fluent-bit`. To confirm:
 
 ```bash
-# Review changes
-helmfile diff
-
-# Apply
-helmfile apply
-
-# Check Pod status
+kubectl -n argocd get application infra-fluent-bit -o jsonpath='{.status.sync.revisions}{"\n"}'
 kubectl get pods -n logging -l app.kubernetes.io/name=fluent-bit
 ```
 
@@ -157,20 +145,6 @@ config:
         Match   <your-tag>
         script  /fluent-bit/scripts/filter_example.lua
         call    filter_name
-```
-
-<br/>
-
-## Helmfile Commands Reference (retired, reference-only)
-
-> `helmfile.yaml` was retired to `backup/`. The commands below are kept as a reference to the helmfile era.
-
-```bash
-helmfile lint           # Validate configuration
-helmfile diff           # Preview changes
-helmfile apply          # Apply
-helmfile destroy        # Destroy
-helmfile status         # Check status
 ```
 
 <br/>

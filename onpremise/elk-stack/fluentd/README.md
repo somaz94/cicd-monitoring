@@ -36,26 +36,23 @@ fluentd/
 ## Prerequisites
 
 - Kubernetes cluster
-- Helm 3
-- Helmfile
+- Helm 3 (for local renders)
+- ArgoCD (`infra-applicationset` in `argocd-applicationset`)
 - Elasticsearch (log destination)
 
 <br/>
 
 ## Quick Start
 
+ArgoCD deploys this as the Application `infra-fluentd` (auto-sync, prune + selfHeal). Push a values or chart change to master and it lands on its own, so helmfile is not used. The retired `helmfile.yaml` survives in `backup/` as a record only.
+
 ```bash
-# Validate configuration
-helmfile lint
+# Check sync state
+kubectl -n argocd get application infra-fluentd -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 
-# Preview changes
-helmfile diff
-
-# Deploy
-helmfile apply
-
-# Destroy
-helmfile destroy
+# Render before pushing (the same helm template ArgoCD runs)
+helm template fluentd fluentd --repo https://fluent.github.io/helm-charts \
+  --version "$(yq '.chart.version' argocd/fluentd.yaml)" -n logging -f values/dev.yaml
 ```
 
 <br/>
@@ -99,7 +96,7 @@ This chart manages the **chart version** and the **container image tag** separat
 **image.tag upgrade procedure** (manual):
 1. Check new tag — [Docker Hub tags](https://hub.docker.com/r/fluent/fluentd-kubernetes-daemonset/tags) or [GitHub releases](https://github.com/fluent/fluentd-kubernetes-daemonset/releases).
 2. Edit `image.tag` (and `variant` if applicable) in `values/dev.yaml`.
-3. `helmfile diff` → `helmfile apply`.
+3. Commit + push (ArgoCD `infra-fluentd` auto-syncs).
 
 **When to bump**:
 - Upgrade variant + tag once fluentd publishes an official `-elasticsearch9-*` variant.
@@ -121,14 +118,10 @@ This chart manages the **chart version** and the **container image tag** separat
 
 ### Deploy After Upgrade
 
+Commit the bump and push to master; ArgoCD auto-syncs `infra-fluentd`. To confirm:
+
 ```bash
-# Review changes
-helmfile diff
-
-# Apply
-helmfile apply
-
-# Check Pod status
+kubectl -n argocd get application infra-fluentd -o jsonpath='{.status.sync.revisions}{"\n"}'
 kubectl get pods -n logging -l app.kubernetes.io/name=fluentd
 ```
 
@@ -163,15 +156,13 @@ helm show values fluent/fluentd
 
 <br/>
 
-## Helmfile Commands Reference
+### Document `_id` (02_filters.conf Step 0)
 
-```bash
-helmfile lint           # Validate configuration
-helmfile diff           # Preview changes
-helmfile apply          # Apply
-helmfile destroy        # Destroy
-helmfile status         # Check status
-```
+Step 0 turns a SHA1 of the record exactly as fluent-bit sent it (CRI nanosecond time, file path, raw line) into `_doc_id`, which the output uses as the ES `_id` (`id_key`). A line that arrives again (fluent-bit re-send, the other replica, chunk retry) overwrites itself under the same `_id`, so it never duplicates, and different lines never collide.
+
+- Until 2026-10-07 the `_id` was `data.traceId`. One request logs several records under one traceId, so each record overwrote the one before it and logs were lost.
+- To gather one request's logs, search `data.traceId`, not `_id`. That field is now the only place the traceId lives.
+- ⚠️ The hash must be taken before normalization (ahead of Step 1). Step 3 fills `@timestamp` with receive time for a line it finds no time for, so a hash taken after it differs on every re-send.
 
 <br/>
 

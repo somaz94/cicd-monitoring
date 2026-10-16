@@ -51,7 +51,7 @@ keycloak:
     - name: metrics-enabled
       value: "true"
 
-# Realm import — disabled at first apply. UI / kcadm.sh creates the `example` realm with GitLab brokering, then exports it back into manifests/realm-example.json and re-applies via helmfile `--set-file realmImport.realm=manifests/realm-example.json`.
+# Realm import — disabled; UI / kcadm.sh owns the `example` realm. Enabling it needs a sanitized manifests/realm-example.json (secrets via realmImport.placeholders), never a raw realm-export.sh dump.
 realmImport:
   enabled: false
 

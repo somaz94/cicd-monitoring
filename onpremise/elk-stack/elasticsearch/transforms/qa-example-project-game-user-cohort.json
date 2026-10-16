@@ -110,7 +110,7 @@
   "sync": {
     "time": {
       "field": "@timestamp",
-      "delay": "60s"
+      "delay": "5m"
     }
   },
   "settings": {

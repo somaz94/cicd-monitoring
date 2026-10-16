@@ -17,8 +17,8 @@ configs:
     #
     # This is the FALLBACK path, not the primary one. GitLab push webhooks post to /api/webhook
     # (shared secret in configs.secret.gitlabSecret below) and refresh the affected apps in ~1s,
-    # covering every app sourced from server/argocd-applicationset and
-    # server/kuberntes-infra. Polling only needs to catch what a missed webhook would drop
+    # covering every app sourced from server/argocd-applicationset, server/kuberntes-infra and
+    # server/ignite-manifests. Polling only needs to catch what a missed webhook would drop
     # (GitLab down, network blip, argocd-server restarting mid-push), so a long interval is the
     # right choice: 600s plus the chart's 60s jitter bounds that worst case at ~11min.
     #
@@ -169,7 +169,8 @@ configs:
 
   # Shared secret authenticating GitLab push webhooks at POST /api/webhook. The chart writes
   # this into argocd-secret as `webhook.gitlab.secret`; the same value goes in the "Secret token"
-  # field of each GitLab project webhook (server/argocd-applicationset, server/kuberntes-infra).
+  # field of each GitLab project webhook (server/argocd-applicationset, server/kuberntes-infra,
+  # server/ignite-manifests).
   # Without it the endpoint accepts unauthenticated POSTs — argocd.example.com is reachable from
   # the LAN, so anyone there could force refreshes.
   # Webhook only shortens detection; polling (timeout.reconciliation above) stays as the fallback,
@@ -249,10 +250,10 @@ configs:
       #
       # The ignite platform (ignite-manifests) and the apps it scaffolds. Unlike example-project
       # and secondary-project, whose Applications are generated from THIS cluster's config repo, ignite
-      # generates its own — see ignite-manifests/argocd/appset.yaml.
+      # generates its own — see the ApplicationSets under ignite-manifests/argocd/.
       #
       # 🔴 The project name in the object below has to match the AppProject that the ignite
-      # ApplicationSet assigns. If that ever becomes one AppProject per generated app, every
+      # ApplicationSets assign. If that ever becomes one AppProject per generated app, every
       # new app needs four more lines here — which is a cluster change in a repo ignite
       # cannot write to. Keep the AppProject shared so this block stays fixed.
       p, role:server-admin, applications, *, ignite/*, allow

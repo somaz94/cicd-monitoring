@@ -419,7 +419,7 @@ additionalPrometheusRulesMap:
               group: elasticsearch
             annotations:
               summary: "Elasticsearch index retention has not succeeded in 36h"
-              description: "The es-index-retention CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 04:00 KST schedule. Old documents are no longer being trimmed, so the on-prem indices grow until ElasticsearchDiskLow fires. Check `kubectl -n logging get cronjob es-index-retention` (is it suspended?) and `kubectl -n logging logs job/<latest>` — a per-index failure is reported in that log rather than by a non-zero Job exit."
+              description: "The es-index-retention CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily 04:00 KST schedule. Old documents are no longer being trimmed, so the on-prem indices grow until ElasticsearchDiskLow fires. Check `kubectl -n logging get cronjob es-index-retention` (is it suspended? ArgoCD selfHeal reverts a kubectl suspend, so one that sticks was committed to git) and `kubectl -n logging logs job/<latest>` — the log names the index that failed."
 
           - alert: ElasticsearchIndexRetentionMissing
             expr: absent(kube_cronjob_spec_suspend{namespace="logging", cronjob="es-index-retention"})
@@ -429,7 +429,7 @@ additionalPrometheusRulesMap:
               group: elasticsearch
             annotations:
               summary: "Elasticsearch index retention CronJob no longer exists"
-              description: "The es-index-retention CronJob is not present in the logging namespace — nothing is trimming the on-prem indices. Re-apply observability/logging/elasticsearch/index-retention/manifests/cronjob.yaml and confirm with `kubectl -n logging get cronjob es-index-retention`."
+              description: "The es-index-retention CronJob is not present in the logging namespace — nothing is trimming the on-prem indices. It is deployed by the self-healing ArgoCD Application infra-manifests-es-index-retention, so check that the Application still exists and is Synced (`kubectl -n argocd get application infra-manifests-es-index-retention`), then confirm with `kubectl -n logging get cronjob es-index-retention`."
 
   # Redis: valkey-redis-metrics (namespace=example-project-db-redis).
   redis-alerts:

@@ -1,7 +1,7 @@
 ## The ubuntu runner image uses a different UID: switch securityContext with it.
 image:
   registry: registry.gitlab.com
-  image: gitlab-org/gitlab-runner
+  repository: gitlab-org/gitlab-runner
   # tag unset: image follows chart appVersion.
 
 replicas: 3

@@ -1,6 +1,6 @@
 # ECK Operator Helm Chart
 
-Manages the [ECK (Elastic Cloud on Kubernetes) Operator](https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html) on a Kubernetes cluster via Helmfile.
+Manages the [ECK (Elastic Cloud on Kubernetes) Operator](https://www.elastic.co/guide/en/cloud-on-k8s/current/index.html) on a Kubernetes cluster via ArgoCD.
 
 ECK Operator is the official operator from Elastic that lets you run Elasticsearch, Kibana, APM Server, Beats, and related products declaratively through CRDs.
 
@@ -31,21 +31,19 @@ eck-operator/
 ## Prerequisites
 
 - Kubernetes 1.21+
-- Helm 3.2+
-- Helmfile
+- Helm 3.2+ (for local renders)
+- ArgoCD (`infra-applicationset` in `argocd-applicationset`)
 
 <br/>
 
 ## Apply Order
 
-Operator + CR are kept in separate helmfiles (G14). Operator lives here; CR components live under [elasticsearch/](../elasticsearch/) and [kibana/](../kibana/). Follow this order:
+Operator + CR split pattern (G14). The operator (this component) and the CR components ([elasticsearch/](../elasticsearch/), [kibana/](../kibana/)) are separate ArgoCD Applications (`infra-eck-operator` / `infra-elasticsearch` / `infra-kibana`). All three share syncWave `"4"`, so **ArgoCD does not enforce an order between them.** Day to day the operator is already running and the order does not matter; it matters in two cases.
 
-1. **eck-operator** `helmfile sync` first — installs CRDs (`elasticsearch.k8s.elastic.co`, `kibana.k8s.elastic.co`, etc.) and the operator Deployment.
-2. **elasticsearch** `helmfile sync` — creates the `Elasticsearch` CR; the operator reconciles it into StatefulSet/Service/Secret.
-3. **kibana** `helmfile sync` — creates the `Kibana` CR after Elasticsearch reaches HEALTH=green.
-4. Destroy in reverse: kibana → elasticsearch → eck-operator.
+1. **Bootstrapping a new cluster**: sync `infra-elasticsearch` once `infra-eck-operator` is Healthy and its CRDs (`elasticsearch.k8s.elastic.co`, `kibana.k8s.elastic.co`, etc.) exist, then `infra-kibana` after Elasticsearch reaches HEALTH=green. A CR App synced first fails for lack of the CRD; sync it again once the operator is up.
+2. **Delete in reverse**: remove the Apps (or markers) kibana → elasticsearch → eck-operator.
 
-**Why this order**: the CR is reconciled by the operator; if the operator is removed first the CR's finalizer cannot be cleared and gets stuck — destroy must be reverse-ordered.
+**Why this order**: the CR is reconciled by the operator; if the operator goes first, nothing is left to clear the CR's finalizer and it gets stuck — deletion must be reverse-ordered.
 
 <br/>
 
@@ -59,21 +57,15 @@ Operator + CR are kept in separate helmfiles (G14). Operator lives here; CR comp
 
 ## Quick Start
 
+ArgoCD deploys this as the Application `infra-eck-operator` (auto-sync, prune + selfHeal). Push a values or chart change to master and it lands on its own, so helmfile is not used. The retired `helmfile.yaml` survives in `backup/` as a record only.
+
 ```bash
-# Validate
-helmfile lint
+# Check sync state
+kubectl -n argocd get application infra-eck-operator -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 
-# Preview changes
-helmfile diff
-
-# Deploy (first time / reinstall)
-helmfile sync
-
-# Update
-helmfile apply
-
-# Uninstall
-helmfile destroy
+# Render before pushing (the same helm template ArgoCD runs)
+helm template eck-operator eck-operator --repo https://helm.elastic.co \
+  --version "$(yq '.chart.version' argocd/eck-operator.yaml)" -n elastic-system -f values/dev.yaml
 ```
 
 <br/>

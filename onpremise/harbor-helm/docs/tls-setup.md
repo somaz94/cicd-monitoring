@@ -25,7 +25,7 @@ The `harbor-tls` procedures in §1, §2 and §5, by contrast, matter **only when
 
 1. Generate a self-signed certificate (with SAN, 10-year validity) via openssl
 2. Register the `harbor-tls` TLS Secret in the `harbor` namespace
-3. Switch `values/dev.yaml` back to `expose.type: ingress` and run `helmfile --kube-context "$KUBE_CONTEXT" apply` (export `KUBE_CONTEXT` first — see the README Quick Start)
+3. Switch `values/dev.yaml` back to `expose.type: ingress` and push to master (ArgoCD `infra-harbor` auto-syncs — see the README Quick Start)
 4. Configure client (containerd, docker) trust for the self-signed cert
 5. Renew when needed
 
@@ -89,9 +89,10 @@ externalURL: https://harbor.example.com
 To roll back, switch to `type: ingress` and restore the `ingress:` block preserved as comments in the values file (`className: "nginx"` plus the `force-ssl-redirect` / `ssl-passthrough` / `proxy-body-size` annotations).
 The full rollback order is documented in the header comments of the values file.
 
+Pushing the values lets ArgoCD apply them. To confirm:
+
 ```bash
-helmfile --kube-context "$KUBE_CONTEXT" diff
-helmfile --kube-context "$KUBE_CONTEXT" apply
+kubectl --context "$KUBE_CONTEXT" -n argocd get application infra-harbor -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 kubectl --context "$KUBE_CONTEXT" rollout status -n harbor deploy/harbor-core
 ```
 

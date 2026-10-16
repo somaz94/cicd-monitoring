@@ -1,6 +1,6 @@
 # Harbor Helm Chart
 
-Manages Harbor container registry using Helmfile.
+Manages the Harbor container registry with ArgoCD (upstream `harbor/harbor` chart).
 
 <br/>
 
@@ -9,12 +9,13 @@ Manages Harbor container registry using Helmfile.
 ```
 harbor-helm/
 ├── Chart.yaml          # Version tracking (no local templates)
-├── helmfile.yaml       # Helmfile release definition (uses remote chart)
+├── argocd/
+│   └── harbor.yaml     # ArgoCD marker — `chart.version` is the chart-pin SSOT
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.py)
 ├── values/
 │   └── dev.yaml       # Custom values (manually managed)
 ├── upgrade.py          # Version upgrade script
-├── backup/             # Auto backup on upgrade
+├── backup/             # Auto backup on upgrade + the retired helmfile.yaml
 ├── manifests/          # Resources the upstream chart does not render (HTTPRoute, DB backup)
 ├── scripts/            # Operational scripts (admin, image-cleanup)
 ├── docs/               # Detailed guides (TLS, OIDC, DB backup, etc.)
@@ -31,6 +32,7 @@ harbor-helm/
 | [TLS Setup](docs/tls-setup.md) | Where TLS terminates today (the NGF Gateway wildcard certificate), verification, client trust configuration. Includes the self-signed procedure for the Ingress rollback |
 | [OIDC SSO — Keycloak (current standard)](docs/oidc-setup-keycloak.md) | Keycloak OIDC integration, `server` group filter / admin promotion policy. Automated by `harbor-admin.sh set-oidc` |
 | [OIDC SSO — GitLab (legacy, pre-Phase 4)](docs/legacy/oidc-setup-gitlab.md) | Full GitLab-direct procedure preserved (rollback / fresh-environment reproduction) |
+| [Pinned Internal Secrets](docs/internal-secrets.md) | Why the core / jobservice / registry secrets and token key the chart regenerated on every render are pinned to SealedSecrets, how they were sealed, how to rotate them |
 | [Database Backup](docs/db-backup.md) | Daily `registry` DB dump CronJob, retention, restore procedure. Why the 85G registry blob store is deliberately excluded |
 | [Garbage Collection](docs/garbage-collection.md) | Weekly GC schedule (Sun 05:00 KST), capacity analysis, retention still unset. GC is a DB-stored runtime setting, so it is not in git |
 
@@ -39,8 +41,7 @@ harbor-helm/
 ## Prerequisites
 
 - Kubernetes cluster
-- Helm 3
-- Helmfile
+- ArgoCD (`infra-applicationset` / `infra-manifests-applicationset` in `argocd-applicationset`)
 - A Gateway API implementation (nginx-gateway-fabric) — assumed by `expose.type: route` in `values/dev.yaml` and by `manifests/httproutes.yaml`
 - StorageClass (e.g., `nfs-client-server`)
 - TLS certificate for HTTPS — terminated by the NGF `ngf` Gateway in the `nginx-gateway` namespace with `wildcard-example-tls`. This component owns no certificate, so nothing needs preparing here — see [`docs/tls-setup.md`](./docs/tls-setup.md)
@@ -49,26 +50,16 @@ harbor-helm/
 
 ## Quick Start
 
-> 🔴 **`apply` / `sync` / `destroy` need `KUBE_CONTEXT`.** The postsync / preuninstall hooks apply and delete `manifests/` with a raw `kubectl`, and helmfile passes `--kube-context` to helm only — never into a hook. The hooks therefore refuse with exit 2 when `KUBE_CONTEXT` is empty. On `apply` / `sync` a presync hook refuses first, so it stops before the chart is upgraded. `lint` / `diff` do not run these hooks.
+> 🔴 **ArgoCD-managed (migrated from helmfile on 2026-10-14).** The chart is deployed through the `argocd/harbor.yaml` marker by `infra-applicationset` in `argocd-applicationset` as the Application `infra-harbor`, and `manifests/` by `infra-manifests-applicationset` as the Application `infra-manifests-harbor` (both auto-sync, prune + selfHeal). A change to `values/dev.yaml` or `manifests/` pushed to master reaches the cluster on its own, so do not run `helmfile apply` or `kubectl apply`. The old `helmfile.yaml` survives in `backup/` as a record only. When retiring Harbor, remove both the marker and the `harbor` element of `infra-manifests-applicationset`.
 
 ```bash
-export KUBE_CONTEXT="<target>"   # list candidates: kubectl config get-contexts -o name
-```
+# Check sync state
+kubectl -n argocd get application infra-harbor infra-manifests-harbor \
+  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status
 
-Run the commands below as `helmfile --kube-context "$KUBE_CONTEXT" <cmd>`.
-
-```bash
-# Validate configuration
-helmfile lint
-
-# Preview changes
-helmfile diff
-
-# Deploy
-helmfile apply
-
-# Delete
-helmfile destroy
+# Render before pushing (the way ArgoCD does: no lookup)
+helm template harbor harbor --repo https://helm.goharbor.io \
+  --version "$(yq '.chart.version' argocd/harbor.yaml)" -n harbor -f values/dev.yaml
 ```
 
 <br/>
@@ -124,13 +115,13 @@ Use `upgrade.py` to perform version upgrades.
 ./upgrade.py --dry-run --version <chart-version>
 ```
 
-upgrade.py automatically performs the following:
-1. Checks current/latest version
+upgrade.py (the `argocd-pin` template) automatically performs the following:
+1. Checks current/latest version (the current version is `chart.version` in `argocd/harbor.yaml`)
 2. Downloads Chart.yaml, values.yaml and shows diff
 3. Checks `values/*.yaml` for breaking changes
-4. **Auto-updates image tags** (`tag: vX.X.X` in `values/*.yaml` updated to new appVersion)
-5. Creates backup and updates files
-6. Updates helmfile.yaml version
+4. Creates backup and updates files (Chart.yaml, values.yaml, `chart.version` in `argocd/harbor.yaml`)
+
+Image tags are normally not pinned in values; they follow the chart default, so raising `chart.version` moves them too. **Exception (2026-10-14)**: to run a security patch the chart has not released yet, `values/dev.yaml` currently pins every image to a tag newer than the chart. upgrade.py does not move those tags, so delete all the `tag:` lines in the same commit that bumps to a chart whose appVersion is at least that tag (see the header comment in `values/dev.yaml`). The `repository:` overrides in `values/dev.yaml` do not follow the chart, so an upstream image rename has to be fixed by hand.
 
 ### Rollback
 
@@ -147,14 +138,10 @@ upgrade.py automatically performs the following:
 
 ### Post-Upgrade Deployment
 
+Commit the files `./upgrade.py` changed and push to master; ArgoCD auto-syncs `infra-harbor`. To confirm:
+
 ```bash
-# Review changes
-helmfile --kube-context "$KUBE_CONTEXT" diff
-
-# Apply (needs KUBE_CONTEXT — see Quick Start)
-helmfile --kube-context "$KUBE_CONTEXT" apply
-
-# Check pod status
+kubectl -n argocd get application infra-harbor -o jsonpath='{.status.sync.revisions}{"\n"}'
 kubectl get pods -n harbor
 ```
 
@@ -162,14 +149,7 @@ kubectl get pods -n harbor
 
 ## Secret Checksums
 
-It is normal for secret checksums to change when running `helmfile diff`:
-
-```diff
-- checksum/secret: 961ab1d45c1d006f72c3720cb946d39f95a3e1baecc960d0399f3cf731c6eb04
-+ checksum/secret: bdb925c0ced69d79c5dbec3efd3c594c3361ae6eab7bd2cdf70feac20ee6cb24
-```
-
-These are regenerated each time Helm renders templates, and the actual secret content remains unchanged.
+The secrets the chart used to generate on every render (core / jobservice / registry, the token key, htpasswd) are pinned to SealedSecrets since 2026-10-14, so rendering the same values leaves the checksum annotations unchanged. A checksum that moves in a render means the values or a ConfigMap really changed. For the layout and rotation see [Pinned Internal Secrets](docs/internal-secrets.md).
 
 <br/>
 

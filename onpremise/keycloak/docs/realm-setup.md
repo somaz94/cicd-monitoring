@@ -38,7 +38,7 @@ The script reconciles (idempotent — re-runs safely):
 Out of scope (do separately):
 - Disabling the operator's bootstrap admin (`temp-admin`) — verify login with the permanent admin first, then disable via UI/kcadm in plan v2 Phase 7
 - Creating end users (e.g. `admin@example.com`) — they are auto-imported on first GitLab brokered login, or add explicitly via UI
-- Realm export → git commit — call `./scripts/realm-export.sh`
+- Realm export (local backup, never committed) — call `./scripts/realm-export.sh`
 
 Once bootstrap finishes, run the read-only verifier:
 ```bash
@@ -164,17 +164,23 @@ curl -s -X POST https://auth.example.com/realms/example/protocol/openid-connect/
 
 <br/>
 
-## Realm export (declarative GitOps)
+## Realm export (local backup)
 
-After UI/kcadm setup, capture the realm declaratively:
+`realm-export.sh` takes a full `kc.sh export` dump. It carries client secrets, IdP client secrets and user credentials (`--users realm_file`), so it is only a local backup / diff artefact and is **never committed**. The default output is outside the repo:
 
 ```bash
-./scripts/realm-export.sh                                    # writes manifests/realm-example.json
-git add manifests/realm-example.json && git commit -m "feat(keycloak): export example realm"
+./scripts/realm-export.sh
+# → ${REALM_EXPORT_DIR:-$HOME/keycloak-exports}/realm-example-<YYYYmmdd_HHMMSS>.json (directory 0700, file 0600)
+# Compare with an earlier export to see drift
+diff <(jq -S . <older export>.json) <(jq -S . <new export>.json)
+```
 
+Precondition for Phase 3 (declarative re-deploy via realmImport): never use the raw export as is. Put a **sanitized realm file** with the secrets removed at `manifests/realm-example.json` (a placeholder today), and supply the secrets from outside the file, e.g. via `realmImport.placeholders` (Secret references, see [`values-keycloak-cr.yaml`](../values-keycloak-cr.yaml)). Only once that holds, re-deploy with:
+
+```bash
 helmfile -f helmfile.yaml -e dev apply \
   --set realmImport.enabled=true \
   --set-file realmImport.realm=manifests/realm-example.json
 ```
 
-> The export includes client secrets — be aware when committing to git (private repo, but rotation requires git history rewrite).
+> `OUTPUT=` sets the path explicitly; never point it inside the repo. The script prints a warning when the target is inside a git work tree.

@@ -28,10 +28,10 @@ security/keycloak/
 │   ├── dev-postgresql.yaml            # PostgreSQL overrides (image, PVC, auth, secretKeys)
 │   └── dev-keycloak.yaml              # Keycloak CR overrides (hostname, db, HTTPRoute)
 ├── manifests/
-│   └── realm-example.json              # Phase 3 realm export placeholder (--set-file target)
+│   └── realm-example.json              # Phase 3 sanitized realm placeholder (--set-file target, never a raw export)
 ├── scripts/
 │   ├── restore.sh                      # pg_dump restore (-h)
-│   ├── realm-export.sh                 # kc.sh export → manifests/realm-example.json (-h)
+│   ├── realm-export.sh                 # kc.sh export → local backup outside the repo (~/keycloak-exports/, never committed) (-h)
 │   ├── kcadm-bootstrap.sh              # realm + groups + clients + GitLab IdP + master admin (`-h` for all options)
 │   └── kcadm-verify.sh                 # read-only verification of all of the above (-h, exit 1 on fail)
 ├── docs/                               # Korean / English pairs
@@ -91,7 +91,7 @@ Operator + CR are kept in separate helmfiles (G14). This component is the CR sid
 | PostgreSQL | `postgres:17-alpine` (latest officially supported by Keycloak 26.x) |
 | PVC | NFS (`nfs-client-server`), 20Gi |
 | DB credentials | chart-managed Secret `keycloak-postgresql` (keys: `username`, `password`) |
-| Realm import | Disabled (enabled after Phase 3 export) |
+| Realm import | Disabled (Phase 3 enables it once a sanitized realm file is ready) |
 | Metrics | Enabled (`metrics-enabled`) — `/metrics` on management port 9000. The operator renders the ServiceMonitor itself |
 
 <br/>

@@ -55,9 +55,11 @@ That last one is the point. Lose the database and the 85G of layers is still on 
 
 ## Apply
 
+ArgoCD manages it. All of `manifests/` is deployed as the Application `infra-manifests-harbor` (auto-sync, prune + selfHeal), so a manifest change pushed to master reaches the cluster on its own; do not `kubectl apply` it. The PVC carries `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, so the dump volume survives deleting the file or the App. Pausing goes through git too: selfHeal reverts a `kubectl patch ... suspend: true` within seconds, so push `spec.suspend: true` in `manifests/db-backup-cronjob.yaml` and revert it to resume.
+
 ```bash
-kubectl apply -f manifests/db-backup-pvc.yaml
-kubectl apply -f manifests/db-backup-cronjob.yaml
+kubectl -n argocd get application infra-manifests-harbor \
+  -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 ```
 
 Verify immediately instead of waiting for 04:00:

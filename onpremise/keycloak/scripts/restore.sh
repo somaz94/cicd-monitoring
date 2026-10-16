@@ -2,7 +2,7 @@
 # Restore Keycloak's PostgreSQL database from a pg_dump file.
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--dry-run] <dump-file|latest> [-h]
+Usage: $(basename "$0") [--dry-run] <dump-file|latest>
 
 Restore the Keycloak PostgreSQL database from a pg_dump file. The Keycloak
 StatefulSet must be scaled to 0 instances first (the script verifies and aborts
@@ -17,8 +17,14 @@ Options:
   --dry-run    Print every kubectl invocation that would mutate cluster state
                (helper pod + cp into the pod + psql restore) without executing
                them. The pre-flight Keycloak-instances check still runs against
-               the live cluster so the dry-run reports realistic state.
+               the live cluster so the dry-run reports realistic state. The
+               confirmation prompt is skipped. Put it before <dump-file|latest>.
   -h, --help   Show this help and exit.
+
+Confirmation:
+  Before the dump is copied into the database pod, a real restore requires
+  typing 'restore \$DB_NAME' exactly (default: 'restore keycloak'). Any other
+  input exits 1.
 
 Where backups live:
   The daily CronJob (values/dev-postgresql.yaml \`backup.enabled\`) writes
@@ -53,6 +59,12 @@ while [[ $# -gt 0 ]]; do
     *)  break ;;
   esac
 done
+# A trailing option (e.g. `latest --dry-run`) would otherwise be ignored and run a real restore.
+if [[ $# -gt 1 ]]; then
+  echo "ERROR: unexpected argument after '$1': $2 (options go before <dump-file|latest>)" >&2
+  usage >&2
+  exit 2
+fi
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-keycloak}"
@@ -63,6 +75,10 @@ DUMP_FILE="${1:-}"
 
 if [[ -z "$DUMP_FILE" ]]; then
   echo "Usage: $0 [--dry-run] <dump-file|latest>"
+  exit 1
+fi
+if [[ "$DUMP_FILE" != "latest" && ! -f "$DUMP_FILE" ]]; then
+  echo "ERROR: dump file '$DUMP_FILE' not found." >&2
   exit 1
 fi
 
@@ -158,6 +174,19 @@ EOF
 
     echo "  Using $NEWEST ($(wc -c <"$LOCAL_DUMP" | tr -d ' ') bytes)"
     DUMP_FILE="$LOCAL_DUMP"
+  fi
+fi
+
+# Placed before the first write into the database pod; --dry-run writes nothing, so it skips the prompt.
+if [[ "$DRY_RUN" != "1" ]]; then
+  echo "WARNING: database '$DB_NAME' on pod '$POD' (namespace '$NAMESPACE') will be overwritten from '$DUMP_FILE'."
+  CONFIRM_EXPECTED="restore ${DB_NAME}"
+  CONFIRM=""
+  printf "Type '%s' to continue: " "$CONFIRM_EXPECTED"
+  read -r CONFIRM || true
+  if [[ "$CONFIRM" != "$CONFIRM_EXPECTED" ]]; then
+    echo "Aborted: input did not match '$CONFIRM_EXPECTED'." >&2
+    exit 1
   fi
 fi
 

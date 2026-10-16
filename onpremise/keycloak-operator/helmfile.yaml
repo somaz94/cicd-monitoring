@@ -10,6 +10,6 @@ releases:
   - name: keycloak-operator
     namespace: keycloak-system
     chart: oci://ghcr.io/somaz94/charts/keycloak-operator
-    version: "0.2.4"
+    version: "0.2.6"
     values:
       - values/dev.yaml

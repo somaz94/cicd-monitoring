@@ -52,7 +52,7 @@ Only the indices **named in the `INDICES` env** are processed. Because it is an 
 
 ## Configuration
 
-Adjust via the env in `manifests/cronjob.yaml`.
+Adjust via the env in `manifests/cronjob.yaml`. The change reaches the cluster as soon as it is pushed to master (see "Apply" below).
 
 | env | default | description |
 |---|---|---|
@@ -66,16 +66,21 @@ Lowering the retention makes already-over-threshold docs eligible for deletion o
 
 ## Apply
 
-```bash
-# Always confirm the context is onprem-dev first
-kubectl config current-context
+ArgoCD manages it. `appsets/onprem/infra/infra-manifests-applicationset.yaml` in `argocd-applicationset` deploys `manifests/` as the Application `infra-manifests-es-index-retention` (auto-sync, prune + selfHeal). A manifest change pushed to master reaches the cluster on its own, so do not `kubectl apply` it. Before 2026-10-14 it was applied by hand, which is how the dev2 indices sat unapplied for a month.
 
-kubectl apply -f manifests/cronjob.yaml
+Pausing goes through git too. selfHeal reverts a `kubectl patch ... suspend: true` within seconds, so push `spec.suspend: true` in `manifests/cronjob.yaml` and revert it to resume.
+
+```bash
+kubectl -n argocd get application infra-manifests-es-index-retention \
+  -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 ```
 
 Test immediately without waiting for the next scheduled run:
 
 ```bash
+# Always confirm the context is onprem-dev first
+kubectl config current-context
+
 kubectl create job --from=cronjob/es-index-retention es-index-retention-manual-$(date +%s) -n logging
 kubectl logs -n logging job/es-index-retention-manual-<timestamp> -f
 ```

@@ -1,0 +1,22 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# The generator emits one Application named `infra-<releaseName>`.
+#
+# Adopts the live helmfile release 'harbor' (harbor ns) in place. Prerequisite done 2026-10-14:
+# every chart-generated secret is pinned to a SealedSecret (docs/internal-secrets.md), so the
+# lookup-less ArgoCD render is deterministic and matches the live release. Verify the adopt-diff
+# is empty before flipping autoSync.
+#
+# This file is the chart-version SSOT for the migrated component (upgrade.py bumps chart.version here).
+component: harbor                               # -> app-name label on the generated App
+releaseName: harbor                             # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: harbor                               # already helmfile-managed; do not contest ownership
+syncWave: "1"                                   # core tier (mirrors helmfile deploy wave 1)
+chart:
+  repoURL: https://helm.goharbor.io
+  name: harbor
+  # values/dev.yaml pins image tags to v2.15.4 ahead of this chart; drop them when bumping past it.
+  version: "1.19.2"
+valueFile: cicd/harbor-helm/values/dev.yaml     # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+createNamespace: false                          # 'harbor' already exists
+autoSync: true                                  # adopt-diff verified empty (server-side dry-run of the lookup-less render, 34/34 objects) -> auto-sync (prune+selfHeal) on

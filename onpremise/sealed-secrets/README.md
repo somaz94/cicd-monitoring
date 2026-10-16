@@ -146,6 +146,7 @@ Where a `SealedSecret` lives is decided by **the nature of the workload that con
 | `wildcard-example-tls`, `server-tls` | `secret/nginx-gateway-tls/` | `nginx-gateway` | Gateway `tls.secretName` reference | `infra-sealedsecret-applicationset` |
 | `ghost-db-secret` | `secret/ghost-db/` | `blog` | ghost chart `existingSecret` | `infra-sealedsecret-applicationset` |
 | `unity-mcp-api-key` | `secret/unity-mcp/` | `mcp-server` | unity chart `apiKey.existingSecret` | `infra-sealedsecret-applicationset` |
+| `harbor-internal-secrets`, `harbor-core-token` | `secret/harbor-internal/` | `harbor` | Harbor chart `existingSecret` / `secretName` ([details](../harbor-helm/docs/internal-secrets.md)) | `infra-sealedsecret-applicationset` |
 
 Everything except `harbor-robot` is pinned to a single namespace, so it is sealed with `strict` scope and delivered by the dedicated AppProject `infra-sealedsecret` (admin-only, sibling of `infra-pullsecret`). The seal/apply procedure matches [Sealing a secret](#sealing-a-secret-harbor-robot-example) above, only using `strict` (the default) scope.
 

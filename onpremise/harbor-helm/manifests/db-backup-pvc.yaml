@@ -33,6 +33,9 @@ metadata:
     app.kubernetes.io/name: harbor-db-backup
     app.kubernetes.io/component: backup
     app.kubernetes.io/part-of: harbor
+  annotations:
+    # ArgoCD-managed (infra-manifests-harbor): never prune or cascade-delete the dump volume.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteMany

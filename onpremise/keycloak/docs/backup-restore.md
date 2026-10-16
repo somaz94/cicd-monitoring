@@ -70,9 +70,10 @@ kubectl -n keycloak rollout status sts/keycloak --timeout=60s
 ```
 
 The script:
-1. Copies the dump into the postgres Pod
-2. Runs `psql -v ON_ERROR_STOP=1 --single-transaction` (plain SQL only — there is no `pg_restore` path)
-3. Tells you to scale Keycloak back to 1
+1. Proceeds only if you type `restore keycloak` (`restore <DB_NAME>`) exactly — any other input exits 1; `--dry-run` skips the prompt
+2. Copies the dump into the postgres Pod
+3. Runs `psql -v ON_ERROR_STOP=1 --single-transaction` (plain SQL only — there is no `pg_restore` path)
+4. Tells you to scale Keycloak back to 1
 
 > 🔴 `ON_ERROR_STOP=1` must not be dropped. psql defaults to **continue-on-error and still exits 0**, so without the flag a restore in which every statement failed still ends with "Restore complete." For the IdP the whole platform federates through, **a restore that lies about succeeding is worse than one that fails** — it is only discovered when nobody can log in. `--single-transaction` goes with it because the dump is taken with `--clean --if-exists` and therefore drops and recreates objects: breaking off midway without a transaction leaves the realm in neither the old nor the new state. On error the restore rolls back, the script exits 1, and Keycloak stays scaled down.
 
@@ -100,18 +101,18 @@ curl -kI https://auth.example.com/realms/master                # expect 200
 
 <br/>
 
-## Realm config backup (declarative export)
+## Realm config backup (local export)
 
-After UI/kcadm setup, export to commit the realm:
+Export the realm built via UI/kcadm as a local backup. The result holds client secrets, IdP client secrets and user credentials, so it is **never committed**:
 
 ```bash
 ./scripts/realm-export.sh
-# → manifests/realm-example.json updated
-git diff manifests/realm-example.json
-git add manifests/realm-example.json && git commit -m "feat(keycloak): export example realm"
+# → ${REALM_EXPORT_DIR:-$HOME/keycloak-exports}/realm-example-<YYYYmmdd_HHMMSS>.json (directory 0700, file 0600)
+# Compare with an earlier export to see drift
+diff <(jq -S . <older export>.json) <(jq -S . <new export>.json)
 ```
 
-Restore (declarative re-deploy):
+Restore (declarative re-deploy) needs a sanitized realm file with the secrets removed, not the raw export — see the "Realm export" section of [realm-setup.md](realm-setup.md):
 
 ```bash
 helmfile -f helmfile.yaml -e dev apply \
@@ -119,7 +120,7 @@ helmfile -f helmfile.yaml -e dev apply \
   --set-file realmImport.realm=manifests/realm-example.json
 ```
 
-> The realm export contains client secrets. **Keep it out of public repositories** — an internal repo may hold it in plaintext, but rotation leaves traces in git history — use `git filter-repo` to scrub, or migrate to ExternalSecrets later.
+> Keep the raw export out of the repo — once committed, the secrets stay in git history even after rotation (scrubbing needs `git filter-repo`). `manifests/realm-example.json` only ever holds a sanitized file.
 
 <br/>
 
@@ -147,5 +148,5 @@ Whole cluster is gone, recover on a fresh cluster:
 | Daily | (Automated) Verify backup CronJob completed — `kubectl -n keycloak get jobs` |
 | Weekly | Confirm `backup/` retention (only the last 30 days remain) |
 | Monthly | Restore the latest dump into a dev environment to verify integrity |
-| Quarterly | Refresh realm export and commit (avoid drift accumulation) |
+| Quarterly | Refresh the local realm-export backup and diff it against the previous one for drift (never commit) |
 | Pre-major-change | Take an immediate backup before bumping PostgreSQL or Keycloak chart |

@@ -110,6 +110,8 @@ Scoped to `example-project.stdout.dev.battle.**` — rename known expression key
 
 ZLogger payload has no `data.traceId`, so `_doc_id` is nil and ES output falls back to random `_id`. This cannot be solved at the infra layer alone — the app side needs to emit a traceId again. Current impact: duplicate ingestion on fluent-bit/fluentd restart. Not critical in dev, tracked as follow-up.
 
+> Resolved 2026-10-07: the dedup key is now a SHA1 of the record as fluent-bit sent it (new Step 0) instead of the traceId, so a re-sent record overwrites itself under the same `_id` even without `data.traceId`.
+
 <br/>
 
 ## Apply procedure
@@ -200,7 +202,7 @@ The existing `dev-example-project-battle` index already carries the bad dynamic 
 
 | Item | Status | Notes |
 |---|---|---|
-| `data.traceId` absence breaks dedup | Open | Resolves automatically once ZLogger side re-introduces a traceId enricher. Cannot be worked around at the infra layer |
+| `data.traceId` absence breaks dedup | Resolved (2026-10-07) | Step 0 uses a record content hash as `_id`, so dedup no longer depends on the traceId |
 | Stale bad dynamic mappings on existing docs | Open | Cleaned by an index reset. Pending user decision |
 | Placeholder expression growth monitoring | Operational | Absorbed by the "Adding a new placeholder key" runbook above |
 | Stale comment in fluent-bit `values/dev.yaml` lines 33-35 ("Serilog schema") | Follow-up | Will be cleaned up in the next fluent-bit edit cycle |

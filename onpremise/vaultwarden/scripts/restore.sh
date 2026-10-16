@@ -34,14 +34,18 @@ Commands:
 
 Options:
   --dry-run     Print every mutating kubectl call (scale / restore Pod / wait)
-                without executing. Read-only steps (backup listing) still run.
+                without executing. Read-only steps (backup listing) still run,
+                and the confirmation prompt is skipped. Put it before DATE.
+  -h, --help    Show this help
+
+Confirmation:
+  A real restore requires typing 'restore $STATEFULSET' exactly. Any other input exits 1.
 
 Examples:
   $(basename "$0")              # List backups
   $(basename "$0") latest       # Restore latest
   $(basename "$0") --dry-run 20260408   # Print restore plan for April 8, 2026
 EOF
-  exit 0
 }
 
 list_backups() {
@@ -110,10 +114,14 @@ do_restore() {
   echo "  2. Overwrite current data with backup from $DATE"
   echo "  3. Restart Vaultwarden"
   echo ""
-  read -rp "Continue? [y/N]: " confirm
-  if [[ ! "$confirm" =~ ^[yY]$ ]]; then
-    echo "Cancelled."
-    exit 0
+  if [[ "$DRY_RUN" != "1" ]]; then
+    local expected="restore ${STATEFULSET}" confirm=""
+    printf "Type '%s' to continue: " "$expected"
+    read -r confirm || true
+    if [[ "$confirm" != "$expected" ]]; then
+      echo "Aborted: input did not match '$expected'." >&2
+      exit 1
+    fi
   fi
 
   # Step 1: Scale down
@@ -194,12 +202,18 @@ do_restore() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
-    -h|--help) usage ;;
+    -h|--help) usage; exit 0 ;;
     --) shift; break ;;
     -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
     *)  break ;;
   esac
 done
+# A trailing option (e.g. `latest --dry-run`) would otherwise be ignored and run a real restore.
+if [[ $# -gt 1 ]]; then
+  echo "ERROR: unexpected argument after '$1': $2 (options go before DATE)" >&2
+  usage >&2
+  exit 2
+fi
 
 case "${1:-}" in
   "")        list_backups ;;

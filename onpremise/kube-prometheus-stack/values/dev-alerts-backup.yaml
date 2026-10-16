@@ -46,7 +46,7 @@ additionalPrometheusRulesMap:
               group: backup
             annotations:
               summary: "etcd snapshot backup has not succeeded in 36h"
-              description: "The etcd-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily schedule — the cluster currently has no fresh recovery point. Every Kubernetes object lives in etcd, so losing it now means rebuilding the cluster by hand. Check `kubectl -n kube-system get cronjob etcd-backup` (is it suspended?) and `kubectl -n kube-system get jobs -l app.kubernetes.io/name=etcd-backup`."
+              description: "The etcd-backup CronJob last completed successfully {{ $value | humanizeDuration }} ago against a daily schedule — the cluster currently has no fresh recovery point. Every Kubernetes object lives in etcd, so losing it now means rebuilding the cluster by hand. Check `kubectl -n kube-system get cronjob etcd-backup` (is it suspended? ArgoCD selfHeal reverts a kubectl suspend, so one that sticks was committed to git) and `kubectl -n kube-system get jobs -l app.kubernetes.io/name=etcd-backup`."
 
           # The CronJob object itself is gone. kube_cronjob_spec_suspend is used as
           # the existence probe rather than last_successful_time because it is
@@ -60,7 +60,7 @@ additionalPrometheusRulesMap:
               group: backup
             annotations:
               summary: "etcd backup CronJob no longer exists"
-              description: "The etcd-backup CronJob is not present in kube-system — no etcd snapshots are being taken at all. Re-apply bootstrap/cluster-maintenance/etcd-backup/manifests/ and confirm with `kubectl -n kube-system get cronjob etcd-backup`."
+              description: "The etcd-backup CronJob is not present in kube-system — no etcd snapshots are being taken at all. It is deployed by the self-healing ArgoCD Application infra-manifests-etcd-backup, so check that the Application still exists and is Synced (`kubectl -n argocd get application infra-manifests-etcd-backup`), then confirm with `kubectl -n kube-system get cronjob etcd-backup`."
 
           # Harbor's database dump. Same 36h-against-a-daily-schedule reasoning as the
           # etcd pair above, and the same suspended-CronJob note applies — see those
@@ -97,7 +97,7 @@ additionalPrometheusRulesMap:
               group: backup
             annotations:
               summary: "Harbor database backup CronJob no longer exists"
-              description: "The harbor-db-backup CronJob is not present in the harbor namespace — the Harbor database is not being dumped at all. Re-apply cicd/harbor-helm/manifests/db-backup-cronjob.yaml and confirm with `kubectl -n harbor get cronjob harbor-db-backup`."
+              description: "The harbor-db-backup CronJob is not present in the harbor namespace — the Harbor database is not being dumped at all. It is deployed by the self-healing ArgoCD Application infra-manifests-harbor, so check that the Application still exists and is Synced (`kubectl -n argocd get application infra-manifests-harbor`), then confirm with `kubectl -n harbor get cronjob harbor-db-backup`."
 
           # Vaultwarden holds every stored credential for the team, and unlike Harbor
           # (images rebuildable from CI) or Elasticsearch (logs age out) there is no

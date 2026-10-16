@@ -32,6 +32,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -236,6 +237,9 @@ def parse_managed_files(
 
 
 def helm_available() -> bool:
+    # subprocess.run raises FileNotFoundError for a missing binary instead of returning non-zero.
+    if shutil.which("helm") is None:
+        return False
     result = subprocess.run(
         ["helm", "version", "--short"],
         capture_output=True, text=True, check=False,

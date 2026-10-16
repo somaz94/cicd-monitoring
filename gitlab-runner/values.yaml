@@ -19,8 +19,14 @@
 ##
 image:
   registry: registry.gitlab.com
-  image: gitlab-org/gitlab-runner
+  repository: gitlab-org/gitlab-runner
   # tag: alpine-v{{.Chart.AppVersion}}
+
+  ## DEPRECATED: use `image.repository` instead.
+  ## Kept for backward compatibility: when `image.image` is set it overrides
+  ## `image.repository`, so existing overrides keep working across upgrades.
+  ## Remove it from your values once you have switched to `image.repository`.
+  # image: gitlab-org/gitlab-runner
 
 ## When using GitLab Runner Helm Chart with gitlab-runner-ubi-images (https://gitlab.com/gitlab-org/ci-cd/gitlab-runner-ubi-images/container_registry)
 ## the installation fails because `dumb-init` is not packaged in the image. However, `tini` is present.
@@ -28,7 +34,7 @@ image:
 useTini: false
 
 ## Specify a imagePullPolicy for the main runner deployment
-## 'Always' if imageTag is 'latest', else set to 'IfNotPresent'
+## 'Always' if image.tag is 'latest', else set to 'IfNotPresent'
 ##
 ## Note: it does not apply to job containers launched by this executor.
 ## Use `pull_policy` in [runners.kubernetes] to change it.
@@ -47,8 +53,11 @@ imagePullPolicy: IfNotPresent
 ## Timeout, in seconds, for liveness and readiness probes of a runner pod.
 # probeTimeoutSeconds: 4
 
-## Configure the livenessProbe
+## Configure the livenessProbe. The probe runs `gitlab-runner verify` and
+## fails when GitLab is unreachable; set enabled to false to keep an
+## unreachable GitLab from restarting the runner pod.
 livenessProbe: {}
+#   enabled: true
 #   initialDelaySeconds: 60
 #   periodSeconds: 60
 #   successThreshold: 1
@@ -186,6 +195,7 @@ checkInterval: 3
 sessionServer:
   enabled: false
   # annotations: {}
+  # labels: {}
   # timeout: 1800
   # internalPort: 8093
   # externalPort: 9000

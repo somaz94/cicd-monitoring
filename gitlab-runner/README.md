@@ -154,7 +154,7 @@ An automated upgrade script that handles version checking, backup, diff, and rol
 ```
 
 The script performs the following steps:
-1. Checks current installed version and helmfile releases
+1. Checks the current version (`chart.version` in `argocd/<release>.yaml`)
 2. Fetches latest version from Helm repository
 3. Downloads target `Chart.yaml` and `values.yaml`
 4. Shows `Chart.yaml` diff
@@ -267,10 +267,6 @@ kubectl -n gitlab-runner get pod -o wide -w
    - Check runner's service account and RBAC settings
    - Verify PVC mounts if using shared storage
 
-3. **Secret Checksum Changes**
-   - It's normal to see secret checksum changes in `helmfile diff`
-   - These changes don't affect the actual secret content
-   - Safe to proceed with deployment
 
 <br/>
 

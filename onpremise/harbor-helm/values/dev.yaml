@@ -35,7 +35,12 @@ expose:
 
 externalURL: https://harbor.example.com
 
-# SSO: Keycloak OIDC lives in Harbor's DB, not Helm values — apply it after helmfile with
+# Decided 2026-10-14: every image runs v2.15.4 ahead of chart.version (whose appVersion is older).
+# 2.15.3 fixes four high-severity advisories and 2.15.4 restores its regressed defaults; the chart
+# has no release for either yet. upgrade.py does not move these tags, so delete all ten `tag:` lines
+# in the same commit that bumps chart.version to an appVersion of 2.15.4 or later.
+
+# SSO: Keycloak OIDC lives in Harbor's DB, not Helm values — apply it after the chart is deployed with
 # scripts/admin/harbor-admin.sh set-oidc (docs/oidc-setup-keycloak.md; GitLab rollback: docs/legacy/oidc-setup-gitlab.md).
 
 persistence:
@@ -96,7 +101,7 @@ cache:
 nginx:
   image:
     repository: goharbor/nginx-photon
-    tag: v2.15.2
+    tag: v2.15.4
   automountServiceAccountToken: false
   replicas: 1
   revisionHistoryLimit: 10
@@ -111,7 +116,7 @@ nginx:
 portal:
   image:
     repository: goharbor/harbor-portal
-    tag: v2.15.2
+    tag: v2.15.4
   replicas: 1
   revisionHistoryLimit: 10
   resources:
@@ -125,8 +130,15 @@ portal:
 core:
   image:
     repository: goharbor/harbor-core
-    tag: v2.15.2
+    tag: v2.15.4
   replicas: 1
+  # Decided 2026-10-14: every chart-generated secret is pinned to a SealedSecret
+  # (argocd-applicationset secret/harbor-internal/, values copied from the live release).
+  # Unpinned, they come from randAlphaNum / genCA / htpasswd, and lookup is empty under an
+  # ArgoCD render, so each sync would rotate them and restart core / jobservice / registry.
+  existingSecret: harbor-internal-secrets
+  existingXsrfSecret: harbor-internal-secrets
+  secretName: harbor-core-token
   resources:
     requests:
       memory: 256Mi
@@ -138,8 +150,9 @@ core:
 jobservice:
   image:
     repository: goharbor/harbor-jobservice
-    tag: v2.15.2
+    tag: v2.15.4
   replicas: 1
+  existingSecret: harbor-internal-secrets
   revisionHistoryLimit: 10
   resources:
     requests:
@@ -150,10 +163,13 @@ jobservice:
       cpu: 1
 
 registry:
+  existingSecret: harbor-internal-secrets
+  credentials:
+    existingSecret: harbor-internal-secrets
   registry:
     image:
       repository: goharbor/registry-photon
-      tag: v2.15.2
+      tag: v2.15.4
     resources:
       requests:
         memory: 256Mi
@@ -164,7 +180,7 @@ registry:
   controller:
     image:
       repository: goharbor/harbor-registryctl
-      tag: v2.15.2
+      tag: v2.15.4
     resources:
       requests:
         memory: 256Mi
@@ -184,7 +200,7 @@ trivy:
   enabled: true
   image:
     repository: goharbor/trivy-adapter-photon
-    tag: v2.15.2
+    tag: v2.15.4
   replicas: 1
   resources:
     requests:
@@ -199,7 +215,7 @@ database:
   internal:
     image:
       repository: goharbor/harbor-db
-      tag: v2.15.2
+      tag: v2.15.4
     password: "exampleAdminPassword"
     shmSizeLimit: 2048Mi
     resources:
@@ -225,15 +241,14 @@ redis:
   internal:
     image:
       # Harbor 1.19.2 renamed this image redis-photon -> valkey-photon upstream.
-      # upgrade.py (external-with-image-tag) only rewrites the tag, so the
-      # repository has to be tracked by hand on an upstream rename.
+      # Tags are left to the chart default (they follow chart.version), but these
+      # repository overrides do not, so track an upstream rename here by hand.
       repository: goharbor/valkey-photon
-      tag: v2.15.2
-
+      tag: v2.15.4
 exporter:
   image:
     repository: goharbor/harbor-exporter
-    tag: v2.15.2
+    tag: v2.15.4
   replicas: 1
   revisionHistoryLimit: 10
   resources:

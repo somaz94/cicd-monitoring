@@ -280,7 +280,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
     done
   fi
   ```
-- **Consumers**: `harbor-helm` (count/list per `sync.py --status`)
+- **Consumers**: none today — the only consumer, `harbor-helm`, moved to `argocd-pin` when it migrated to ArgoCD on 2026-10-14, and its image tags now follow the chart default instead of a values pin. The template and `upgrade_core.external_with_image_tag` remain (count/list per `sync.py --status`)
 
 #### 3. [local-with-templates.py](templates/local-with-templates.py) — local chart + custom templates
 

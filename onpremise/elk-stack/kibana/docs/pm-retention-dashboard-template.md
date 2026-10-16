@@ -109,7 +109,7 @@ NFS log files
 ES index: dev-example-project-game            ◀── raw events
    │
    │ [ES Transform: dev-example-project-game-user-cohort]
-   │  continuous, frequency 5m, sync.delay 60s
+   │  continuous, frequency 5m, sync.delay 5m
    ▼
 ES index: dev-example-project-game-user-cohort  ◀── 1 row = 1 user (atomic facts)
                                             (first_seen, last_seen, total_events,
@@ -172,7 +172,7 @@ Live spec (`kubectl ... GET /_transform/dev-example-project-game-user-cohort`):
 | Aggregations | `first_seen` (scripted_metric — minimum @timestamp of `/users/create` events), `last_seen` (max), `total_events` (value_count), `active_days_count` (cardinality of KST local-date string), `active_dates` (scripted_metric — array of active KST dates), `active_days_count_cst` / `active_dates_cst` (the same computation in CST), `max_cleared_chapter` (max). **Does not compute retention** — D-N is computed at query time by the cohort data-view runtime fields `d1_live..d30_live` reading `active_dates` |
 | Dest | `dev-example-project-game-user-cohort` |
 | Frequency | `5m` (live) |
-| Sync | `time.field: @timestamp`, `delay: 60s` |
+| Sync | `time.field: @timestamp`, `delay: 5m` — `@timestamp` is app time, so logs fluent-bit held back during a fluentd restart still land inside a checkpoint when they arrive late (2026-10-07) |
 | Settings | `max_page_search_size: 500` |
 
 `active_dates` scripted_metric shape (collects each user's active days):

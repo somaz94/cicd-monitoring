@@ -1,23 +1,19 @@
 # Default values for keycloak-operator.
 #
 # Wraps the upstream keycloak-k8s-resources raw YAML — the CRDs (Keycloak,
-# KeycloakRealmImport), ServiceAccount, ClusterRoles / ClusterRoleBindings /
+# KeycloakRealmImport, KeycloakOIDCClient, KeycloakSAMLClient), ServiceAccount, ClusterRoles / ClusterRoleBindings /
 # Role / RoleBindings, the operator Deployment and its Service. `upgrade.sh`
 # tracks new keycloak-k8s-resources releases and refreshes the templates in
 # place.
 #
-# Default install: one operator pod in the release namespace, no override.
-# The operator watches its own namespace by default — set watchNamespaces to
-# "JOSDK_ALL_NAMESPACES" to watch every namespace, or to a comma-separated
-# namespace list to scope reconciliation. Watching anything other than the
-# release namespace also requires `rbac.useClusterBindings: true` so the
-# controller permissions are bound cluster-wide.
+# Default install: one operator pod watching its own namespace; see watchNamespaces
+# and rbac.useClusterBindings to widen the scope.
 
 # Pinned upstream version. Mirrors Chart.yaml `appVersion` and is rewritten by
 # upgrade.sh on a successful bump. Used to render the operator image tag and
 # the RELATED_IMAGE_KEYCLOAK env value below when their corresponding tag
 # fields are left empty.
-version: "26.7.4"
+version: "26.8.0"
 
 # ---------------------------------------------------------------------------
 # Resource metadata
@@ -106,16 +102,12 @@ securityContext: {}
 # (downward API), RELATED_IMAGE_KEYCLOAK and the watch-namespace env vars.
 extraEnv: []
 
-# Watch-namespace scope. The two env vars
-#   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKCONTROLLER_NAMESPACES
-#   QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKREALMIMPORTCONTROLLER_NAMESPACES
-# are derived from this value. The Quarkus Operator SDK accepts:
+# Watch-namespace scope, fanned out to every QUARKUS_OPERATOR_SDK_CONTROLLERS_*_NAMESPACES
+# env var. The Quarkus Operator SDK accepts:
 #   "JOSDK_WATCH_CURRENT"   — watch only the operator's own namespace (default)
 #   "JOSDK_ALL_NAMESPACES"  — watch every namespace
 #   "ns-a,ns-b"             — comma-separated namespace list
-# Anything other than JOSDK_WATCH_CURRENT also needs `rbac.useClusterBindings:
-# true` (see below) — the controller ClusterRoles ship with RoleBindings only
-# in the release namespace, which silently 403s on cross-namespace list/watch.
+# Anything but JOSDK_WATCH_CURRENT needs rbac.useClusterBindings: true (see below).
 watchNamespaces: "JOSDK_WATCH_CURRENT"
 
 # Probe overrides. Set per-probe knobs to override the upstream defaults.
@@ -140,13 +132,12 @@ probes:
 volumeMounts: []
 volumes: []
 
-# Escape hatch — arbitrary YAML merged into spec of the operator Deployment.
+# Escape hatch — appended (not merged) to the operator Deployment spec.
 # Useful for things like spec.strategy, spec.minReadySeconds, ... that this
 # chart does not surface.
 deploymentExtra: {}
 
-# Escape hatch — arbitrary YAML merged into the operator container spec
-# (spec.template.spec.containers[0]). Use sparingly; prefer first-class fields.
+# Base for the operator container (spec.template.spec.containers[0]); chart-set fields win on overlap.
 containerExtra: {}
 
 # ---------------------------------------------------------------------------
@@ -184,13 +175,10 @@ rbac:
   # to .Release.Namespace. The upstream manifest hard-codes "keycloak" here —
   # this value is what makes the chart portable.
   subjectNamespace: ""
-  # When true, bind the per-controller ClusterRoles
-  # (`keycloakcontroller-cluster-role`, `keycloakrealmimportcontroller-cluster-role`)
-  # via ClusterRoleBindings instead of in-namespace RoleBindings. Required
-  # when `watchNamespaces` is "JOSDK_ALL_NAMESPACES" or a list that includes
-  # any namespace other than the release namespace — RoleBindings only grant
-  # the bound rules within their own namespace, so cross-namespace
-  # list/watch on Keycloak / KeycloakRealmImport CRs silently 403s otherwise.
+  # When true, bind every per-controller ClusterRole (`*controller-cluster-role`)
+  # via ClusterRoleBindings instead of in-namespace RoleBindings. Required when
+  # `watchNamespaces` reaches beyond the release namespace — a RoleBinding grants only
+  # within its own namespace, so cross-namespace list/watch silently 403s otherwise.
   # Default false to match the upstream manifest (single-ns operator).
   useClusterBindings: false
 

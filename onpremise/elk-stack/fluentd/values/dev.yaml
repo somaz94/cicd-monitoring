@@ -68,7 +68,7 @@ metrics:
         expr: up{job="fluentd"} == 0
         for: 2m
         labels:
-          context: fluentd
+          group: fluentd
           severity: critical
         annotations:
           summary: "Fluentd aggregator down (logging ns)"
@@ -78,7 +78,7 @@ metrics:
         expr: absent(up{job="fluentd"} == 1)
         for: 10m
         labels:
-          context: fluentd
+          group: fluentd
           severity: warning
         annotations:
           summary: "Fluentd metrics scrape missing"
@@ -89,7 +89,7 @@ metrics:
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 50
         for: 5m
         labels:
-          context: fluentd
+          group: fluentd
           severity: warning
         annotations:
           summary: "Fluentd ES output buffer queue rising"
@@ -99,7 +99,7 @@ metrics:
         expr: fluentd_output_status_buffer_queue_length{type="elasticsearch"} > 100
         for: 1m
         labels:
-          context: fluentd
+          group: fluentd
           severity: critical
         annotations:
           summary: "Fluentd ES buffer backlog critical"
@@ -110,7 +110,7 @@ metrics:
         expr: fluentd_output_status_buffer_total_bytes{type="elasticsearch"} > 3221225472
         for: 5m
         labels:
-          context: fluentd
+          group: fluentd
           severity: warning
         annotations:
           summary: "Fluentd buffer disk usage > 3GB"
@@ -121,7 +121,7 @@ metrics:
         expr: rate(fluentd_output_status_retry_count{type="elasticsearch"}[10m]) > 0
         for: 10m
         labels:
-          context: fluentd
+          group: fluentd
           severity: warning
         annotations:
           summary: "Fluentd → ES retry rate elevated"
@@ -136,7 +136,7 @@ metrics:
           sum(fluentd_output_status_buffer_queue_length{type="elasticsearch"}) > 0
         for: 10m
         labels:
-          context: fluentd
+          group: fluentd
           severity: critical
         annotations:
           summary: "Fluentd ingest stalled (buffer non-empty but no records → ES)"
@@ -191,6 +191,20 @@ fileConfigs:
     </source>
 
   02_filters.conf: |-
+    # Step 0: ES dedup key (id_key)
+    # _doc_id = SHA1 of the record exactly as fluent-bit sent it (CRI ns time + file path + raw line),
+    # so a fluent-bit re-send or the other replica yields the same _id and distinct lines never collide.
+    # Must run before normalization: Step 3 can still fill @timestamp with receive time, so a hash taken
+    # after it would differ on every re-send. Decided 2026-10-07: _id was data.traceId until then, but
+    # one request logs several records under one traceId and each overwrote the one before.
+    <filter example-project.**>
+      @type elasticsearch_genid
+      use_record_as_seed true
+      use_entire_record true
+      hash_type sha1
+      hash_id_key _doc_id
+    </filter>
+
     # Step 1: the pipeline's only JSON parse. Since 7db80f4 (2026-08-06) fluent-bit's cri
     # multiline parser stores the raw line in `log`, so its `Key_Name message` filter is a
     # no-op. On a parse miss (plain text) `log` stays for Step 2 to use as the message.
@@ -205,6 +219,9 @@ fileConfigs:
       reserve_time true
       <parse>
         @type json
+        # Keep Pino's Integer `time` for Step 3. The default drops it, which made game @timestamp
+        # the receive time from 2026-08-06 until 2026-10-07.
+        keep_time_key true
       </parse>
       emit_invalid_record_to_error false
     </filter>
@@ -235,11 +252,13 @@ fileConfigs:
 
     # Step 3: Timestamp normalization + cleanup of unnecessary fields
     # Source-of-truth precedence:
-    #   - Pino:    time (Unix ms Integer) → Asia/Seoul ISO8601
+    #   - Pino:    time (Unix ms Integer) → Asia/Seoul ISO8601. Rational, because a
+    #              Float division renders .123 as .122
     #   - Serilog: Timestamp (ISO8601 String w/ offset) → Asia/Seoul ISO8601
     #   - ZLogger: Timestamp (ISO8601 String w/ offset, same capital-T shape as
     #              Serilog) → handled by the same branch
     #   - generic timestamp / @timestamp already present → keep
+    #   - no app time (plain text) → the CRI `time` String fluent-bit keeps (container write time)
     #   - fallback → receive time (Asia/Seoul ISO8601)
     # Serilog/ZLogger parse is wrapped in `rescue` so a malformed Timestamp
     # falls back to the raw string instead of breaking the filter chain.
@@ -247,7 +266,7 @@ fileConfigs:
       @type record_transformer
       enable_ruby true
       <record>
-        @timestamp ${if record["time"].is_a?(Integer); t = Time.at(record["time"]/1000.0); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["Timestamp"]; (Time.iso8601(record["Timestamp"]).localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z") rescue record["Timestamp"]); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
+        @timestamp ${if record["time"].is_a?(Integer); t = Time.at(Rational(record["time"], 1000)); t.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); elsif record["Timestamp"]; (Time.iso8601(record["Timestamp"]).localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z") rescue record["Timestamp"]); elsif record["timestamp"]; record["timestamp"]; elsif record["@timestamp"]; record["@timestamp"]; elsif record["time"].is_a?(String); (Time.iso8601(record["time"]).localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z") rescue Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z")); else; Time.now.localtime("+09:00").strftime("%Y-%m-%dT%H:%M:%S.%3N%:z"); end}
       </record>
       # Drop original keys we already promoted to canonical names. ZLogger's
       # LogLevel / Message are normalized to level / message in Step 2 above.
@@ -329,32 +348,10 @@ fileConfigs:
       remove_keys $['requestPath ?? string.Empty'],$['JsonSerializer.Serialize(requestBody)'],$['JsonSerializer.Serialize(responseBody)']
     </filter>
 
-    # Step 6: ES dedup key (id_key)
-    # Lift record["data"]["traceId"] to top-level _doc_id so the ES output's
-    # id_key can find it (fluent-plugin-elasticsearch's id_key does not resolve
-    # nested dot-paths). When data.traceId is absent (startup/lifecycle logs,
-    # ~20% of game records), _doc_id is nil → ES output falls back to random
-    # _id (no dedup for that subset; acceptable since those records are rare
-    # and bounded by pod restart frequency).
-    <filter example-project.**>
-      @type record_transformer
-      enable_ruby true
-      <record>
-        _doc_id ${record["data"].is_a?(Hash) ? record["data"]["traceId"] : nil}
-      </record>
-    </filter>
-
-    # NOTE: data.traceId is kept here, and in prod too. The AWS prod pipeline
-    # (fluentd-aws/values/prod.yaml) briefly ran a Step 7 that deleted the field
-    # after this filter — the value also survives as the document _id, and dropping
-    # it saved ~87 B/doc against 400k docs/day. That was reverted 2026-08-05:
-    # _id has no .keyword sub-field and no fielddata, so terms aggregations and
-    # wildcard / prefix searches on traceId became impossible — and those are the
-    # queries the field exists for. It is a UUID the app issues per request and
-    # shares with the battle server, so one request can be followed across both.
-    # On-prem the case for dropping it was always weaker still: the whole
-    # dev-example-project-game index is ~281 MB and is not ILM-managed at all, so there
-    # was no saving to chase in the first place.
+    # NOTE: data.traceId is kept, here and in prod. It is the only copy of the request's traceId
+    # (_id is a content hash) and the key that joins one request across the game and battle servers.
+    # Decided 2026-08-05: prod briefly deleted it as a duplicate of _id, which broke terms
+    # aggregations and wildcard / prefix searches on it. Do not drop it again.
 
   03_outputs.conf: |-
     # Output to Elasticsearch with dynamic index based on log_source
@@ -373,10 +370,8 @@ fileConfigs:
       type_name _doc
       suppress_type_name true
 
-      # Deterministic _id from data.traceId (set by 02_filters Step 6).
-      # Idempotent re-ingestion (backfill / replay / fluent-bit restart with
-      # stale offsets) overwrites instead of duplicating. When _doc_id is nil
-      # the plugin falls back to random _id (no dedup for that record).
+      # Content-hash _id from 02_filters Step 0: a re-ingested record (backfill / replay /
+      # fluent-bit restart with stale offsets) overwrites itself instead of duplicating.
       id_key _doc_id
       remove_keys _doc_id
 
@@ -416,8 +411,8 @@ fileConfigs:
       # -1 = never split a chunk into several bulk requests: a failed split request is swallowed
       # per record instead of failing the chunk, so records drop with no retry. Decided 2026-09-29.
       bulk_message_request_threshold -1
-      # A whole-chunk bulk can outlast the 5s default on a backlog replay; a timeout after ES indexed
-      # it re-sends the chunk and duplicates records that have no _doc_id.
+      # A whole-chunk bulk can outlast the 5s default on a backlog replay, and a timeout re-sends
+      # the whole chunk.
       request_timeout 60s
 
       # Receives only chunks that fail outside the bulk call, e.g. a buffer file that no longer decodes.
