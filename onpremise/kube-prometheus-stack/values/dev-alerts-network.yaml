@@ -140,7 +140,7 @@ additionalPrometheusRulesMap:
               group: blackbox
             annotations:
               summary: "example-hub portal is not answering from outside"
-              description: "The example-hub portal has failed its external probe for 3+ minutes. It is the single entrance to every proxy-gated app (account-tool / es-ops / vpn-ops / harbor-ops / keycloak-ops), so all of them are unreachable regardless of their own health. The probe covers DNS -> MetalLB IP -> ngf Gateway -> HTTPRoute -> pod; check `kubectl -n nginx-gateway get gateway ngf` and `kubectl -n example-hub get pods` in that order."
+              description: "The example-hub portal has failed its external probe for 3+ minutes. It is the single entrance to every proxy-gated app, so all of them are unreachable regardless of their own health. The probe covers DNS -> MetalLB IP -> ngf Gateway -> HTTPRoute -> pod; check `kubectl -n nginx-gateway get gateway ngf` and `kubectl -n example-hub get pods` in that order."
 
           # 🔴 The authorization gate stopped redirecting unauthenticated access.
           #
@@ -154,9 +154,8 @@ additionalPrometheusRulesMap:
           # alone matches it, so it is excluded explicitly. The status code is the
           # left operand because `a and b` returns a's value, the {{ $value }} shown.
           #
-          # Every app behind that gate holds admin credentials (Keycloak master
-          # admin, Harbor admin, an SSH private key, a GitLab admin token), and
-          # nothing else in this cluster watches for this condition.
+          # Nothing else in this cluster watches for this condition; why it is the
+          # highest-stakes alert here: docs/blackbox-auth-gate-rationale.md.
           - alert: ExampleHubAuthGateBypassed
             expr: probe_http_status_code{target="example-hub-auth-gate"} > 0 < 400 and probe_success{target="example-hub-auth-gate"} == 0
             for: 5m
@@ -180,8 +179,8 @@ additionalPrometheusRulesMap:
               summary: "example-hub auth-gate probe is failing with {{ if eq $value 0.0 }}no HTTP response{{ else }}status {{ $value }}{{ end }}"
               description: "The auth-gate probe expects a 302 to /oidc/login but got {{ if eq $value 0.0 }}no HTTP response at all (DNS, connection, TLS or timeout), so the gate's state is unknown{{ else }}status {{ $value }} — the portal is erroring rather than serving the app{{ end }}. If ExampleHubPortalProbeFailed is firing too, start there; otherwise check `kubectl -n example-hub logs deploy/example-hub`."
 
-          # Certificate expiry on the wildcard. Measured 2026-08-05: 2036-04-14, so
-          # this is quiet for a decade — it exists because a missed renewal has no
+          # Certificate expiry on the wildcard. It is a 10-year cert, so
+          # this is quiet for years — it exists because a missed renewal has no
           # other early warning, and the cert is manually managed.
           #
           # Note the probes run with insecure_skip_verify (see values/dev.yaml for

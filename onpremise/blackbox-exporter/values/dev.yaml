@@ -1,0 +1,156 @@
+# blackbox-exporter — external synthetic probes for the example-hub entrance.
+#
+# Only what is reachable from the monitoring namespace AND not covered elsewhere.
+# The portal-proxied apps are not probed: their NetworkPolicy blocks monitoring and
+# their kubelet probes already watch /healthz (docs/blackbox-auth-gate-rationale.md).
+
+fullnameOverride: blackbox-exporter
+
+# Single replica. A probe gap during a rollout is acceptable — probe_success has
+# `for:` on its alert, so a few missed scrapes do not page anyone.
+replicas: 1
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Probe modules.
+#
+# preferred_ip_protocol ip4 across the board: this cluster is IPv4-only and the
+# blackbox default (ip6 first) adds a failed lookup to every probe.
+#
+# ── tls_config.insecure_skip_verify: why every HTTPS module carries it ─────────
+#
+# *.example.com is signed by the internal CA, which is not in any container's
+# trust bundle. Measured 2026-08-05 against a real blackbox v0.28.0: without
+# this flag every HTTPS probe returns probe_success=0 / status=0.
+#
+# The alternative is mounting the CA (the pattern the portal and its proxied apps
+# use, each embedding its own copy). That was weighed and declined:
+#
+#   WHAT IS GIVEN UP — certificate identity verification. If hub.example.com ever
+#   served a cert with a different CN or issuer, these probes would still pass.
+#   The probe path is blackbox pod -> DNS -> MetalLB IP -> ngf Gateway -> portal,
+#   entirely inside the cluster/LAN; an attacker able to MITM that already
+#   controls more than this probe could protect.
+#
+#   WHAT IS KEPT — probe_ssl_earliest_cert_expiry still works (verified: it
+#   reports the real expiry with verification off). Expiry is the only
+#   failure this manually-managed 10-year cert will realistically have, and it
+#   stays covered.
+#
+#   WHY IT MATTERS BEYOND COPY COUNT — with verification on, this probe would
+#   also fail for certificate reasons. An alert that can mean either "the portal
+#   is down" or "the cert changed" forces that question on every page. A probe
+#   should speak for one thing.
+#
+# TO REVERSE: add the CA as a ConfigMap via extraManifests, mount it with
+# extraConfigmapMounts, and replace insecure_skip_verify with
+# `ca_file: /etc/ssl/internal/wildcard.crt` in each module below.
+# ──────────────────────────────────────────────────────────────────────────────
+config:
+  modules:
+    # Standard liveness probe — must answer 2xx.
+    http_2xx:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        follow_redirects: false
+        preferred_ip_protocol: "ip4"
+        valid_status_codes: []      # empty = any 2xx
+        tls_config:
+          insecure_skip_verify: true
+
+    # Auth-gate probe. Asserts the portal REDIRECTS an unauthenticated request to
+    # the OIDC login instead of serving the app.
+    #
+    # follow_redirects MUST stay false — following the 302 would land on the
+    # Keycloak login page (a 200) and the probe would pass no matter what the
+    # gate did. The whole assertion is the 302 itself.
+    http_302_auth_gate:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        follow_redirects: false
+        preferred_ip_protocol: "ip4"
+        valid_status_codes: [302]
+        tls_config:
+          insecure_skip_verify: true
+
+    # Reachability-only probe for apps whose "/" is legitimately not 2xx.
+    #
+    # git-bridge and slack-qr-bot both answer 404 at "/" by design (their UI
+    # lives on another path / port). Asserting 2xx there would fail forever, and
+    # asserting the exact 404 would break the day someone adds a landing page.
+    # 2xx-4xx says what is actually meant: the request reached the app and the
+    # app answered. A dead Gateway or a missing HTTPRoute yields no response at
+    # all and still fails the probe.
+    http_any_response:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        follow_redirects: false
+        preferred_ip_protocol: "ip4"
+        valid_status_codes: [200, 201, 204, 301, 302, 304, 400, 401, 403, 404]
+        tls_config:
+          insecure_skip_verify: true
+
+serviceMonitor:
+  enabled: true
+
+  # The exporter's own metrics — answers "is the prober itself up", separately
+  # from "is the target up". Without it a dead blackbox pod looks identical to
+  # every target failing at once.
+  selfMonitor:
+    enabled: true
+    interval: 60s
+
+  defaults:
+    interval: 60s
+    scrapeTimeout: 10s
+    module: http_2xx
+    # No `release: kube-prometheus-stack` label needed — the Prometheus CR's
+    # serviceMonitorSelector is {} (matches every ServiceMonitor). Only
+    # ruleSelector and probeSelector are label-scoped in this cluster.
+    labels: {}
+
+  targets:
+    # The single entrance. This one probe exercises the entire external path:
+    # DNS -> MetalLB-assigned IP -> ngf Gateway (the only one with an HTTPS
+    # listener) -> HTTPRoute -> portal pod. No in-cluster check can substitute
+    # for it, and it is also what carries probe_ssl_earliest_cert_expiry for the
+    # *.example.com wildcard.
+    - name: example-hub-portal
+      url: https://hub.example.com/healthz
+      module: http_2xx
+
+    # 🔴 Highest-value probe: an unauthenticated request to a proxied app must still
+    # be redirected to OIDC login (rationale: docs/blackbox-auth-gate-rationale.md).
+    # es-ops is only the sample path; every proxied app goes through the same gate.
+    - name: example-hub-auth-gate
+      url: https://hub.example.com/apps/es-ops/healthz
+      module: http_302_auth_gate
+
+    # Publicly routed apps on their own Gateways. HTTP, not HTTPS: only the `ngf`
+    # Gateway has a 443 listener — the ten ngf-public-* Gateways are port 80 only.
+    - name: git-bridge
+      url: http://git-bridge.example.com/
+      module: http_any_response
+
+    - name: slack-qr-bot
+      url: https://slack-qr-bot.example.com/
+      module: http_any_response
+
+# Alert rules live in the kube-prometheus-stack values
+# (observability/monitoring/kube-prometheus-stack/values/dev-alerts-network.yaml,
+# group `blackbox-alerts`) alongside every other alert group in this cluster,
+# rather than being scattered into each exporter's own chart.
+prometheusRule:
+  enabled: false

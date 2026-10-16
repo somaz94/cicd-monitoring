@@ -47,6 +47,7 @@ jenkins/res-jenkinsfile	GIT_URL = 'http://192.168.1.7/client/example-user'
 onpremise/argocd/values.yaml	#   password: my-password
 onpremise/argocd/values.yaml	# - ip: 10.20.30.40
 onpremise/argocd/values/dev-notifications.yaml	slack-token: "xoxb-your-slack-bot-token"
+onpremise/blackbox-exporter/values.yaml	#  - ip: 192.168.1.1
 onpremise/elk-stack/_deprecated/logstash/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
 onpremise/elk-stack/_deprecated/metricbeat/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
 onpremise/elk-stack/_deprecated/metricbeat/values/mgmt.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw

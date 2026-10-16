@@ -1,0 +1,16 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+# The generator emits one Application named `infra-<releaseName>`.
+component: blackbox-exporter
+releaseName: blackbox-exporter
+namespace: monitoring                          # already exists (kube-prometheus-stack)
+syncWave: "4"                                  # observability tier
+chart:
+  repoURL: https://prometheus-community.github.io/helm-charts
+  name: prometheus-blackbox-exporter
+  version: "11.20.0"
+valueFile: observability/monitoring/blackbox-exporter/values/dev.yaml
+createNamespace: false                         # 'monitoring' already exists
+# New install, not an adoption — there is no live release to contest, so there is
+# no adopt-diff to review before enabling auto-sync.
+autoSync: true

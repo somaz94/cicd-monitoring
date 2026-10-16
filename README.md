@@ -111,6 +111,7 @@ gcp/
 ```
 onpremise/
 ├── argocd/                              # ArgoCD with Dex SSO & Slack notifications
+├── blackbox-exporter/                   # Synthetic HTTP probes of the external entrance path
 ├── elk-stack/                           # Elasticsearch, Kibana, Filebeat, Logstash, APM
 ├── grafana/                             # Grafana dashboards
 ├── harbor-helm/                         # Harbor container registry
@@ -130,6 +131,7 @@ onpremise/
 | Component | Link |
 |-----------|------|
 | [ArgoCD](onpremise/argocd/) | GitLab SSO, Redis HA, Slack notifications |
+| [Blackbox Exporter](onpremise/blackbox-exporter/) | External HTTP probes: portal entrance, auth gate, public routes |
 | [ELK Stack](onpremise/elk-stack/) | APM, Elasticsearch, Filebeat, Kibana, Logstash, Metricbeat |
 | [Grafana](onpremise/grafana/) | Dashboards and data source configuration |
 | [Harbor](onpremise/harbor-helm/) | Container registry with Helm chart |
