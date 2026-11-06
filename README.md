@@ -323,6 +323,9 @@ helmfile destroy  # Delete
 
 For platform-specific **application deployment templates** (EKS Fargate, GKE with Firestore/PD-CSI/NFS, on-premise Kubernetes), see [helm-chart-template](https://github.com/somaz94/helm-chart-template).
 
+- [helm-upgrade-sync](https://github.com/somaz94/helm-upgrade-sync): Keeps the per-component chart upgrade scripts in sync from canonical templates.
+- [helm-charts](https://github.com/somaz94/helm-charts): Production-ready Helm charts published to a Helm repo, GHCR and Artifact Hub.
+
 <br/>
 
 ## License
