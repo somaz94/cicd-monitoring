@@ -48,3 +48,6 @@ Chart.lock
 # the upstream root rule never arrives, and a dump holds password hashes and client secrets.
 onpremise/keycloak/backup/*.sql
 
+
+# Dated upgrade.sh snapshots; sync-component.sh keeps local ones, they are not published.
+**/backup/[0-9]*/
