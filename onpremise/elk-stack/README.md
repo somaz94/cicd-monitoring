@@ -39,25 +39,25 @@ elk-stack/
 │   ├── delete_old_indices.sh
 │   ├── delete_old_indices_kr.sh
 │   └── values/
-│       └── mgmt.yaml
+│       └── dev.yaml
 ├── kibana/                 # Kibana visualization
 │   ├── Chart.yaml
 │   ├── helmfile.yaml
 │   ├── upgrade.sh
 │   └── values/
-│       └── mgmt.yaml
+│       └── dev.yaml
 ├── fluent-bit/             # Fluent Bit log collector
 │   ├── Chart.yaml
 │   ├── helmfile.yaml
 │   ├── upgrade.sh
 │   └── values/
-│       └── mgmt.yaml
+│       └── dev.yaml
 ├── fluentd/                # Fluentd log processor
 │   ├── Chart.yaml
 │   ├── helmfile.yaml
 │   ├── upgrade.sh
 │   └── values/
-│       └── mgmt.yaml
+│       └── dev.yaml
 ├── _deprecated/            # Deprecated components
 │   ├── logstash/
 │   ├── filebeat/

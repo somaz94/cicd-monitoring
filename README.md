@@ -297,7 +297,7 @@ component/
 ├── helmfile.yaml       # Helmfile release definition (remote chart)
 ├── values.yaml         # Upstream default values (auto-managed by upgrade.sh)
 ├── values/
-│   └── mgmt.yaml       # Environment-specific overrides
+│   └── dev.yaml        # Environment-specific overrides
 ├── examples/           # Storage, ingress, and other examples
 ├── upgrade.sh          # Automated version upgrade script
 ├── backup/             # Auto backup on upgrade

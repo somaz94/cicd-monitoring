@@ -1,5 +1,5 @@
 # ============================================================
-# Root Makefile for kuberntes-infra
+# Root Makefile for cicd-monitoring
 #
 # Single entry point for the most common workflows:
 #   - validate the repo (test / lint / ci)
@@ -63,7 +63,7 @@ help:
 ##   2. Document it on the line above the target with `## <target>: <description>`.
 ## The awk below scans for these two patterns automatically — no help-target edits needed.
 help:
-	@printf "$(CYAN)kuberntes-infra Makefile$(RESET)\n"
+	@printf "$(CYAN)cicd-monitoring Makefile$(RESET)\n"
 	@printf "Usage: make <target>\n"
 	@awk 'BEGIN {FS = ":.*?## "} \
 	     /^## --- CATEGORY: / { \
