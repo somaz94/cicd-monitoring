@@ -51,7 +51,6 @@ onpremise/blackbox-exporter/values.yaml	#  - ip: 192.168.1.1
 onpremise/elk-stack/_deprecated/logstash/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
 onpremise/elk-stack/_deprecated/metricbeat/values.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
 onpremise/elk-stack/_deprecated/metricbeat/values/mgmt.yaml	#      api_key: ui2CsdUadTiBasRJRkl9tvNnw
-onpremise/elk-stack/elasticsearch/scripts/kibana_saved_objects_migrate.sh	echo "  secret: monitoring/elasticsearch-master-credentials"
 onpremise/elk-stack/fluent-bit/values.yaml	# clusterIP: 172.16.10.1
 onpremise/grafana/values.yaml	# Each entry must be a valid CIDR notation string (e.g. 10.0.0.0/8).
 onpremise/grafana/values/mgmt.yaml	#       url: http://10.0.0.11:3100
