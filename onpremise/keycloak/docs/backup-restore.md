@@ -117,7 +117,7 @@ diff <(jq -S . <older export>.json) <(jq -S . <new export>.json)
 Restore (declarative re-deploy) needs a sanitized realm file with the secrets removed, not the raw export — see the "Realm export" section of [realm-setup.md](realm-setup.md):
 
 ```bash
-helmfile -f helmfile.yaml -e dev apply \
+helmfile -f helmfile.yaml --kube-context onprem-dev apply \
   --set realmImport.enabled=true \
   --set-file realmImport.realm=manifests/realm-example.json
 ```
@@ -132,8 +132,8 @@ Whole cluster is gone, recover on a fresh cluster:
 
 1. Apply the operator + this component
    ```bash
-   helmfile -f ../keycloak-operator/helmfile.yaml -e dev apply
-   helmfile -f helmfile.yaml -e dev apply
+   helmfile -f ../keycloak-operator/helmfile.yaml --kube-context onprem-dev apply
+   helmfile -f helmfile.yaml --kube-context onprem-dev apply
    ```
 2. Wait for PostgreSQL Pod Ready (`kubectl -n keycloak rollout status deploy/keycloak-postgresql`)
 3. Scale Keycloak instances to 0 (pre-flight, above)

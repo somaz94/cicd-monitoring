@@ -23,7 +23,7 @@ This component (`security/keycloak/`) and the sibling [`security/keycloak-operat
 - Owns:
   - CRDs `keycloaks.k8s.keycloak.org`, `keycloakrealmimports.k8s.keycloak.org` with `helm.sh/resource-policy: keep`
   - Operator Deployment + ServiceAccount + ClusterRole/ClusterRoleBinding (cluster-scoped) + Role/RoleBinding (namespace-scoped, operator namespace)
-  - Operator metrics Service (target for kube-prometheus-stack ServiceMonitor)
+  - Operator Service (not a metrics endpoint — the operator image ships no prometheus extension, so `/metrics` answers 404 and it is no ServiceMonitor target; Keycloak server metrics come from `security/keycloak/`)
 - Change trigger: new keycloak-k8s-resources upstream release (CRD schema / RBAC / image)
 
 ### `security/keycloak/` (this component)

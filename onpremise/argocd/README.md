@@ -289,7 +289,7 @@ An automated upgrade script that handles version checking, backup, diff, and rol
 
 The script performs the following steps:
 1. Checks current installed version
-2. Fetches target version from GitHub
+2. Resolves the target version with `helm search repo` (from the Helm repository)
 3. Downloads latest `Chart.yaml` and `values.yaml`
 4. Shows `Chart.yaml` diff
 5. Shows `values.yaml` diff

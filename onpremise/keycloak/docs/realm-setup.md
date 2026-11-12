@@ -8,7 +8,7 @@ Both the UI and `kcadm.sh` paths are supported. Prefer `kcadm.sh` for repeatabil
 
 ## Prerequisites
 
-- `helmfile -f helmfile.yaml -e dev apply` completed
+- `helmfile -f helmfile.yaml --kube-context onprem-dev apply` completed
 - Keycloak Pod Ready: `kubectl -n keycloak get pod keycloak-0` → `1/1 Running`
 - Initial admin credentials (auto-rendered by the operator on first boot):
   ```bash
@@ -178,7 +178,7 @@ diff <(jq -S . <older export>.json) <(jq -S . <new export>.json)
 Precondition for Phase 3 (declarative re-deploy via realmImport): never use the raw export as is. Put a **sanitized realm file** with the secrets removed at `manifests/realm-example.json` (a placeholder today), and supply the secrets from outside the file, e.g. via `realmImport.placeholders` (Secret references, see [`values-keycloak-cr.yaml`](../values-keycloak-cr.yaml)). Only once that holds, re-deploy with:
 
 ```bash
-helmfile -f helmfile.yaml -e dev apply \
+helmfile -f helmfile.yaml --kube-context onprem-dev apply \
   --set realmImport.enabled=true \
   --set-file realmImport.realm=manifests/realm-example.json
 ```

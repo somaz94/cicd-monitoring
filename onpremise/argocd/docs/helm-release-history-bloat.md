@@ -253,10 +253,10 @@ These look like leftovers from a helmfile → ArgoCD migration. They are small a
 
 ## Prevention checklist
 
-- [ ] Keep `historyMax: 3` on the argocd release in both helmfiles — do not remove it.
+- [ ] Keep `helmDefaults.historyMax: 3` in both argocd helmfiles — do not remove it.
 - [ ] If a new helm release with a large rendered manifest is added to this repo, set `historyMax` on it too.
 - [ ] If `helmfile diff` suddenly fails with a stream / timeout error, **check the revision count before suspecting the network.**
-- [ ] Every active helmfile carries `helmDefaults.historyMax: 3` — verify with `grep -rL "^helmDefaults:" --include="helmfile.yaml*" . | grep -v backup` (should return nothing).
+- [ ] Every active helmfile carries `helmDefaults.historyMax: 3` — verify with `grep -rL "^helmDefaults:" --include="helmfile.yaml*" . | grep -vE "backup|_optional|_deprecated|tests/"` (should return nothing; `_optional/`, `_deprecated/` and test fixtures are out of scope).
 - [ ] A NEW helmfile added to this repo must include the `helmDefaults.historyMax: 3` block.
 - [ ] When triaging a stream / timeout error from `helmfile diff` / `apply`, check the release revision count and per-revision size FIRST — `kubectl` succeeding is NOT evidence of a healthy release history (kubectl uses small server-side Table output; helm fetches full objects).
 

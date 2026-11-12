@@ -34,9 +34,9 @@ fluent-bit/
 | Document | Description |
 |---|---|
 | [Recommended prod-tail settings](docs/prod-tail-config.md) | `Read_from_Head`, `DB` checkpoint, `Ignore_Older` and related tail input recommendations for prod. dev vs prod comparison + migration guide + current dev Phase 1a state |
-| [Index re-ingest procedure](docs/reingest-procedure.md) | Replay logs from NFS into ES after index loss. DB ≠ ES asynchrony background, full/partial re-ingest, Phase 1a vs 1b behavior |
+| [Index re-ingest procedure](docs/reingest-procedure.md) | How logs were replayed from NFS into ES after index loss (written before the stdout DaemonSet move — see the warning at the top of the doc). DB ≠ ES asynchrony background, full/partial re-ingest, Phase 1a vs 1b behavior |
 | [Deployment → DaemonSet migration record](docs/deployment-to-daemonset.md) | Record of the swap from the NFS-aggregator Deployment to a per-node stdout DaemonSet (2026-05-19). Step-by-step commands, gap measurement (~10s), helm-auto cleanup scope + one manual state PV cleanup, lessons learned |
-| [pino-pretty removal guide](docs/pino-pretty-removal.md) | Lines to drop from `values/dev.yaml` when the game team turns off pino-pretty in application stdout (lua/parser filter chain + custom parser + luaScripts). Partial-switch scenario + verification procedure |
+| [pino-pretty removal guide](docs/pino-pretty-removal.md) | Record of removing the pino-pretty parsing workaround (lua/parser filter chain + custom parser + luaScripts) from `values/dev.yaml` (completed 2026-05-22). Transition trail + current state |
 
 <br/>
 
@@ -45,7 +45,7 @@ fluent-bit/
 - Kubernetes cluster
 - Helm 3 (for local renders)
 - ArgoCD (`infra-local-applicationset` in `argocd-applicationset`)
-- Elasticsearch (log destination)
+- Fluentd (log destination, `fluentd:24224`)
 
 <br/>
 
@@ -123,7 +123,7 @@ Custom settings are managed in `values/dev.yaml`. Key settings:
 
 - **config.inputs**: Log input sources
 - **config.filters**: Log filtering/transformation
-- **config.outputs**: Output destinations (Elasticsearch, etc.)
+- **config.outputs**: Output destination (Fluentd `forward`)
 - **tolerations / nodeSelector**: Node scheduling
 
 ### Lua Scripts
@@ -153,7 +153,7 @@ config:
 | Error | Solution |
 |-------|----------|
 | `no repository definition for https://fluent.github.io/helm-charts` | `helm repo add fluent https://fluent.github.io/helm-charts` |
-| Elasticsearch connection failure | Check host/port/credentials in `values/dev.yaml` |
+| Forward to Fluentd fails | Check the `[OUTPUT]` `forward` Host/Port (`fluentd:24224`) in `values/dev.yaml` and the fluentd pods |
 | Logs not being collected | Check DaemonSet Pod logs: `kubectl logs -n logging -l app.kubernetes.io/name=fluent-bit` |
 
 <br/>

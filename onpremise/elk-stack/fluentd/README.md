@@ -144,7 +144,7 @@ Upstream default values can be referenced in `values.yaml`.
 
 Ported from the AWS prod pipeline (`fluentd-aws/values/prod.yaml`); the expression is byte-identical, only the tag namespace differs.
 
-- ⚠️ Applies to **new records only**. Records already in `dev-example-project-game` / `qa-example-project-game` still hold the plaintext credential — and unlike prod these indices are **not ILM-managed**, so nothing ages them out on its own.
+- ⚠️ Applies to **new records only**. Records already in `dev-example-project-game` / `qa-example-project-game` still hold the plaintext credential. Unlike prod these indices are not ILM-managed, but the [`es-index-retention` CronJob](../elasticsearch/index-retention/README.md) deletes documents older than its retention window (`RETENTION_DAYS`) every day, so they age out only once that window passes.
 - ⚠️ Covers **only** `authorization` inside `data.requestHeader`. Sibling headers such as `cookie` / `x-api-key`, and the `data.requestBody` / `data.responseBody` payloads, are blind spots. The battle pipeline carries no auth header at all.
 - `data.traceId` is retained on-prem and in prod alike. AWS prod briefly ran a Step 7 that deleted the field; it was reverted on 2026-08-05 — with the value left only in `_id`, which has no `.keyword` sub-field and no fielddata, the `terms` aggregations and `wildcard` / `prefix` searches became impossible, and those are precisely the queries the field exists for (a UUID the app issues per request and shares with the battle server, so one request can be followed across both). On-prem there was never a saving to chase anyway: the whole index is a few hundred MB and never rolls.
 

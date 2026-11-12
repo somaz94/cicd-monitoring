@@ -2,7 +2,9 @@
 
 Canonical templates and a sync tool for the per-component `upgrade.{sh,py}` scripts.
 
-Each component directory (`cicd/argo-cd/`, `observability/monitoring/kube-prometheus-stack/`, `observability/monitoring/node-exporter/`, etc.) has an `upgrade.py` for version upgrades. Every consumer is Python regardless of the template it uses (the `.sh` → `.py` flip is complete). Most components are Helm charts, but Ansible-deployed components (e.g. node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.py](sync.py).
+Each component directory (`security/vaultwarden/`, `observability/monitoring/kube-prometheus-stack/`, `observability/logging/elasticsearch/`, etc.) has an `upgrade.py` for version upgrades. Every consumer is Python regardless of the template it uses (the `.sh` → `.py` flip is complete). Most components are Helm charts, but Ansible-deployed components (e.g. kuberntes-infra's node-exporter) use the same sync system. The script bodies are nearly identical, so they are managed in one place (this directory) and propagated to every component via [sync.py](sync.py).
+
+> This directory is the engine's source of truth. `external-standard`, `external-oci` and `ansible-github-release` have consumers only among kuberntes-infra's helmfile components; those templates and their `upgrade_core` modules, plus `sync.py` / `check-versions.py` / `manage-backups.py`, are kept byte-identical with kuberntes-infra's [vendored copy](.) (the README pair excepted). Fix the engine here first, then copy the changed file there. Components named below that do not exist in this repo, such as `cicd/argo-cd`, `network/metallb`, `network/nginx-gateway-fabric` and `observability/monitoring/node-exporter`, are kuberntes-infra consumers.
 
 To survey which charts have an upstream upgrade available before touching any `upgrade.py`, use [check-versions.py](check-versions.py) (read-only).
 
@@ -64,7 +66,7 @@ Each chart's `upgrade.py` is split into two regions:
 
 ```python
 #!/usr/bin/env python3
-# upgrade-template: external-standard   <-- header: declares which canonical to follow
+# upgrade-template: argocd-pin   <-- header: declares which canonical to follow
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
@@ -72,12 +74,17 @@ Each chart's `upgrade.py` is split into two regions:
 # and modify ONLY the variables below.
 # ============================================================
 CONFIG = {
-    "SCRIPT_NAME":    "ArgoCD Helm Chart Upgrade Script",
-    "HELM_REPO_NAME": "argo",
-    "HELM_REPO_URL":  "https://argoproj.github.io/argo-helm",
-    "HELM_CHART":     "argo/argo-cd",
-    "CHANGELOG_URL":  "https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd",
-    "CHART_TYPE":     "local",  # "local" or "external"
+    "SCRIPT_NAME":    "Vaultwarden Helm Chart Upgrade Script",
+    "BASE":           "standard",
+    "HELM_REPO_NAME": "guerzon",
+    "HELM_REPO_URL":  "https://guerzon.github.io/vaultwarden",
+    "HELM_CHART":     "guerzon/vaultwarden",
+    "CHANGELOG_URL":  "https://github.com/guerzon/vaultwarden",
+    "CHART_TYPE":     "external",  # "local" or "external"
+    # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
+    "ARGOCD_PIN_FILES": [
+        "argocd/vaultwarden.yaml",
+    ],
 }
 # ============================================================
 
@@ -91,13 +98,13 @@ for _anc in [_here, *_here.parents]:
         sys.path.insert(0, str(_anc / "scripts" / "python"))
         break
 
-from upgrade_core.external_standard import run  # noqa: E402
+from upgrade_core.argocd_pin import run  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(run(CONFIG, sys.argv[1:], script_path=__file__))
 ```
 
-That is the **whole** of `cicd/argo-cd/upgrade.py` (32 lines, nothing elided). The bash-era `set -euo pipefail` and the inline 7-step flow are gone — every consumer is Python, the real upgrade logic is owned by `scripts/python/upgrade_core/external_standard.py`, and the consumer is a thin entry point that calls its `run()`.
+That is the **whole** of `security/vaultwarden/upgrade.py` (nothing elided). The bash-era `set -euo pipefail` and the inline 7-step flow are gone — every consumer is Python, the real upgrade logic is owned by the template module under `scripts/python/upgrade_core/` (`argocd_pin.py` here), and the consumer is a thin entry point that calls its `run()`.
 
 - **CONFIG block** (between the three `# ===` markers): per-chart, hand-edited
 - **Body** (after the third `# ===`): shared across all charts, propagated from canonical via sync
@@ -146,7 +153,7 @@ That is the **whole** of `cicd/argo-cd/upgrade.py` (32 lines, nothing elided). T
                                   │
         ┌─────────┬──────────┬────┴───┬──────────┬──────────┐
         ↓         ↓          ↓        ↓          ↓          ↓
-   argo-cd/   gitlab-    harbor-   valkey/   fluent-     kube-prom-
+   mysql/     gitlab-    harbor-   valkey/   fluent-     kube-prom-
    upgrade.py runner/    helm/     upgrade   bit/        stack/
               upgrade    upgrade   .py       upgrade     upgrade
               .py        .py                 .py         .py
@@ -155,7 +162,7 @@ That is the **whole** of `cicd/argo-cd/upgrade.py` (32 lines, nothing elided). T
 ### Per-file sync flow
 
 ```
-   target file: cicd/argo-cd/upgrade.py
+   target file: cicd/argo-cd/upgrade.py   (kuberntes-infra consumer)
    ┌────────────────────────────────────────┐
    │ #!/usr/bin/env python3                 │     1. read line 2 → "external-standard"
    │ # upgrade-template: external-standard  │ ───────────────────────┐
@@ -262,7 +269,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Language**: Python. Body lives in `scripts/python/upgrade_core/external_standard.py`; the canonical is a thin wrapper.
 - **Flow**: 7 steps (current → fetch latest → download → diff Chart → diff values → check breaking → apply + backup)
 - **`--rollback`**: restores the selected backup's Chart.yaml / values / helmfile. A backed-up helmfile whose name differs from the one the component uses now (a backup from before a `helmfile.yaml` → `helmfile.yaml.gotmpl` switch) is not restored, since helmfile refuses to run with both files present; a WARNING says the chart pin was not rolled back, so set it to the backup's chart version by hand.
-- **Consumers**: the `external-standard` row of `sync.py --status` is the SSOT for the count; the `[external-standard]` rows of `sync.py --check` are the SSOT for the list. Representative consumers: `cicd/argo-cd`, `network/metallb`, `security/vaultwarden`.
+- **Consumers**: the `external-standard` row of `sync.py --status` is the SSOT for the count; the `[external-standard]` rows of `sync.py --check` are the SSOT for the list. Its consumers live only in kuberntes-infra (e.g. `cicd/argo-cd`, `network/metallb`), so this repo's `sync.py --status` shows no row for it.
 
 #### 2. [external-with-image-tag.py](templates/external-with-image-tag.py) — external + image tag auto-update
 
@@ -360,7 +367,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Use**: OCI-registry-distributed charts where the chart version itself needs tracking. Bumps `helmfile.yaml.version` via GitHub Releases API.
 - **Differences vs external-standard**: `helm search repo` is unavailable for OCI → use GitHub Releases instead.
 - **Extra variables**: `HELM_CHART` (oci://... URL), `GITHUB_REPO` (owner/repo), `GITHUB_TAG_PREFIX`
-- **Consumers** (per `sync.py --status`): `network/nginx-gateway-fabric` (NGF OCI chart), `security/keycloak`, `security/keycloak-operator`, `storage/local-path-provisioner` (Rancher upstream OCI chart)
+- **Consumers** (per kuberntes-infra's `sync.py --status`; none in this repo): `network/nginx-gateway-fabric` (NGF OCI chart), `security/keycloak`, `security/keycloak-operator`, `storage/local-path-provisioner` (Rancher upstream OCI chart)
 
 #### 7. [ansible-github-release.py](templates/ansible-github-release.py) — Ansible-deployed (non-Helm) component + GitHub Releases tracking (Python)
 
@@ -379,7 +386,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
   - No Helm concepts (`Chart.yaml`, `helmfile.yaml`, `values/`)
   - Backup target: just `$VERSION_FILE`
   - Does not apply upstream — prints `ansible-playbook upgrade.yml` as the next-step hint (same pattern as the Helm templates' next-step hint: `helmfile apply`, or commit + push for an ArgoCD-delivered component)
-- **Consumers**: `observability/monitoring/node-exporter` (count/list per `sync.py --status`)
+- **Consumers**: kuberntes-infra's `observability/monitoring/node-exporter` (none in this repo; count/list per kuberntes-infra's `sync.py --status`)
 
 #### 8. [argocd-pin.py](templates/argocd-pin.py) — component migrated to the ArgoCD app-of-apps (version-pin write target redirected)
 
@@ -1134,8 +1141,8 @@ The `--apply` safety guard. Two options:
 
 ```bash
 # Safer: commit the current changes first
-git -C kuberntes-infra status
-git -C kuberntes-infra add ... && git -C kuberntes-infra commit -m "..."
+git -C gitops-infra status
+git -C gitops-infra add ... && git -C gitops-infra commit -m "..."
 ./scripts/upgrade-sync/sync.py --apply
 
 # Or override (force-apply on dirty working tree)

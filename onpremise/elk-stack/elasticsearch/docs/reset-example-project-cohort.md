@@ -23,7 +23,7 @@ Operations doc for [`../scripts/reset-example-project-cohort.sh`](../scripts/res
 | 7 | `POST /_transform/<env>-example-project-game-user-cohort/_start` |
 | 8 | `GET /<raw>/_count` + `GET /<cohort>/_search?size=3` plus a manual-verify reminder |
 
-The step 2a explicit-mapping PUT is the key piece (added 2026-05-27) — the old flow let ES dynamic mapping create the cohort index at transform-start time, and `active_dates` (ISO date strings like `"2026-05-22"`) was inferred as `date`. The cohort data view runtime fields `d1_live..d30_live` then compared `String == ZonedDateTime` and emitted 0 for every horizon. The dashboard rendered normally but every curve sat on the X axis — it took 5 days to notice (2026-05-22 QA cohort incident). See [transforms/README.md → "Dest-index mapping"](../transforms/README.md#dest-index-mapping----idmappingjson).
+The step 2a explicit-mapping PUT is the key piece (added 2026-05-27) — the old flow let ES dynamic mapping create the cohort index at transform-start time, and `active_dates` (ISO date strings like `"2026-05-22"`) was inferred as `date`. The cohort data view runtime fields `d1_live..d30_live` then compared `String == ZonedDateTime` and emitted 0 for every horizon. The dashboard rendered normally but every curve sat on the X axis — it took 5 days to notice (2026-05-22 QA cohort incident). See [transforms/README.md → "Dest-index mapping"](../transforms/README.md#dest-index-mapping-idmappingjson).
 
 The step 4 rollout restart is the next key piece — when fluent-bit's new pod reopens the hostPath SQLite checkpoint, if the file it points to has become stale (the QA pod restarted or the log rotated, so the inode changed) it falls back to EOF-polling on the new file. That means the new raw index sees post-reset data only without explicitly wiping the checkpoint — unless the fluentd buffer holds old chunks, in which case verification's `min_ts` catches it.
 
@@ -188,7 +188,7 @@ Automation is intentionally omitted — fluent-bit DaemonSet (hostPath) and flue
 `observability/logging/fluentd/values/dev.yaml` configures the ES output as:
 
 ```
-<buffer tag,log_source>
+<buffer log_source>
   @type file
   path /var/log/fluent/elasticsearch-buffers
   total_limit_size 4GB

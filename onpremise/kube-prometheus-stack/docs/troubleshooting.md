@@ -151,7 +151,7 @@ If there is a large gap between `DB SIZE` and `IN USE`, defrag is needed.
 
 ## helmfile CRD Error on First Install (historical — helmfile era)
 
-> 🔴 **This scenario is no longer reproducible.** kube-prometheus-stack was migrated to ArgoCD pull management and has no `helmfile.yaml` (its release metadata is `argocd/kube-prometheus-stack.yaml`), and the CRDs are installed by the earlier `observability/monitoring/prometheus-operator-crds/` component rather than by this release (this chart runs with `crds.enabled=false`). The section below is preserved as a record of the helmfile era.
+> 🔴 **This scenario is no longer reproducible.** kube-prometheus-stack was migrated to ArgoCD pull management and has no `helmfile.yaml` (its release metadata is `argocd/kube-prometheus-stack.yaml`), and the CRDs are installed by the earlier [`observability/monitoring/prometheus-operator-crds/`](../../prometheus-operator-crds) component in kuberntes-infra rather than by this release (this chart runs with `crds.enabled=false`). The section below is preserved as a record of the helmfile era.
 
 ### Symptoms
 

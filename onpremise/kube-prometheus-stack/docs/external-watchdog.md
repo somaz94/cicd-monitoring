@@ -60,7 +60,7 @@ If a repo checkout exists on the bastion, use it directly; otherwise copy just t
 
 ```bash
 # Using a repo checkout (recommended)
-WATCHDOG=/path/to/kuberntes-infra/observability/monitoring/kube-prometheus-stack/scripts/watchdog-check.sh
+WATCHDOG=/path/to/gitops-infra/observability/monitoring/kube-prometheus-stack/scripts/watchdog-check.sh
 
 # Or copy standalone
 sudo install -m 0755 watchdog-check.sh /usr/local/bin/prometheus-watchdog.sh

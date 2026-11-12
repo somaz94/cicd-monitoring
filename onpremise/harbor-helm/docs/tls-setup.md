@@ -180,8 +180,8 @@ containerd_registries_mirrors:
 Roll out to nodes when convenient:
 
 ```bash
-cd kubespray
-ansible-playbook -i inventory-example-cluster/hosts.yaml \
+cd ~/kubespray
+ansible-playbook -i inventory/example-cluster/inventory.ini \
   cluster.yml --tags container-engine -b
 ```
 
@@ -202,7 +202,7 @@ sudo crictl pull harbor.example.com/library/<image>:<tag>
 
 ### GitLab CI (Kaniko) Note
 
-The Kaniko template (`gitlab-ci-templates/templates/build/kaniko-harbor.yml`) combining `--skip-tls-verify` + `--insecure-pull` **continues to work** — go-containerregistry probes HTTPS(skip-verify) first in insecure mode.
+The Kaniko template (`gitlab-ci-templates/templates/build/kaniko.yml`) combining `--skip-tls-verify` + `--insecure-pull` **continues to work** — go-containerregistry probes HTTPS(skip-verify) first in insecure mode.
 
 Replacing `--insecure-pull` with `--skip-tls-verify-pull` is semantically cleaner but not required.
 

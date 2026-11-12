@@ -301,7 +301,7 @@ import json, sys, pathlib, glob
 workdir = pathlib.Path(sys.argv[1])
 out_path = pathlib.Path(sys.argv[2])
 
-merged = {}
+fresh = {}
 last_summary = None
 # sorted(): glob.glob() does not guarantee an order, and `merged` is a dict whose
 # insertion order becomes the output line order. Without sorting, the emitted
@@ -321,7 +321,28 @@ for fp in sorted(glob.glob(str(workdir / '*.raw'))):
                 last_summary = o
                 continue
             if o['type'] == 'index-pattern':
-                merged[o['id']] = o
+                fresh[o['id']] = o
+
+# Keep views already in the file that no exported dashboard references any more:
+# dropping a view's last panel does not delete the view from Kibana, and
+# make-cst-variant.sh keys on the cohort view id. Remove a retired view by hand.
+# Decided 2026-11-12, after an export silently dropped both cohort views.
+merged = {}
+kept = []
+if out_path.exists():
+    for line in out_path.read_text().splitlines():
+        try:
+            o = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if o.get('type') != 'index-pattern':
+            continue
+        if o['id'] in fresh:
+            merged[o['id']] = fresh.pop(o['id'])
+        else:
+            merged[o['id']] = o
+            kept.append(o['id'])
+merged.update(fresh)
 
 with open(out_path, 'w') as f:
     for o in merged.values():
@@ -332,6 +353,8 @@ with open(out_path, 'w') as f:
         f.write(json.dumps(s, separators=(',',':')) + '\n')
 
 print(f"  bootstrap: {out_path.name} ({len(merged)} index-pattern object(s))")
+for i in kept:
+    print(f"  kept (not referenced by this export): {i}")
 PYEOF
 fi
 

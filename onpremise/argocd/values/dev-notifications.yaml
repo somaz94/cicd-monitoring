@@ -13,8 +13,8 @@ notifications:
   # 🔧 2026-09-10: prod-notifications.yaml now carries this same key. When the warning that used
   # to sit here was written, that instance still RAN the example-app-test app, so its destination
   # field was genuinely dynamic and had to stay. That workload moved to the example-app-prod
-  # ArgoCD on 2026-08-31; the example-app-test cluster is still REGISTERED there, but no
-  # Application targets it any more, so the field had gone constant. Revert either file if a
+  # ArgoCD on 2026-08-31; the example-app-test cluster stayed registered there with no
+  # Application targeting it until its retirement on 2026-11-12, so the field had gone constant. Revert either file if a
   # cross-cluster app is ever added back to it.
   context:
     cluster: onprem-dev

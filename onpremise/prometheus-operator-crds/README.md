@@ -23,9 +23,11 @@ Components that consume the CRDs this foundation provides. All of them require t
 
 | Wave | Component | CRs created |
 |------|-----------|-------------|
-| wave_0 | `network/metallb` | ServiceMonitor, PrometheusRule |
-| wave_1 | `network/nginx-gateway-fabric` | ServiceMonitor |
+| wave_0 | `security/sealed-secrets` | ServiceMonitor |
+| wave_0 | `network/metallb` | ServiceMonitor |
+| wave_1 | `network/nginx-gateway-fabric` | PodMonitor |
 | wave_1 | `cicd/argo-cd` | ServiceMonitor |
+| wave_2 | `security/keycloak` | ServiceMonitor (created by the operator from the Keycloak CR's `metrics-enabled`) |
 | — | ArgoCD apps in `server/gitops-infra` (kube-prometheus-stack, logging, exporters, harbor, valkey, …) | Prometheus, Alertmanager, ServiceMonitor, PrometheusRule, ... |
 
 > When a new component creates a ServiceMonitor / PodMonitor / PrometheusRule, add it to this table. Consumers in gitops-infra are not listed one by one.
@@ -69,5 +71,5 @@ Pick `<X.Y.Z>` so the new `appVersion` equals the operator `appVersion` of the k
 
 ## Operational notes
 
-- The CRDs carry a `helm.sh/resource-policy: keep` annotation to protect them from accidental deletion by helm (a safety belt added after the 2026-06-12 outage).
+- The CRDs carry **no** `helm.sh/resource-policy: keep` annotation. The helmfile passes no values, so they render with the upstream default `crds.annotations: {}`; deleting this release (`helmfile destroy` / `helm uninstall`) deletes the CRDs and every CR on top of them. Protecting them takes setting `crds.annotations`.
 - Recovery if the CRDs disappear: `helmfile sync` this component first — `helmfile apply` diffs the stored release, sees no change and skips it — (or `helm upgrade --install prometheus-operator-crds prometheus-community/prometheus-operator-crds --version <ver> -n monitoring`), then Sync kube-prometheus-stack in ArgoCD to recreate the Prometheus/Alertmanager CRs. The data PVCs are preserved.

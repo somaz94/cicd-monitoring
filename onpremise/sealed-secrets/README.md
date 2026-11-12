@@ -118,11 +118,11 @@ A `SealedSecret` is, by default, locked to one `namespace` + `name` (`strict` sc
 | `namespace-wide` | `--scope namespace-wide` | same name reusable anywhere in one namespace |
 | `cluster-wide` | `--scope cluster-wide` | same secret applied to any namespace (multi-ns pull secret) |
 
-For the Harbor robot pull secret used across the `*-example-project` / `*-secondary-project` namespaces, seal it `cluster-wide` so one `SealedSecret` can be applied per target namespace without re-sealing.
+For the Harbor robot pull secret used across the `*-example-project` and tools namespaces, seal it `cluster-wide` so one `SealedSecret` can be applied per target namespace without re-sealing.
 
 > 🔑 If you are migrating from a previously committed plaintext secret, **rotate the Harbor robot token first** — the old value already exists in git history and must be treated as compromised.
 
-**Consumer — `argocd-applicationset`**: the Harbor robot pull secret is sealed `cluster-wide` and committed to that repo at `secret/harbor-robot/harbor-robot-sealedsecret.yaml`, then applied to the `dev-example-project` / `qa-example-project` / `dev1-secondary-project` and tools namespaces by its `appsets/onprem/infra/harbor-pull-secret-applicationset.yaml`. The `base` chart references the materialised Secret by name and never generates it (`imageCredentials.enabled: false`).
+**Consumer — `argocd-applicationset`**: the Harbor robot pull secret is sealed `cluster-wide` and committed to that repo at `secret/harbor-robot/harbor-robot-sealedsecret.yaml`, then applied to the `*-example-project` and tools namespaces (the target list is that file's generator `elements`) by its `appsets/onprem/infra/harbor-pull-secret-applicationset.yaml`. The `base` chart references the materialised Secret by name and never generates it (`imageCredentials.enabled: false`).
 
 <br/>
 
@@ -141,7 +141,7 @@ Where a `SealedSecret` lives is decided by **the nature of the workload that con
 
 | Secret | Group directory | Target ns | Consumed via | Delivered by |
 |--------|-----------------|-----------|--------------|--------------|
-| `harbor-robot-secret` | `secret/harbor-robot/` | example-project/secondary-project + several tools | `imagePullSecrets` name reference | `harbor-pull-secret-applicationset` (cluster-wide) |
+| `harbor-robot-secret` | `secret/harbor-robot/` | example-project + several tools | `imagePullSecrets` name reference | `harbor-pull-secret-applicationset` (cluster-wide) |
 | `wildcard-example-tls`, `server-tls` | `secret/nginx-gateway-tls/` | `nginx-gateway` | Gateway `tls.secretName` reference | `infra-sealedsecret-applicationset` |
 | `ghost-db-secret` | `secret/ghost-db/` | `blog` | ghost chart `existingSecret` | `infra-sealedsecret-applicationset` |
 | `unity-mcp-api-key` | `secret/unity-mcp/` | `mcp-server` | unity chart `apiKey.existingSecret` | `infra-sealedsecret-applicationset` |

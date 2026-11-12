@@ -69,8 +69,8 @@ This chart has no upstream, so no `upgrade.py`, and it is ArgoCD-pull, so no hel
 
 - `make lint` / `lint-governance` / `readme-check` / `sync-check` / `shell-lint` — **all pass**. The chart is outside every helmfile- and shell-driven scope.
 - `sync.py --status` — lists it under "Unmanaged chart directories", which is **informational only** and does not affect `--check`.
-- `ci/components.yml` — **not registered.** That file requires a helmfile.yaml or an `upgrade.sh`.
-- **Not linked from the top-level `README.md` chart table.** `render-readme.py` only counts a directory as an active chart if it ships a helmfile or `upgrade.py`, so linking it would break `readme-check` with a `stale_in_readme` drift.
+- `ci/components.yml` — **not registered.** Every path in that file must contain an `upgrade.py`.
+- **Listed in the top-level `README.md` chart table without a directory link** (the name in code style, the link pointing at the `README.md` file). `render-readme.py` only counts a directory as an active chart if it ships a helmfile or `upgrade.py`, and only counts links ending in `/` as chart links, so turning the row into a directory link (`.../`) would break `readme-check` with a `stale_in_readme` drift.
 
 <br/>
 

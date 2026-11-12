@@ -49,7 +49,7 @@ Load: per-user partial updates are very light.
 
 <br/>
 
-## Dest-index mapping — `<id>.mapping.json`
+## Dest-index mapping (`<id>.mapping.json`)
 
 Place a sibling **`<id>.mapping.json`** next to each transform definition (`<id>.json`); `apply.sh` and `scripts/reset-example-project-cohort.sh` will PUT it before the dest index is created.
 
@@ -192,7 +192,7 @@ The exporter strips runtime metadata (create_time, version, etc.) and keeps only
 3. `./apply.sh --file <name>.json` to register.
 4. On the Kibana side, create a data view for the destination index (UI or API), then add a Lens under [dashboards/](../../kibana/dashboards/).
 
-> Creating the Kibana data view is out of scope for this directory. Make the new destination index's data view via the Kibana UI or API, then capture it as NDJSON with `dashboards/export.sh --include-data-view`.
+> Creating the Kibana data view is out of scope for this directory. Make the new destination index's data view via the Kibana UI or API, then capture it as NDJSON with `../../kibana/dashboards/export.sh --context <ctx>` (it writes the data-view bootstrap NDJSON by default; `--no-data-view` turns that off).
 
 <br/>
 

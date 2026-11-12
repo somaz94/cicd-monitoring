@@ -10,7 +10,7 @@ The ECK Operator watches this CR and reconciles the StatefulSet / Service / Secr
 
 ## Prerequisites
 
-- [eck-operator](../eck-operator/) must be installed first and include `logging` in `managedNamespaces`.
+- [eck-operator](../eck-operator/) must be installed first (`managedNamespaces: []` watches every namespace).
 - Permission to create the `logging` namespace.
 - An NFS StorageClass (`nfs-client`) available.
 - Helm 3.8+ (OCI chart pull support) — needed for the local render in `upgrade.py --upgrade-chart`. Deployment is done by ArgoCD, so helmfile is not required.
@@ -185,13 +185,13 @@ On top of Stack version tracking, `upgrade.py` also tracks `chart.version` in `a
 # Pin to a specific chart version
 ./upgrade.py --upgrade-chart --chart-version 0.1.2
 
-# Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
-./upgrade.py --rollback
+# Roll back a chart pin — git restore before committing, git revert the bump commit after pushing
+git restore argocd/elasticsearch.yaml
 ```
 
 Key points:
 - `--upgrade-chart` runs `helm template` on both the current and target chart with your active values file and diffs the rendered manifests. Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched.
-- Stack backups (`backup/<TIMESTAMP>/`) and chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately. `--rollback` auto-detects the backup type and restores only the relevant file.
+- A Stack bump is backed up to `backup/<TIMESTAMP>/` and restored with `--rollback`. The chart pin lives in `argocd/elasticsearch.yaml`, so git is its record and no backup is written; any leftover `backup/<TIMESTAMP>-chart/` predates the ArgoCD move, and `--rollback` refuses to restore it.
 - Chart bumps may still carry **schema or feature changes** — skim the [chart changelog](https://github.com/somaz94/helm-charts/blob/main/charts/elasticsearch-eck/README.md) alongside the render diff.
 - To survey chart-pin status across every managed chart at once, run `./scripts/upgrade-sync/check-versions.py` from the repo root (see the secondary OCI chart pin table).
 
@@ -200,7 +200,7 @@ Key points:
 ## Verification
 
 ```bash
-# CR status (HEALTH must be green; single-node clusters are yellow)
+# CR status (HEALTH must be green; yellow on a single node means a replica misconfig — docs/single-node-index-replicas-en.md)
 kubectl -n logging get elasticsearch
 
 # Pod status

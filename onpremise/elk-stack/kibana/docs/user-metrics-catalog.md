@@ -168,7 +168,7 @@ Operational meaning: unlike the per-period (Today/7d/30d) KPIs, this shows the c
 |---|---|
 | Definition | Distribution of each user's latest cleared chapter (`max_cleared_chapter`) |
 | Data source | `dev-example-project-game-user-cohort` (cohort) |
-| Saved-object id | `dev-pm-retention-chapter-dist` |
+| Saved-object id | `dev-pm-chapter-distribution-v2` |
 | Chart | Vega — histogram of `max_cleared_chapter` (one latest value per user) |
 
 Operational meaning: the user distribution of content progress. Reveals which chapter concentrates drop-off (a bottleneck).

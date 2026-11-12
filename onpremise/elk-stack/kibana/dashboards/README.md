@@ -81,7 +81,7 @@ Per-panel definitions in [user-metrics-catalog.md](../docs/user-metrics-catalog.
 
 Saved-object ID pattern (per-env prefix):
 - Dashboard: `<env>-pm-retention-dashboard` (slug)
-- Visualization (Vega) ×9: `<env>-pm-retention-{nu-today,nu-7d,nu-30d,dau-today,wau-7d,mau-30d,nu-total,curve,chapter-dist}`
+- Visualization (Vega) ×9: `<env>-pm-retention-{nu-today,nu-7d,nu-30d,dau-today,wau-7d,mau-30d,nu-total,curve}` + `<env>-pm-chapter-distribution-v2`
 - Lens ×3: `<env>-pm-retention-{nu-trend,dau-trend,daily-table}`
 - Data views: two per environment — raw (`<env>-example-project-game`) and cohort (`<env>-example-project-game-user-cohort`, time field `first_seen`). **Data views are identified by UUID, not by slug**, so they cannot be derived from a rule — [`example-project-game-data-view.ndjson`](example-project-game-data-view.ndjson) is the SSOT for the actual UUIDs; read it instead of copying them here.
 
@@ -207,7 +207,7 @@ git diff -- .                                     # review changes
 git add -- *.ndjson && git commit
 ```
 
-`export.sh` calls Kibana with `includeReferencesDeep=true`, so every visualization / lens / data view referenced by the dashboard is captured. The NDJSON output is sorted `visualization → lens → dashboard` for stable diffs.
+`export.sh` calls Kibana with `includeReferencesDeep=true`, so every visualization / lens / data view referenced by the dashboard is captured. The NDJSON output is sorted `visualization → lens → dashboard` for stable diffs. The data-view file is merged, not overwritten: views captured by this export are refreshed, and views no dashboard references any more (e.g. a cohort view whose panel was removed) are kept and printed as `kept`. Delete a retired view by hand.
 
 > ⚠️ `export.sh` **overwrites** the NDJSON with whatever is live in Kibana right now. Inspect `git diff` first if you have unmerged local NDJSON edits.
 >
@@ -315,6 +315,6 @@ The end-to-end guide (with the qa-example-project-game validated procedure) live
 
 - **Retention horizons extension**: D-1 through D-30 are computed by the cohort data view's runtime fields `d1_live..d30_live` (the transform only stores the `active_dates` atomic fact). For D-60 / D-90, add one `dN_live` runtime field on the cohort data view (the transform stays untouched), then extend the Curve Vega N range.
 - **User LTV / billing metrics**: once payment events are standardized in the raw index, add mappings + a separate cohort or Lens.
-- **State-driven build script**: today, new-environment rollout is NDJSON substitution. The [build-pm-retention.py](../docs/pm-retention-dashboard-template.md#automation-strategy) pattern documented in the template guide codifies it.
+- **State-driven build script**: today, new-environment rollout is NDJSON substitution. The `build-pm-retention.py` pattern in [pm-retention-dashboard-template.md "Automation strategy"](../docs/pm-retention-dashboard-template.md#automation-strategy) can codify it.
 
 Full panel definitions in [user-metrics-catalog.md](../docs/user-metrics-catalog.md); workflow details in [dashboards-saved-objects.md](../docs/dashboards-saved-objects.md).

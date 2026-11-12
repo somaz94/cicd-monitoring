@@ -49,7 +49,7 @@ Operator + CR split pattern (G14). The operator (this component) and the CR comp
 ## Configuration Summary
 
 - **Install namespace**: `elastic-system`
-- **Managed namespaces**: `logging` (the scope where ECK watches Elastic CRs)
+- **Managed namespaces**: all (`managedNamespaces: []`) — ES / Kibana CRs are placed in the `logging` namespace
 - **CRDs**: installed by the chart (`installCRDs: true`)
 
 <br/>
@@ -102,15 +102,9 @@ kubectl -n elastic-system logs -l control-plane=elastic-operator -f
 
 <br/>
 
-## Expanding managedNamespaces
+## managedNamespaces scope
 
-If you need to deploy Elasticsearch/Kibana CRs in additional namespaces, add them to `managedNamespaces` in `values/dev.yaml`:
-
-```yaml
-managedNamespaces:
-  - logging
-  - another-namespace
-```
+`managedNamespaces` in `values/dev.yaml` stays an empty list (`[]`, watch all namespaces), so Elasticsearch/Kibana CRs in another namespace need no extra setting. If scoping is ever wanted, prefer the label-based `namespaceSelector` over a static list — the header comment of `values/dev.yaml` explains why.
 
 <br/>
 

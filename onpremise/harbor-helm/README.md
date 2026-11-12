@@ -69,7 +69,7 @@ helm template harbor harbor --repo https://helm.goharbor.io \
 
 To use `metrics.enabled: true` or `serviceMonitor.enabled: true`, the `monitoring.coreos.com/v1` CRD **must** be installed first.
 
-Enabling ServiceMonitor without the CRD will result in the following error:
+Enabling ServiceMonitor without the CRD makes the sync fail with a `no matches for kind "ServiceMonitor"` error (the output below is from when this was applied with helmfile):
 
 ```
 Error: UPGRADE FAILED: unable to build kubernetes objects from current release manifest:
@@ -78,16 +78,11 @@ no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"
 ensure CRDs are installed first
 ```
 
-**Solutions:**
+**Solution:**
+
+On this cluster the `monitoring.coreos.com` CRDs are installed by kuberntes-infra's [`observability/monitoring/prometheus-operator-crds`](../prometheus-operator-crds) as a wave_0 helmfile. Do not install them by hand; check that release is deployed instead.
 
 ```bash
-# Option 1: Install ServiceMonitor CRD only
-kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
-
-# Option 2: Install all prometheus-operator CRDs
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install prometheus-operator-crds -n monitoring prometheus-community/prometheus-operator-crds --create-namespace
-
 # Verify CRD installation
 kubectl get crd | grep monitoring
 ```
@@ -234,8 +229,8 @@ containerd_registries_mirrors:
 Apply to nodes when convenient:
 
 ```bash
-cd kubespray
-ansible-playbook -i inventory-example-cluster/hosts.yaml \
+cd ~/kubespray
+ansible-playbook -i inventory/example-cluster/inventory.ini \
   cluster.yml --tags container-engine -b
 ```
 
@@ -248,7 +243,7 @@ Details: [`docs/tls-setup.md`](./docs/tls-setup.md) §6
 | Error | Solution |
 |-------|----------|
 | `no repository definition for https://helm.goharbor.io` | `helm repo add harbor https://helm.goharbor.io` |
-| `timed out waiting for the condition` | Add `timeout: 900` to helmDefaults |
+| `timed out waiting for the condition` | An error from the helmfile era (`helmDefaults.timeout`). Under ArgoCD, run `argocd app get infra-harbor` to see which resource is still Progressing |
 | `Persistent volume claim is not bound` | Check StorageClass with `kubectl get sc` |
 | `no matches for kind "ServiceMonitor"` | See [CRD Considerations](#servicemonitor-crd) above |
 

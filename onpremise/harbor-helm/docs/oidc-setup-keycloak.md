@@ -64,7 +64,7 @@ kubectl -n $KC_NS exec -it keycloak-0 -- bash -lc "
 `set-oidc` previews the PUT body (secret masked), prompts for confirmation, then applies. Use `--dry-run` to validate without mutating.
 
 ```bash
-cd kuberntes-infra/cicd/harbor-helm/scripts/admin
+cd gitops-infra/cicd/harbor-helm/scripts/admin
 
 # 1) Pre-validation (no PUT)
 HARBOR_OIDC_CLIENT_SECRET='<harbor client secret>' \

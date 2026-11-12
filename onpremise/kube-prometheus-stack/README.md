@@ -122,7 +122,7 @@ The two levels differ:
 
 - The role is decided from the token's `groups` claim, so a membership change only takes effect **after a re-login**.
 - Do not create users or edit roles inside Grafana — the next login reverts them to whatever `role_attribute_path` evaluates to. Adjust access via **Keycloak group membership** instead.
-- `server` → Editor only became meaningful on 2026-07-30. Before that the Keycloak IdP mapper placed **every** brokered GitLab user into `server` — background in [security/keycloak/docs/gitlab-brokering.md](../keycloak/docs/gitlab-brokering.md).
+- `server` → Admin only became meaningful on 2026-07-30. Before that the Keycloak IdP mapper placed **every** brokered GitLab user into `server` — background in [security/keycloak/docs/gitlab-brokering.md](../keycloak/docs/gitlab-brokering.md).
 
 **Break-glass (local admin)** — only for when the OIDC chain (Grafana → Keycloak → GitLab) is broken. The login form is deliberately left enabled: this component runs with ArgoCD `autoSync: true`, so a bad change reaches the cluster with no manual gate and this is then the only way back in.
 
@@ -199,8 +199,13 @@ If `#infra-alerts` channel receives the alert, the full pipeline (Prometheus →
 Install node-exporter on target servers, then add IPs to `values/dev.yaml` `additionalScrapeConfigs`:
 
 ```yaml
-- targets:
-    - "192.0.2.10:9100"
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: "physical-servers"
+        static_configs:
+          - targets:
+              - "192.0.2.1:9100"
 ```
 
 Verify: `http://prometheus.example.com/targets` → `physical-servers` group

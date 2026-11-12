@@ -108,7 +108,7 @@ The `=== <index> ===` block above repeats once per index listed in `INDICES`.
 To reclaim disk immediately after deletion, run a force merge (manual, heavy):
 
 ```bash
-../scripts/delete_old_indices.sh -f dev-example-project-battle   # delete docs + only_expunge_deletes force merge
+../scripts/delete_old_indices.sh --context <ctx> -f dev-example-project-battle   # delete docs + only_expunge_deletes force merge
 ```
 
 <br/>

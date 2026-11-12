@@ -102,16 +102,16 @@ Color: Yellow (warning)
 Instance: 192.0.2.11:9100
 Severity: warning
 
-Summary: Disk space running low
-Description: Filesystem /data is 86% full (threshold 85%)
+Summary: Disk space running low on 192.0.2.11:9100
+Description: Disk usage is above 80% on /data (current: 86%)
 
 Source: Prometheus
 ──────────────────────────────
 Instance: 192.0.2.12:9100
 Severity: warning
 
-Summary: Disk space running low
-Description: Filesystem /var is 88% full (threshold 85%)
+Summary: Disk space running low on 192.0.2.12:9100
+Description: Disk usage is above 80% on /var (current: 88%)
 
 Source: Prometheus
 

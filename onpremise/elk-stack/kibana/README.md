@@ -121,13 +121,13 @@ On top of Stack version tracking, `upgrade.py` also tracks `chart.version` in `a
 # Pin to a specific chart version
 ./upgrade.py --upgrade-chart --chart-version 0.1.2
 
-# Roll back a chart pin (pick a backup/<TIMESTAMP>-chart/ entry)
-./upgrade.py --rollback
+# Roll back a chart pin — git restore before committing, git revert the bump commit after pushing
+git restore argocd/kibana.yaml
 ```
 
 **Note**: Keep Kibana's chart pin **≤ Elasticsearch chart pin** for Stack compatibility. When bumping both charts, **bump Elasticsearch first, Kibana second**.
 
-Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched. Chart backups (`backup/<TIMESTAMP>-chart/`) are stored separately from Stack backups and auto-detected by `--rollback`. To survey chart-pin status across every managed chart, run `./scripts/upgrade-sync/check-versions.py` from the repo root.
+Values-schema breakage surfaces as a `helm template` failure on the target chart before any file is touched. The chart pin lives in `argocd/kibana.yaml`, so git is its record and no backup is written; any leftover `backup/<TIMESTAMP>-chart/` predates the ArgoCD move, and `--rollback` refuses to restore it. To survey chart-pin status across every managed chart, run `./scripts/upgrade-sync/check-versions.py` from the repo root.
 
 <br/>
 

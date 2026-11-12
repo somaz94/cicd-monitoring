@@ -64,7 +64,7 @@ kubectl -n argocd get httproute > /tmp/argocd-pre-phase6-httproutes.txt
 
 ```bash
 cd kuberntes-infra
-helmfile -f cicd/argo-cd/helmfile.yaml -e dev diff
+helmfile -f cicd/argo-cd/helmfile.yaml --kube-context onprem-dev diff
 ```
 
 Expected diff:
@@ -75,7 +75,7 @@ Expected diff:
 ### Step 3. Apply (after user approval)
 
 ```bash
-helmfile -f cicd/argo-cd/helmfile.yaml -e dev apply
+helmfile -f cicd/argo-cd/helmfile.yaml --kube-context onprem-dev apply
 ```
 
 > ⚠️ **First-time note**: extraObjects is integrated into the chart, so no separate `helmfile sync` is needed — a single `apply` covers the chart diff plus extraObjects.
@@ -132,7 +132,7 @@ dex-only rollback:
 
 ```bash
 git revert <phase6 commit>
-helmfile -f cicd/argo-cd/helmfile.yaml -e dev apply
+helmfile -f cicd/argo-cd/helmfile.yaml --kube-context onprem-dev apply
 ```
 
 Or a quick hot rollback (without touching git):

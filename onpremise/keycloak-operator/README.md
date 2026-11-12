@@ -58,13 +58,13 @@ Operator + CR are kept in separate helmfiles (G14). Operator lives here; the CR 
 ### Preview changes
 
 ```bash
-helmfile -f helmfile.yaml -e dev diff
+helmfile -f helmfile.yaml --kube-context onprem-dev diff
 ```
 
 ### Apply
 
 ```bash
-helmfile -f helmfile.yaml -e dev apply        # ⚠️ Cluster change — user approval required
+helmfile -f helmfile.yaml --kube-context onprem-dev apply        # ⚠️ Cluster change — user approval required
 ```
 
 ### Track new chart versions
@@ -100,7 +100,7 @@ Once the operator + CRDs are registered, deploy the actual Keycloak instance (Po
 
 ```bash
 # After this component is applied
-helmfile -f ../keycloak/helmfile.yaml -e dev apply
+helmfile -f ../keycloak/helmfile.yaml --kube-context onprem-dev apply
 ```
 
 <br/>

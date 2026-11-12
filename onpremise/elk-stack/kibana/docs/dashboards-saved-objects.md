@@ -35,10 +35,10 @@ Workflow order: **Transform first (materialize the data) → Saved Object (visua
 
 ```bash
 # 1) Data side
-cd observability/logging/elasticsearch/transforms && ./apply.sh
+cd observability/logging/elasticsearch/transforms && ./apply.sh --context <CTX>
 
 # 2) Visualization side
-cd ../../kibana/dashboards && ./apply.sh --include-data-view   # first bootstrap only
+cd ../../kibana/dashboards && ./apply.sh --context <CTX> --include-data-view   # first bootstrap only
 ```
 
 <br/>
@@ -266,9 +266,9 @@ Adding more dashboards = add more lines; `export.sh` exports them all in one sho
    - Use the `Dev *` prefix in the title.
 2. Grab `<uuid>` from `…/app/dashboards#/view/<uuid>`.
 3. Append a line to `dashboards/manifest.txt`: `<uuid>  <filename>.ndjson  # title`.
-4. `./export.sh` → NDJSON appears.
+4. `./export.sh --context <CTX>` → NDJSON appears.
 5. `git add -- *.ndjson manifest.txt && git commit`.
-6. Apply elsewhere via `git pull && ./apply.sh`.
+6. Apply elsewhere via `git pull && ./apply.sh --context <CTX>`.
 
 ### Path B — write via API (scriptable)
 
@@ -312,7 +312,7 @@ Kibana dashboard
              └─ references: data view ID  ← auto-captured here
 ```
 
-When multiple dashboards reference multiple data views, `export.sh` merges all the raw exports and dedupes → single NDJSON file holds them all (currently 2: `dev-example-project-game`, `dev-example-project-game-user-cohort`).
+When multiple dashboards reference multiple data views, `export.sh` merges all the raw exports and dedupes → single NDJSON file (`example-project-game-data-view.ndjson`) holds them all — one raw + cohort data-view pair per environment. A view already in the file that this export no longer references is kept, not dropped.
 
 ### Automating "first creation"
 
@@ -354,7 +354,7 @@ After that, add a Lens referencing the new data view in your dashboard and run `
 
 ```bash
 cd observability/logging/kibana/dashboards
-./apply.sh --include-data-view     # import data view + lens + dashboard
+./apply.sh --context <CTX> --include-data-view     # import data view + lens + dashboard
 ```
 
 The `*-data-view.ndjson` pattern is excluded from the default `apply.sh` run (opt-in). Reasoning is in [dashboards/README.md → Data view management policy](../dashboards/README.md#data-view-management-policy).

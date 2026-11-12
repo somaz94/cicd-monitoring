@@ -100,13 +100,13 @@ Operator + CR are kept in separate helmfiles (G14). This component is the CR sid
 ### Preview changes
 
 ```bash
-helmfile -f helmfile.yaml -e dev diff
+helmfile -f helmfile.yaml --kube-context onprem-dev diff
 ```
 
 ### Apply
 
 ```bash
-helmfile -f helmfile.yaml -e dev apply        # ⚠️ Cluster change — user approval required
+helmfile -f helmfile.yaml --kube-context onprem-dev apply        # ⚠️ Cluster change — user approval required
 ```
 
 A successful apply produces (within ~1–2 minutes):

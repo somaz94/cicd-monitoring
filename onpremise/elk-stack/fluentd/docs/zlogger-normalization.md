@@ -106,6 +106,8 @@ Scoped to `example-project.stdout.dev.battle.**` — rename known expression key
 - `$['...']` syntax in `remove_keys` is the JSONPath form fluentd's record_transformer uses to address keys that contain dots/spaces/parentheses.
 - The Match is scoped to `example-project.stdout.dev.battle.**` because dev.game / qa.game (both Pino) do not have this issue and unnecessary record_transformer invocations are avoided.
 
+> **Note (2026-11-12)**: the above records the original change. The Match in [`values/dev.yaml`](../values/dev.yaml) is now `example-project.stdout.*.battle.**`, which covers every battle environment including dev2 and needs no change when one is added.
+
 ### Step 6 — dedup key (unchanged)
 
 ZLogger payload has no `data.traceId`, so `_doc_id` is nil and ES output falls back to random `_id`. This cannot be solved at the infra layer alone — the app side needs to emit a traceId again. Current impact: duplicate ingestion on fluent-bit/fluentd restart. Not critical in dev, tracked as follow-up.
@@ -178,7 +180,7 @@ Identification criteria: keys with spaces, parentheses, `?`, `??`, or expression
 
 ### 2) Register in Step 5.5
 
-Add one line each to the Step 5.5 `<filter example-project.stdout.dev.battle.**>` block in `values/dev.yaml`:
+Add one line each to the Step 5.5 `<filter example-project.stdout.*.battle.**>` block in `values/dev.yaml`:
 
 ```ruby
 <record>
@@ -212,5 +214,5 @@ The existing `dev-example-project-battle` index already carries the bad dynamic 
 ## Related files
 
 - [`values/dev.yaml`](../values/dev.yaml) — fluentd normalization filters (Step 2 / Step 3 / Step 5.5)
-- [fluent-bit `values/dev.yaml`](../../fluent-bit/values/dev.yaml) — Tag routing + JSON parsing (matches the `example-project.stdout.dev.battle.**` scope used by Step 5.5)
+- [fluent-bit `values/dev.yaml`](../../fluent-bit/values/dev.yaml) — Tag routing + JSON parsing (matches the `example-project.stdout.*.battle.**` scope used by Step 5.5)
 - [`reset-example-project-cohort` ops guide](../../elasticsearch/docs/reset-example-project-cohort.md) — reference pattern for index reset
