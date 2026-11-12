@@ -78,7 +78,7 @@ This chart has no upstream, so no `upgrade.py`, and it is ArgoCD-pull, so no hel
 
 The on-prem `infra-local-applicationset` picks up `argocd-local/*.yaml` and generates the `infra-grafana-dashboards` Application. Dropping the marker file is enough — it is discovered automatically, and the appset needs no change.
 
-> The AWS counterpart generates an App with the same name (`infra-grafana-dashboards`), but on a **different cluster**, and the two appsets read different marker dirs (`argocd-local/` vs `argocd-local-aws/`), so they never collide. `fluent-bit` already ships this same shape.
+> The AWS counterpart (`grafana-dashboards-aws`) is picked up by the appset on a **different cluster** (`example-app-prod`), which reads a different marker dir (`argocd-local-example-app-prod/`) and puts a cluster token in the App name (`example-app-prod-infra-grafana-dashboards`), so they never collide.
 
 **Current state: migration complete, flipped to `autoSync: true` (2026-07-20).** The flip followed a hand-verified first sync. Measured at migration time (2026-07-16) across every dashboard then in the repo:
 

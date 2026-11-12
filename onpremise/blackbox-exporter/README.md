@@ -35,6 +35,10 @@ onpremise/blackbox-exporter/
 | `example-hub-auth-gate` | `https://hub.example.com/apps/es-ops/healthz` | `http_302_auth_gate` | 🔴 **The authorization gate is alive** — an unauthenticated request is still redirected to OIDC login |
 | `git-bridge` | `http://git-bridge.example.com/` | `http_any_response` | The `ngf-public-j` path is alive |
 | `slack-qr-bot` | `https://slack-qr-bot.example.com/` | `http_any_response` | The `ngf` path is alive |
+| `wg0-internal-dev-game` | `http://internal-dev-game.example.com/` | `http_any_response` | The WireGuard tunnel to the test VPC, its gateway and the internal ALB are alive. `/` answers 404 without reaching the app, so an app outage does not trip it |
+| `wg1-internal-review-game` | `http://internal-review-game.example.com/` | `http_any_response` | The same path to the prod VPC is alive |
+| `control-plane-vip` | `https://192.0.2.99:6443/readyz` | `http_2xx` | The VIP sits on a node with a ready apiserver |
+| `example-app-prod-prometheus` | `https://prometheus.example.com/-/healthy` | `http_2xx` | The AWS example-app-prod Prometheus is alive. That cluster's Alertmanager discards Watchdog, so this is its only dead-man's switch outside the cluster, caught by its own critical rule `ExampleAppProdPrometheusDown`. The ALB admits only the office IP |
 
 <br/>
 

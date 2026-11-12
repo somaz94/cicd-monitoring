@@ -25,6 +25,6 @@ chart:
   repoURL: ghcr.io/somaz94/charts               # registered OCI repo (no scheme) -> ArgoCD appends chart name
   name: elasticsearch-eck
   version: "0.3.3"
-valueFile: observability/logging/elasticsearch/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+valueFile: observability/logging/elasticsearch/values/dev.yaml  # repo-root-relative; pulled via the $values multi-source ref
 createNamespace: false                          # 'logging' already exists
 autoSync: true                                  # adopt-diff verified (CR cpu 1000m==1 normalized by operator, zero ES roll; Secret/HTTPRoute tracking-id only) -> auto-sync (prune+selfHeal) on

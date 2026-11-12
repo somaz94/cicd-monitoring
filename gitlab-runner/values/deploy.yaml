@@ -45,12 +45,22 @@ runners:
   # Ceiling only; runner 19.x enforces the lower adaptive limit, see GitLabRunnerConcurrentLimitReached in observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml.
   # This note lives ABOVE `config:` on purpose: comments inside the block are literal TOML, so they
   # land in the rendered ConfigMap and every edit rolls the runner managers. Out here they are free.
+  # [runners.cache]: same runner-cache backend and Secret as build.yaml, so a deploy job that adds
+  # `cache:` works instead of failing on a missing cache adapter.
   config: |
     [[runners]]
       # Ceiling only, NOT the limit actually enforced — see the note above `config:`. Kept below
       # `concurrent` (request_concurrency must not exceed the run capacity). Must sit above the
       # [runners.kubernetes] sub-table header (TOML binds keys to the last-opened table).
       request_concurrency = 3
+      [runners.cache]
+        Type = "s3"
+        Shared = true
+        [runners.cache.s3]
+          ServerAddress = "runner-cache-s3.gitlab-runner.svc:9000"
+          BucketName = "runner-cache"
+          BucketLocation = "us-east-1"
+          Insecure = true
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"
@@ -61,7 +71,10 @@ runners:
         # Allow graceful pod termination instead of immediate delete (reduces etcd churn).
         cleanup_grace_period_seconds = 30
 
-  tags: "build-image"
+  cache:
+    secretName: runner-cache-s3
+
+  tags: "deploy-image"
 
 securityContext:
   allowPrivilegeEscalation: true

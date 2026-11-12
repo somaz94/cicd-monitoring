@@ -49,12 +49,24 @@ runners:
   # Ceiling only; runner 19.x enforces the lower adaptive limit, see GitLabRunnerConcurrentLimitReached in observability/monitoring/kube-prometheus-stack/values/dev-alerts-apps.yaml.
   # This note lives ABOVE `config:` on purpose: comments inside the block are literal TOML, so they
   # land in the rendered ConfigMap and every edit rolls the runner managers. Out here they are free.
+  # [runners.cache]: distributed cache on the runner-cache release in this namespace (cache-only
+  # static-file-server, managed in storage/static-file-server/values/dev-runner-cache.yaml). It reads
+  # the same `cache.secretName` Secret below, which the chart also exports as CACHE_S3_* for
+  # `register` to merge. BucketLocation keeps URL signing offline.
   config: |
     [[runners]]
       # Ceiling only, NOT the limit actually enforced — see the note above `config:`. Kept just
       # below `concurrent` (request_concurrency must not exceed the run capacity). Must sit above
       # the [runners.kubernetes] sub-table header (TOML binds keys to the last table).
       request_concurrency = 2
+      [runners.cache]
+        Type = "s3"
+        Shared = true
+        [runners.cache.s3]
+          ServerAddress = "runner-cache-s3.gitlab-runner.svc:9000"
+          BucketName = "runner-cache"
+          BucketLocation = "us-east-1"
+          Insecure = true
       [runners.kubernetes]
         namespace = "{{.Release.Namespace}}"
         image = "alpine"
@@ -109,6 +121,9 @@ runners:
         # in GitLab Runner 18.11.x. Use the nested security_context table instead — that one is preserved.
         [runners.kubernetes.service_container_security_context]
           privileged = true
+
+  cache:
+    secretName: runner-cache-s3
 
   tags: "build-image"
 

@@ -93,6 +93,12 @@ The job prints the dumps on the volume at the end of its log — the log doubles
 
 > 🔴 Restore with Harbor scaled down. Pushing a `--clean` dump while harbor-core / jobservice are still attached lets reads land mid-drop and leaves the state inconsistent.
 
+🔴 `infra-harbor` runs `autoSync: true` + selfHeal, so scaling down as-is lets ArgoCD bring Harbor back up mid-restore. Turn selfHeal off first: set `autoSync: false` in `argocd/harbor.yaml`, push to master, and confirm the command below prints nothing. Set `autoSync: true` and push once the restore is verified.
+
+```bash
+kubectl -n argocd get application infra-harbor -o jsonpath='{.spec.syncPolicy.automated}'
+```
+
 ```bash
 # 1. Scale Harbor down (leave the database up)
 kubectl -n harbor scale deploy --replicas=0 \

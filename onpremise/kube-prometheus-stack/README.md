@@ -30,7 +30,7 @@ kube-prometheus-stack/
 │   ├── dev-alertmanager.yaml  # Alertmanager routing, inhibit_rules, Slack receiver
 │   ├── dev-alerts.yaml        # defaultRules.disabled + the cluster itself (node/pod/cilium/control-plane)
 │   ├── dev-alerts-network.yaml # metallb, blackbox
-│   ├── dev-alerts-apps.yaml   # argocd, gitlab-runner, harbor, keycloak, sealed-secrets, ES/redis/mysql
+│   ├── dev-alerts-apps.yaml   # argocd, gitlab-runner, runner-cache, harbor, keycloak, sealed-secrets, ES/redis/mysql
 │   └── dev-alerts-backup.yaml # every backup Stale/Missing pair
 ├── scripts/                # Operational helper scripts
 │   ├── sync-etcd-client-cert.sh  # Sync client cert Secret for etcd mTLS scrape
@@ -132,7 +132,7 @@ kubectl -n monitoring get secret grafana-auth -o jsonpath='{.data.admin-password
 
 The password and the OIDC client secret are sealed into the SealedSecret under `grafana.extraObjects` in `values/dev.yaml`. Changing a value means **resealing**, not editing — `--scope strict` binds the ciphertext to `monitoring/grafana-auth`.
 
-> ⚠️ This work moved the password **out of git; it did not rotate it.** The sealed value is the very password the cluster was already using (kept identical on purpose so git, the live cluster, and this doc agree), and it is still the **shared** password that also appears in `security/vaultwarden`, `security/keycloak`, and `bootstrap/vm`.
+> ⚠️ This work moved the password **out of git; it did not rotate it.** The sealed value is the very password the cluster was already using (kept identical on purpose so git, the live cluster, and this doc agree), and it is still the **shared** password that also appears in `security/vaultwarden`, `security/keycloak`, and `onprem-infra/bootstrap/vm`.
 > Grafana applies `admin_password` only when it first **creates** the admin user, and that user has existed since 2026-04-07, so an env change alone can never take effect. Rotating it requires `grafana-cli admin reset-admin-password <new>` inside the pod plus a reseal — decided against as of 2026-07-30.
 
 <br/>

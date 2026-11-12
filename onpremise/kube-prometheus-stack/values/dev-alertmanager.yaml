@@ -60,6 +60,15 @@ alertmanager:
         equal:
           - 'namespace'
 
+      # One stuck rollout with unavailable replicas raises both; Slack gets ReplicasMismatch only
+      - source_matchers:
+          - 'alertname = KubeDeploymentReplicasMismatch'
+        target_matchers:
+          - 'alertname = KubeDeploymentRolloutStuck'
+        equal:
+          - 'namespace'
+          - 'deployment'
+
       # Disk severity ladder — critical suppresses warning on same mountpoint
       - source_matchers:
           - 'alertname = DiskSpaceCritical'
@@ -163,6 +172,7 @@ alertmanager:
             # Capped at 10: node alerts have no per-node namespace, so one disk event groups every node and Slack silently cuts `text` past ~8000 chars.
             # `.Labels.env` exists on-prem only; kept so all three files stay identical (C4, make lint-governance).
             # The leading blank line is load-bearing: without it the first field lands on the title line.
+            # honorLabels lets kube-state-metrics' own scrape-target pod/container/instance fill labels a metric lacks, so those are hidden.
             text: |-
 
 
@@ -172,11 +182,20 @@ alertmanager:
               {{ end }}
               {{- if .Labels.namespace }}*Namespace:* `{{ .Labels.namespace }}`
               {{ end }}
-              {{- if .Labels.pod }}*Pod:* `{{ .Labels.pod }}`
+              {{- if .Labels.deployment }}*Deployment:* `{{ .Labels.deployment }}`
               {{ end }}
-              {{- if .Labels.container }}*Container:* `{{ .Labels.container }}`
+              {{- if .Labels.statefulset }}*StatefulSet:* `{{ .Labels.statefulset }}`
               {{ end }}
-              {{- if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`
+              {{- if .Labels.daemonset }}*DaemonSet:* `{{ .Labels.daemonset }}`
+              {{ end }}
+              {{- if .Labels.job_name }}*Job:* `{{ .Labels.job_name }}`
+              {{ end }}
+              {{- $ksm := eq .Labels.job "kube-state-metrics" }}
+              {{- if and .Labels.pod (not (and $ksm (match "kube-state-metrics" .Labels.pod))) }}*Pod:* `{{ .Labels.pod }}`
+              {{ end }}
+              {{- if and .Labels.container (not (and $ksm (eq .Labels.container "kube-state-metrics"))) }}*Container:* `{{ .Labels.container }}`
+              {{ end }}
+              {{- if and .Labels.instance (not $ksm) }}*Instance:* `{{ .Labels.instance }}`
               {{ end }}
               {{- if .Labels.env }}*Env:* `{{ .Labels.env }}`
               {{ end }}

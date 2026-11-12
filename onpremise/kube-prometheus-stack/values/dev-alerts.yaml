@@ -8,8 +8,8 @@
 #   dev-alerts.yaml          defaultRules.disabled + the cluster itself (node, pod, cilium,
 #                            control-plane)
 #   dev-alerts-network.yaml  metallb, blackbox
-#   dev-alerts-apps.yaml     argocd, gitlab-runner, harbor, keycloak, sealed-secrets,
-#                            elasticsearch, redis, mysql
+#   dev-alerts-apps.yaml     argocd, gitlab-runner, runner-cache, harbor, keycloak,
+#                            sealed-secrets, elasticsearch, redis, mysql
 #   dev-alerts-backup.yaml   backup (every Stale/Missing pair)
 #
 # 🔴 A group key must appear in EXACTLY ONE file. helm merges the map by key, so the same
@@ -362,7 +362,7 @@ additionalPrometheusRulesMap:
               group: control-plane
             annotations:
               summary: "etcd {{ $labels.operation }} p99 slow"
-              description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>800ms) for 15m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard."
+              description: "etcd {{ $labels.operation }} p99 latency is {{ $value | humanizeDuration }} (>800ms) for 15m. Cross-check etcd_disk_wal_fsync / backend_commit on the Control Plane Health dashboard. If only 192.0.2.25 (k8s-control-03) is slow, check for a gitlab-old repack on server1 (`pgrep -fa pack-objects`), which shares its SSD; do not kill it."
 
           # gitlab-runner ns pod count > 15 sustained 3m — leading indicator of CI burst that drives etcd/apiserver latency.
           # build 3×3 + deploy 2×5 job slots + 5 manager pods → up to ~24 at full load, above this threshold.

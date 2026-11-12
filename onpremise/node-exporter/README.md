@@ -253,7 +253,7 @@ tail -f /var/log/node_exporter.log
 
 ## Prometheus Integration
 
-Add server IPs to `kube-prometheus-stack/values/dev.yaml`:
+Add server IPs to gitops-infra's [`observability/monitoring/kube-prometheus-stack/values/dev.yaml`](../kube-prometheus-stack/values/dev.yaml):
 
 ```yaml
 prometheus:

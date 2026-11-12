@@ -36,9 +36,9 @@ bastion cron (5m)
 |---|---|
 | Host | `server4` (192.0.2.15) — non-cluster, always-on |
 | Install path | `/home/example/.prometheus-watchdog/` |
-| Files | `watchdog-check.sh` · `kubectl` (matches the cluster version — see `kube_version` in `bootstrap/kubespray`) · `kubeconfig` (SA token, 600) · `watchdog.env` (Slack webhook, 600) |
+| Files | `watchdog-check.sh` · `kubectl` (matches the cluster version — see `kube_version` in `onprem-infra/bootstrap/kubespray`) · `kubeconfig` (SA token, 600) · `watchdog.env` (Slack webhook, 600) |
 | Credential | Minimal ServiceAccount `prometheus-watchdog` (`monitoring` ns, `services/proxy` get only — not admin). Manifest: [scripts/watchdog-rbac.yaml](../scripts/watchdog-rbac.yaml) |
-| API endpoint | `https://192.0.2.17:6443` |
+| API endpoint | `https://192.0.2.99:6443` |
 | cron | `*/5 * * * *` (cron service active) |
 | Status check | `ssh server4 'cat /var/tmp/prometheus-watchdog.state'` (UP/DOWN) |
 
@@ -101,7 +101,7 @@ To avoid putting cluster-admin credentials on the watchdog host, build the kubec
 kubectl apply -f scripts/watchdog-rbac.yaml
 
 # (2) build a standalone kubeconfig from the SA token + CA
-NS=monitoring; API=https://192.0.2.17:6443
+NS=monitoring; API=https://192.0.2.99:6443
 kubectl -n $NS get secret prometheus-watchdog-token -o jsonpath='{.data.token}'    | base64 -d > token
 kubectl -n $NS get secret prometheus-watchdog-token -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
 kubectl --kubeconfig=kubeconfig config set-cluster example-cluster --server="$API" --certificate-authority=ca.crt --embed-certs=true
@@ -114,7 +114,7 @@ kubectl --kubeconfig=kubeconfig config use-context default
 
 > If the host has no kubectl, fetch it without sudo (match the cluster version):
 > ```bash
-> curl -L -o kubectl https://dl.k8s.io/release/v1.34.3/bin/linux/amd64/kubectl && chmod +x kubectl
+> curl -L -o kubectl https://dl.k8s.io/release/vX.Y.Z/bin/linux/amd64/kubectl && chmod +x kubectl
 > ```
 
 ### 4. Register the crontab

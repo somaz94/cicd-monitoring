@@ -12,7 +12,7 @@ This document covers the **Keycloak (current production IdP)** procedure, automa
 ## Prerequisites
 
 - Harbor exposed over HTTPS — see [`tls-setup.md`](./tls-setup.md)
-- Keycloak instance running — Phase 2 of [`security/keycloak/`](../../keycloak/) complete
+- Keycloak instance running — Phase 2 of [`security/keycloak/`](../../keycloak) complete
 - Realm `example` + client `harbor` + group claim mapper exist — Phase 3 complete
 - Harbor `harbor` client secret in hand ([§2 Retrieve client secret](#2-retrieve-client-secret))
 - Harbor admin DB password (see `harborAdminPassword` in [`../values/dev.yaml`](../values/dev.yaml))
@@ -262,7 +262,7 @@ The result is identical to the API, but it is not re-runnable/scriptable, so the
 ## References
 
 - Harbor OIDC docs: https://goharbor.io/docs/latest/administration/configure-authentication/oidc-auth/
-- Keycloak SSO component: [`security/keycloak/`](../../keycloak/)
+- Keycloak SSO component: [`security/keycloak/`](../../keycloak)
 - Phase 4 migration procedure (GitLab → Keycloak): [`security/keycloak/docs/harbor-migration.md`](../../keycloak/docs/harbor-migration.md)
 - ArgoCD SSO (currently GitLab dex; will switch to Keycloak in Phase 6): [`../../argo-cd/values/dev.yaml`](../../argocd/values/dev.yaml)
 - Harbor API reference: `https://harbor.example.com/devcenter-api-2.0`

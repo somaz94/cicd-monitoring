@@ -208,7 +208,7 @@ extraObjects:
                     claimName: vaultwarden-backup-data
 
   # Gateway API HTTPRoute — sole traffic path since the NGF cutover (2026-04-17).
-  # ingress-nginx annotations map to the timeouts / redirect / policies below; limit-connections was dropped (no NGF equivalent).
+  # ingress-nginx annotations map to the redirect / policies below; limit-connections was dropped (no NGF equivalent).
   # Not the chart's native httpRoute: it renders one route (no redirect sibling, no NGF policies) and,
   # with fullnameOverride=vaultwarden, would collide with the `vaultwarden` route below.
 
@@ -230,9 +230,8 @@ extraObjects:
             - path:
                 type: PathPrefix
                 value: /
-          timeouts:
-            request: 1800s
-            backendRequest: 1800s
+          # No `timeouts:` here: NGF ignores HTTPRoute timeouts (route status UnsupportedField).
+          # The ProxySettingsPolicy below sets them instead.
           backendRefs:
             - name: vaultwarden
               port: 80
@@ -270,6 +269,22 @@ extraObjects:
         name: vaultwarden
       body:
         maxSize: "1024m"
+
+  # ProxySettingsPolicy — upstream timeouts (NGF >= 2.6). read/send bound the gap between two
+  # successive reads/writes, not the whole request; connect stays at the nginx default.
+  - apiVersion: gateway.nginx.org/v1alpha1
+    kind: ProxySettingsPolicy
+    metadata:
+      name: vaultwarden
+      namespace: vaultwarden
+    spec:
+      targetRefs:
+        - group: gateway.networking.k8s.io
+          kind: HTTPRoute
+          name: vaultwarden
+      timeout:
+        read: 1800s
+        send: 1800s
 
   # RateLimitPolicy — per-IP request frequency limit.
   - apiVersion: gateway.nginx.org/v1alpha1

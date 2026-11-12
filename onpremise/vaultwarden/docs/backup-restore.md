@@ -59,6 +59,8 @@ kubectl logs job/manual-backup -n vaultwarden
 ./scripts/restore.sh latest
 ```
 
+> 🔴 This procedure assumes `autoSync: false`. With selfHeal on, the server would restart mid-restore and could corrupt the database.
+
 The script automatically:
 1. Stops Vaultwarden (scale to 0)
 2. Copies backup files to data PVC
@@ -121,7 +123,7 @@ RETENTION_DAYS=30
 RETENTION_DAYS=90
 ```
 
-Then apply: `helmfile apply`
+Then apply: push to master and Sync `infra-vaultwarden` in ArgoCD
 
 <br/>
 

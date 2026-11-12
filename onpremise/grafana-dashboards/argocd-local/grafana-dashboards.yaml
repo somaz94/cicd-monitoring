@@ -6,10 +6,9 @@
 # already proven live by observability/logging/fluent-bit/argocd-local/fluent-bit.yaml (autoSync:
 # true), whose key set and types this file mirrors exactly.
 #
-# The AWS sibling (observability/monitoring/grafana-dashboards-aws/argocd-local-aws/) generates an App
-# with the SAME name on a DIFFERENT cluster. That is fine and intentional: the two appsets read
-# disjoint marker dirs (`argocd-local/` vs `argocd-local-aws/`), so each sees only its own metadata.
-# fluent-bit already ships this exact cross-cluster name-sharing shape.
+# The AWS sibling (observability/monitoring/grafana-dashboards-aws/argocd-local-example-app-prod/)
+# generates an App on a DIFFERENT cluster; the two appsets read disjoint marker dirs
+# (`argocd-local/` vs `argocd-local-example-app-prod/`), so each sees only its own metadata.
 #
 # GREENFIELD: no helmfile release exists for this component, so this is a fresh install, NOT an
 # adoption. The App's only output is labelled ConfigMaps; the kube-prometheus-stack Grafana sidecar

@@ -234,7 +234,7 @@ additionalPrometheusRulesMap:
           # (the READMEs have the operator run it by hand first), not by monitoring:
           # a rule with a for: longer than a day is reset by every Prometheus restart
           # and would never actually fire.
-          # Component: scripts/gitlab/old-nas-sync/
+          # Component: onprem-infra/scripts/gitlab/old-nas-sync/
           - alert: GitlabOldNasSyncStale
             expr: time() - node_systemd_timer_last_trigger_seconds{name="gitlab-old-nas-sync.timer"} > 129600 and node_systemd_timer_last_trigger_seconds{name="gitlab-old-nas-sync.timer"} > 0
             for: 30m
@@ -269,7 +269,7 @@ additionalPrometheusRulesMap:
               group: backup
             annotations:
               summary: "gitlab-old NAS sync timer no longer exists"
-              description: "server1's node_exporter reports no gitlab-old-nas-sync.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-old to the NAS while this fires. Re-install from scripts/gitlab/old-nas-sync/ and confirm with `systemctl list-timers gitlab-old-nas-sync.timer`."
+              description: "server1's node_exporter reports no gitlab-old-nas-sync.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-old to the NAS while this fires. Re-install from onprem-infra/scripts/gitlab/old-nas-sync/ and confirm with `systemctl list-timers gitlab-old-nas-sync.timer`."
 
           # gitlab-main is the mirror image of gitlab-old and needs the same three
           # rules for the opposite reason. gitlab-old keeps its repositories on
@@ -278,7 +278,7 @@ additionalPrometheusRulesMap:
           # server1, which is the only second device. ~193G of repositories, LFS and
           # artifacts, none of which is in the nightly DB tar -- every one of those
           # categories is on the tar's :skipped: list.
-          # Component: scripts/gitlab/main-nas-pull/
+          # Component: onprem-infra/scripts/gitlab/main-nas-pull/
           - alert: GitlabMainNasPullStale
             expr: time() - node_systemd_timer_last_trigger_seconds{name="gitlab-main-nas-pull.timer"} > 129600 and node_systemd_timer_last_trigger_seconds{name="gitlab-main-nas-pull.timer"} > 0
             for: 30m
@@ -307,7 +307,7 @@ additionalPrometheusRulesMap:
               group: backup
             annotations:
               summary: "gitlab-main NAS pull timer no longer exists"
-              description: "server1's node_exporter reports no gitlab-main-nas-pull.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-main off the NAS while this fires. Re-install from scripts/gitlab/main-nas-pull/."
+              description: "server1's node_exporter reports no gitlab-main-nas-pull.timer unit -- either it was removed from /etc/systemd/system/ or node_exporter is down. Nothing is copying gitlab-main off the NAS while this fires. Re-install from onprem-infra/scripts/gitlab/main-nas-pull/."
 
           # The nightly database dumps, added 2026-09-02. Before that both instances
           # were backed up only by hand before an upgrade, which left month-long gaps
@@ -328,7 +328,7 @@ additionalPrometheusRulesMap:
           # needs the Failed rule below as well, while gitlab-main does not.
           #
           # 36h against a daily schedule: one full run missed plus 12h of grace.
-          # Component: scripts/gitlab/db-backup/
+          # Component: onprem-infra/scripts/gitlab/db-backup/
           - alert: GitlabMainDbBackupStale
             expr: time() - gitlab_db_backup_last_success_timestamp_seconds{gitlab_instance="main"} > 129600
             for: 30m

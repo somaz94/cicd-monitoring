@@ -17,6 +17,6 @@ chart:
   name: harbor
   # values/dev.yaml pins image tags to v2.15.4 ahead of this chart; drop them when bumping past it.
   version: "1.19.2"
-valueFile: cicd/harbor-helm/values/dev.yaml     # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+valueFile: cicd/harbor-helm/values/dev.yaml     # repo-root-relative; pulled via the $values multi-source ref
 createNamespace: false                          # 'harbor' already exists
 autoSync: true                                  # adopt-diff verified empty (server-side dry-run of the lookup-less render, 34/34 objects) -> auto-sync (prune+selfHeal) on

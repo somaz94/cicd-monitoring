@@ -11,6 +11,6 @@ chart:
   repoURL: https://prometheus-community.github.io/helm-charts
   name: prometheus-mysql-exporter
   version: "2.15.0"
-valueFile: observability/monitoring/prometheus-mysql-exporter/values/dev-example-project.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+valueFile: observability/monitoring/prometheus-mysql-exporter/values/dev-example-project.yaml  # repo-root-relative; pulled via the $values multi-source ref
 createNamespace: false                       # 'monitoring' already exists
 autoSync: true                               # adopt-diff verified clean (no-op, zero recreate) -> auto-sync (prune+selfHeal) on

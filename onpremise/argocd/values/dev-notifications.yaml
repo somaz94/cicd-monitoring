@@ -308,6 +308,56 @@ notifications:
             ]
           }]
 
+    # Server channel only: GetCommitMetadata reads the singular syncResult.revision, which
+    # multi-source infra apps (spec.sources) leave empty, so the render fails and the alert drops.
+    template.app-config-changed: |
+      message: |
+        :gear: Application {{.app.metadata.name}} has been restarted by a config change.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name}} - Config Change Restart",
+            "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+            "color": "#8E44AD",
+            "fields": [
+            {
+              "title": "Changed ConfigMap",
+              "value": "{{range .app.status.operationState.syncResult.resources}}{{if eq .kind "ConfigMap"}}{{.name}} {{end}}{{end}}",
+              "short": false
+            },
+            {
+              "title": "Commit",
+              "value": {{(call .repo.GetCommitMetadata .app.status.operationState.syncResult.revision).Message | trim | toJson}},
+              "short": false
+            },
+            {
+              "title": "Author",
+              "value": {{(call .repo.GetCommitMetadata .app.status.operationState.syncResult.revision).Author | toJson}},
+              "short": true
+            },
+            {
+              "title": "Namespace",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            },
+            {
+              "title": "Sync Time",
+              "value": "{{.app.status.operationState.finishedAt}} (UTC)",
+              "short": true
+            },
+            {
+              "title": "Cluster",
+              "value": "{{.context.cluster}}",
+              "short": true
+            },
+            {
+              "title": "Details",
+              "value": "<{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in Argo CD>",
+              "short": false
+            }
+            ]
+          }]
+
     template.app-health-unknown: |
       message: |
         :grey_question: Application {{.app.metadata.name}} health status is unknown.
@@ -516,7 +566,7 @@ notifications:
         when: app.status.health.status == 'Missing'
         oncePer: app.status.reconciledAt
 
-    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout; dedup per sync operation to avoid repeated alerts while health stays Progressing.
+    # Fires when app restarts unrelated to sync (3min buffer after sync finish) — detects crash/drain/manual rollout.
     trigger.on-restarted: |
       - description: Application has been restarted (not due to sync)
         send:
@@ -530,6 +580,27 @@ notifications:
         # Dedup per HEALTH TRANSITION, not per sync. Keyed on operationState.finishedAt this
         # deduped per SYNC, so a second restart between two syncs was silently swallowed.
         oncePer: app.status.health.lastTransitionTime
+
+    # Pairs with the charts/base{,-aws} configs-checksum annotation (argocd-applicationset): a ConfigMap
+    # change rolls the pods, and neither on-deployed (image set unchanged) nor on-restarted
+    # (inside its 3min sync buffer) reports that roll. Relies on ApplyOutOfSyncOnly, which keeps
+    # untouched resources out of syncResult; the 'unchanged' guard covers an app without it.
+    # The 15min ceiling stops a first-load burst from apps whose last sync touched a ConfigMap.
+    trigger.on-config-changed: |
+      - description: ConfigMap changed by a sync and the app is Healthy again after the roll
+        send:
+        - app-config-changed
+        when: |
+          app.status.operationState != nil and
+          app.status.operationState.phase == 'Succeeded' and
+          app.status.operationState.syncResult != nil and
+          app.status.operationState.syncResult.resources != nil and
+          any(app.status.operationState.syncResult.resources, {.kind == 'ConfigMap' and .status == 'Synced' and not (.message endsWith ' unchanged')}) and
+          app.status.health.status == 'Healthy' and
+          app.status.operationState.finishedAt != nil and
+          time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Seconds() > 60 and
+          time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() < 15
+        oncePer: app.status.operationState.finishedAt
 
     # Fires on Unknown health; dedup per reconcile cycle.
     trigger.on-health-unknown: |
@@ -570,6 +641,7 @@ notifications:
       - on-sync-failed
       - on-sync-status-out-of-sync
       - on-restarted
+      - on-config-changed
       - on-health-degraded   # A: comment out when moving to Alertmanager
       - on-health-missing    # A: comment out when moving to Alertmanager
       - on-health-unknown    # A: comment out when moving to Alertmanager

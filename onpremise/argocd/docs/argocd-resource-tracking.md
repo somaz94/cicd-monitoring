@@ -100,4 +100,4 @@ kubectl -n argocd get applications
 
 ## AWS variant (argo-cd-aws)
 
-on-prem (`cicd/argo-cd`) and AWS (`cicd/argo-cd-aws`) are **independent ArgoCD installs** (separate argocd-cm). There is no inheritance — each install has to declare the key in its own `configs.cm`. On the AWS side both clusters already carry it: `configs.cm.application.resourceTrackingMethod` is set in `cicd/argo-cd-aws/values/prod.yaml` (prod-example-app-v1) and `cicd/argo-cd-aws/values/example-app-prod.yaml` (example-app-prod). Changing one does not propagate to the other, so treat the three files together when touching this key.
+on-prem (`cicd/argo-cd`) and AWS (`cicd/argo-cd-aws`) are **independent ArgoCD installs** (separate argocd-cm). There is no inheritance — each install has to declare the key in its own `configs.cm`. On the AWS side it is already set: `configs.cm.application.resourceTrackingMethod` in `cicd/argo-cd-aws/values/example-app-prod.yaml` (example-app-prod). Changing one does not propagate to the other, so treat the on-prem and AWS files together when touching this key.

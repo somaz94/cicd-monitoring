@@ -201,6 +201,12 @@ Automation is intentionally omitted — fluent-bit DaemonSet (hostPath) and flue
 
 > **Warning**: this wipe discards every env's buffered chunks at once — typically 0 to a few seconds of in-flight data per env when fluentd is healthy. For an env-scoped wipe, dig into the `elasticsearch-buffers/` filenames (chunks are tagged) or wait for the buffer to drain naturally.
 
+🔴 fluentd runs `autoSync: true` + selfHeal, so scaling down as-is lets ArgoCD bring it back up mid-procedure: the cleanup Job may not get the PVC, or old chunks may land in the new index. Turn selfHeal off first: set `autoSync: false` in the target cluster's marker (on-prem `observability/logging/fluentd/argocd/fluentd.yaml`, AWS `observability/logging/fluentd-aws/argocd-*/fluentd.yaml`), push to master, and on-prem confirm the command below prints nothing. Set `autoSync: true` and push once the work is verified.
+
+```bash
+kubectl -n argocd get application infra-fluentd -o jsonpath='{.spec.syncPolicy.automated}'
+```
+
 ```bash
 # 1. Bring fluentd down (flush_at_shutdown=true forces one final flush — drop the raw index BEFORE this so the flush hits the new index)
 kubectl -n logging scale statefulset/fluentd --replicas=0

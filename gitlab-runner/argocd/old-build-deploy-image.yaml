@@ -6,7 +6,7 @@
 # Consumed by the infra-applicationset git-files generator -> Application infra-old-build-deploy-image.
 # The image tag pin was dropped on 2026-09-01: values/old-gitlab-runner.yaml now comments out `tag:`
 # like its siblings, so the image follows the chart's appVersion instead of the gitlab-old server
-# version — see scripts/gitlab/old-upgrade/UPGRADE-PATH.md.
+# version — see onprem-infra/scripts/gitlab/old-upgrade/UPGRADE-PATH.md.
 component: gitlab-runner
 releaseName: old-build-deploy-image           # MUST equal the existing helmfile release name (clean adoption)
 namespace: gitlab-runner
@@ -14,7 +14,7 @@ syncWave: "5"
 chart:
   repoURL: https://charts.gitlab.io
   name: gitlab-runner
-  version: "0.94.0"
+  version: "0.94.2"
 valueFile: cicd/gitlab-runner/values/old-gitlab-runner.yaml
 createNamespace: false                        # 'gitlab-runner' already exists
 autoSync: true

@@ -34,7 +34,7 @@ grafana:
   # existed since 2026-04-07, so an env change alone can never take effect here. Rotating it needs a
   # deliberate `grafana-cli admin reset-admin-password <new>` inside the pod plus a reseal — decided
   # against for now (2026-07-30). Until then this password is still the cluster-wide shared one that
-  # also appears in security/vaultwarden, security/keycloak, and bootstrap/vm.
+  # also appears in security/vaultwarden, security/keycloak, and onprem-infra/bootstrap/vm.
   admin:
     existingSecret: grafana-auth
     userKey: admin-user
@@ -294,12 +294,15 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
 
-# kubespray external etcd on control-01 — mTLS scrape via 2379.
+# kubespray external etcd on every control plane node — mTLS scrape via 2379.
 kubeEtcd:
   enabled: true
   # External etcd is a host systemd service, not a static pod — point endpoints at the node IP.
+  # ArgoCD excludes Endpoints, so a change here reaches the cluster only by `kubectl patch`.
   endpoints:
     - 192.0.2.17
+    - 192.0.2.24
+    - 192.0.2.25
   service:
     enabled: true
     # etcd does not expose a separate metrics port (no --listen-metrics-urls); scrape the client port (2379).
@@ -325,6 +328,17 @@ nodeExporter:
   enabled: true
 
 prometheus-node-exporter:
+  # Replaces the chart's extraArgs list, so its two filesystem excludes are repeated here.
+  # VIP alerts need these (dev-alerts-network.yaml). kube-ipvs0 holds about 100 service addresses
+  # per node, which address-info would otherwise turn into series. keepalived state comes from
+  # the textfile collector, under the existing read-only /host/root mount: the pod's AppArmor
+  # profile denies the D-Bus connection the systemd collector needs, and it stays on (2026-11-04).
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+    - --collector.netdev.address-info
+    - --collector.netdev.device-exclude=^kube-ipvs0$
+    - --collector.textfile.directory=/host/root/var/lib/node_exporter/textfile
   resources:
     requests:
       cpu: 10m

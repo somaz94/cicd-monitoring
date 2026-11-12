@@ -7,7 +7,7 @@
 # Why this exists
 # ---------------
 # This repo drives two clusters: the on-prem dev cluster and the AWS
-# prod-example-app EKS cluster. Their logging namespaces are name-for-name
+# example-app-prod EKS cluster. Their logging namespaces are name-for-name
 # identical — both expose `logging/elasticsearch-es-default-0`, the service
 # `elasticsearch-es-http`, a Kibana behind `kibana-kb-http`, and the same
 # `elasticsearch-es-elastic-user` secret. A bare `kubectl` therefore SUCCEEDS

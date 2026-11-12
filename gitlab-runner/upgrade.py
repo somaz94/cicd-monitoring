@@ -16,7 +16,7 @@ CONFIG = {
     "CHART_TYPE":     "local",  # "local" or "external"
     # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
     # old-build-deploy-image serves gitlab-old, not gitlab-main: on each bump, compare
-    # the runner minor with gitlab-old's too (scripts/gitlab/old-upgrade/UPGRADE-PATH.md).
+    # the runner minor with gitlab-old's too (onprem-infra/scripts/gitlab/old-upgrade/UPGRADE-PATH.md).
     "ARGOCD_PIN_FILES": [
         "argocd/build-image.yaml",
         "argocd/deploy-image.yaml",

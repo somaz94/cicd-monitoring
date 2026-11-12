@@ -2,7 +2,7 @@
 
 Deploys the Keycloak Operator into the `keycloak-system` namespace via Helmfile. Manages only the CRDs (`Keycloak`, `KeycloakRealmImport`) and the operator Pod — the actual Keycloak instance, database and realm live in the sibling [`security/keycloak/`](../keycloak) component.
 
-Mirrors the operator/CR split used by ECK (`observability/logging/eck-operator/` + `observability/logging/elasticsearch/`).
+Mirrors the operator/CR split used by ECK in `server/gitops-infra` (`observability/logging/eck-operator/` + `observability/logging/elasticsearch/`).
 
 <br/>
 

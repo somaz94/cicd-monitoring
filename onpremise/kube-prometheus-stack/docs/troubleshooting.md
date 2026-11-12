@@ -4,7 +4,7 @@ Known issues and solutions for kube-prometheus-stack operations.
 
 <br/>
 
-## kube-apiserver gRPC etcd Connection Warning (K8s 1.34.x)
+## kube-apiserver gRPC etcd Connection Warning (K8s 1.34 onward, fixed in 1.37)
 
 ### Symptoms
 
@@ -21,7 +21,7 @@ Err: connection error: desc = "transport: Error while dialing: dial tcp 192.0.2.
 
 ### Cause
 
-**Known bug in Kubernetes 1.34.x** ([kubernetes/kubernetes#134080](https://github.com/kubernetes/kubernetes/issues/134080))
+**Known bug in Kubernetes since 1.34** ([kubernetes/kubernetes#134080](https://github.com/kubernetes/kubernetes/issues/134080))
 
 - K8s 1.34 upgraded etcd client v3.5 -> v3.6 and gRPC v1.68 -> v1.72
 - Every `/metrics` scrape creates a new etcd client and immediately closes it
@@ -54,9 +54,9 @@ ss -tnp | grep 2379 | wc -l
 
 ### Solutions
 
-#### Option 1: Wait for patch release (recommended)
+#### Option 1: Wait for K8s 1.37 (recommended)
 
-Fix PR ([kubernetes/kubernetes#138075](https://github.com/kubernetes/kubernetes/pull/138075)) is in progress to reuse etcd clients. Since cluster operations are unaffected, ignore the Warnings and wait for the patch.
+The fix PR ([kubernetes/kubernetes#138075](https://github.com/kubernetes/kubernetes/pull/138075)) reuses etcd clients. It merged on 2026-04-22 with milestone v1.37. The Warning was still present on K8s 1.36.4 on 2026-11-05, so expect it until the upgrade to 1.37 and ignore it. Cluster operations are unaffected.
 
 #### Option 2: Silence KubeAPIErrorBudgetBurn alert
 

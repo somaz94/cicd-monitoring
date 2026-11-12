@@ -148,6 +148,28 @@ serviceMonitor:
       url: https://slack-qr-bot.example.com/
       module: http_any_response
 
+    # Site-to-site WireGuard tunnels. An internal ALB answers "/" with 404 without reaching the
+    # app, so a failure here means the tunnel, its gateway or the ALB, not the workload.
+    - name: wg0-internal-dev-game
+      url: http://internal-dev-game.example.com/
+      module: http_any_response
+
+    - name: wg1-internal-review-game
+      url: http://internal-review-game.example.com/
+      module: http_any_response
+
+    # Dead-man's switch for example-app-prod: its Alertmanager discards Watchdog, so this is
+    # the only check outside that cluster that its Prometheus is alive. The platform ALB
+    # admits only the office IP, which is where this cluster egresses from.
+    - name: example-app-prod-prometheus
+      url: https://prometheus.example.com/-/healthy
+      module: http_2xx
+
+    # Control plane VIP. Answers only if keepalived placed it on a node with a ready apiserver.
+    - name: control-plane-vip
+      url: https://192.0.2.99:6443/readyz
+      module: http_2xx
+
 # Alert rules live in the kube-prometheus-stack values
 # (observability/monitoring/kube-prometheus-stack/values/dev-alerts-network.yaml,
 # group `blackbox-alerts`) alongside every other alert group in this cluster,

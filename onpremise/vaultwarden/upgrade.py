@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# upgrade-template: external-standard
+# upgrade-template: argocd-pin
 
 # ============================================================
 # Configuration (ONLY section that differs between scripts)
@@ -8,11 +8,16 @@
 # ============================================================
 CONFIG = {
     "SCRIPT_NAME":    "Vaultwarden Helm Chart Upgrade Script",
+    "BASE":           "standard",
     "HELM_REPO_NAME": "guerzon",
     "HELM_REPO_URL":  "https://guerzon.github.io/vaultwarden",
     "HELM_CHART":     "guerzon/vaultwarden",
     "CHANGELOG_URL":  "https://github.com/guerzon/vaultwarden",
     "CHART_TYPE":     "external",  # "local" or "external"
+    # ArgoCD-managed: version SSOT is argocd/<release>.yaml chart.version (no helmfile).
+    "ARGOCD_PIN_FILES": [
+        "argocd/vaultwarden.yaml",
+    ],
 }
 # ============================================================
 
@@ -26,7 +31,7 @@ for _anc in [_here, *_here.parents]:
         sys.path.insert(0, str(_anc / "scripts" / "python"))
         break
 
-from upgrade_core.external_standard import run  # noqa: E402
+from upgrade_core.argocd_pin import run  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(run(CONFIG, sys.argv[1:], script_path=__file__))

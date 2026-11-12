@@ -195,17 +195,16 @@ additionalPrometheusRulesMap:
           # TRIAGE FIRST — the most common trip is BENIGN and not a runner fault:
           #   `ERROR: Could not create cache adapter  error=cache factory not found: factory for cache
           #    adapter "" was not registered (registered adapters: azure, gcs, gcsv2, s3, s3v2)`
-          # No runner manager here defines a [runners.cache] block, because the on-prem cluster has no
-          # S3-compatible backend (runner cache supports only s3/gcs/azure — NFS and local-path cannot
-          # serve as one). So any CI job that declares `cache:` makes the manager try to build an adapter
+          # Since 2026-10-20 only the build runner has a [runners.cache] block (the runner-cache release,
+          # see runner-cache-alerts below); the deploy runner still has none. So a job that
+          # declares `cache:` and lands on the deploy runner makes that manager try to build an adapter
           # with an empty Type and log ERROR, a few entries per job. The job itself does NOT fail — only
-          # the cache step is skipped — and the rate returns to 0 once the build burst ends, so the alert
+          # the cache step is skipped — and the rate returns to 0 once the burst ends, so the alert
           # self-resolves. Confirm before chasing a real fault:
-          #   kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner --since=1h | grep -c 'cache adapter'
+          #   kubectl -n gitlab-runner logs deploy/deploy-image-gitlab-runner --since=1h | grep -c 'cache adapter'
           # gitlab_runner_errors_total carries no message label, so this cause cannot be filtered out of
           # the expr — do NOT loosen the rule (that would blind it to real API/executor failures). Fix it
-          # at the source instead: drop `cache:` from the offending job, or stand up an S3-compatible
-          # backend and add a [runners.cache] block to cicd/gitlab-runner/values/{build,deploy}.yaml.
+          # at the source instead: drop `cache:` from the offending job or move it to the build runner.
           - alert: GitLabRunnerErrors
             expr: sum by (job)(rate(gitlab_runner_errors_total{level=~"error|fatal|panic"}[10m])) > 0
             for: 15m
@@ -241,6 +240,62 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "GitLab Runner GitLab-API error responses sustained"
               description: "The GitLab Runner managers have received HTTP {{ $labels.status }} responses from the GitLab API at {{ printf \"%.3g\" $value }}/sec for 15+ minutes — job pickup and status reporting may be degraded (5xx = GitLab server errors, 401/403 = revoked/expired runner token, 429 = API rate limiting). Check `kubectl -n gitlab-runner logs deploy/build-image-gitlab-runner` and the GitLab instance health."
+
+  # Build-runner distributed cache: the cache-only runner-cache release in the gitlab-runner namespace
+  # (storage/static-file-server/values/dev-runner-cache.yaml), scraped by that chart's ServiceMonitor. Cache failures never fail a job, they only cost cache misses, so every
+  # rule here is a warning. Every pod reports the shared volume's gauges, so aggregate those with max.
+  runner-cache-alerts:
+    groups:
+      - name: runner-cache-alerts
+        rules:
+
+          # static_file_server_s3_max_total_bytes is always exported while a cache listener is up and scraped.
+          - alert: RunnerCacheDown
+            expr: absent(static_file_server_s3_max_total_bytes)
+            for: 10m
+            labels:
+              severity: warning
+              group: runner-cache
+            annotations:
+              summary: "Build runner cache endpoint is down or unscrapable"
+              description: "No static-file-server S3 cache metrics for 10+ minutes — the build runner's cache backend (runner-cache-s3.gitlab-runner.svc:9000) is down or its /metrics is unreachable, so every CI cache step misses. Check `kubectl -n gitlab-runner get pods -l app.kubernetes.io/instance=runner-cache` and the pod logs."
+
+          # Presigned URLs live as long as the job timeout, so a runner request is never legitimately
+          # expired. Both sides read Secret runner-cache-s3 into env at pod start, so a 403 majority means a
+          # rotation restarted only one side, or clocks drift past 15m. A ratio, not a count, so a stray unsigned
+          # request (e.g. a manual curl) cannot fire it.
+          - alert: RunnerCacheAuthFailures
+            expr: |
+              sum(increase(static_file_server_s3_requests_total{status="403"}[1h]))
+                / sum(increase(static_file_server_s3_requests_total[1h])) > 0.5
+              and sum(increase(static_file_server_s3_requests_total[1h])) >= 3
+            for: 5m
+            labels:
+              severity: warning
+              group: runner-cache
+            annotations:
+              summary: "Build runner cache rejects most requests (403)"
+              description: "{{ $value | humanizePercentage }} of runner cache requests in the last hour were denied with 403. The runner-cache pods and the build runner managers read Secret gitlab-runner/runner-cache-s3 at start, so after a rotation both need a restart (`kubectl -n gitlab-runner rollout restart deploy/runner-cache deploy/build-image-gitlab-runner`); otherwise a node clock is off by 15+ minutes. The pod logs name the reason: `kubectl -n gitlab-runner logs deploy/runner-cache | grep denied`."
+
+          - alert: RunnerCacheServerErrors
+            expr: sum by (method)(increase(static_file_server_s3_requests_total{status=~"5.."}[30m])) > 0
+            labels:
+              severity: warning
+              group: runner-cache
+            annotations:
+              summary: "Build runner cache endpoint returned 5xx"
+              description: "The runner cache endpoint answered {{ $labels.method }} with 5xx {{ printf \"%.3g\" $value }} time(s) in the last 30 minutes, usually a storage problem on the gitlab-runner/runner-cache-s3-cache PVC (NFS full or unreachable). Check `kubectl -n gitlab-runner logs deploy/runner-cache | grep s3cache`."
+
+          # The janitor only evicts for space when the working set exceeds s3Cache.maxTotalSize, which then
+          # thrashes: evicted caches are re-uploaded and push out others.
+          - alert: RunnerCacheEvictingForSpace
+            expr: sum(increase(static_file_server_s3_evicted_objects_total{reason="size"}[6h])) > 0
+            labels:
+              severity: warning
+              group: runner-cache
+            annotations:
+              summary: "Build runner cache is evicting caches for space"
+              description: "The runner cache janitor evicted {{ printf \"%.3g\" $value }} cache(s) for space in the last 6 hours, so the working set no longer fits in s3Cache.maxTotalSize. Raise maxTotalSize and persistence.size together in storage/static-file-server/values/dev-runner-cache.yaml, or shorten s3Cache.ttl."
 
   # Harbor: via harbor-exporter (namespace=harbor).
   harbor-alerts:

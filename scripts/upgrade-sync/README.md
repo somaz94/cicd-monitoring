@@ -360,7 +360,7 @@ New variants must follow the same convention (e.g., `external-multi-release.py`,
 - **Use**: OCI-registry-distributed charts where the chart version itself needs tracking. Bumps `helmfile.yaml.version` via GitHub Releases API.
 - **Differences vs external-standard**: `helm search repo` is unavailable for OCI → use GitHub Releases instead.
 - **Extra variables**: `HELM_CHART` (oci://... URL), `GITHUB_REPO` (owner/repo), `GITHUB_TAG_PREFIX`
-- **Consumers** (per `sync.py --status`): `compute/karpenter`, `network/nginx-gateway-fabric` (NGF OCI chart), `security/keycloak`, `security/keycloak-operator`, `storage/local-path-provisioner` (Rancher upstream OCI chart)
+- **Consumers** (per `sync.py --status`): `network/nginx-gateway-fabric` (NGF OCI chart), `security/keycloak`, `security/keycloak-operator`, `storage/local-path-provisioner` (Rancher upstream OCI chart)
 
 #### 7. [ansible-github-release.py](templates/ansible-github-release.py) — Ansible-deployed (non-Helm) component + GitHub Releases tracking (Python)
 

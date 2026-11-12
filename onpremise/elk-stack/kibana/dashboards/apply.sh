@@ -15,7 +15,7 @@ set -euo pipefail
 DASHBOARDS_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Target kube-context. REQUIRED — there is deliberately no default and no
 # fallback to the current context. This repo drives two clusters (on-prem dev
-# and the AWS prod-example-app EKS) whose logging namespaces are name-for-name
+# and the AWS example-app-prod EKS) whose logging namespaces are name-for-name
 # identical: both have logging/elasticsearch-es-default-0 and a Kibana behind
 # kibana-kb-http. A bare `kubectl` therefore succeeds against whichever context
 # happens to be current, silently importing one cluster's saved objects into the

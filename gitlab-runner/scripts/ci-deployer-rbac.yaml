@@ -1,0 +1,32 @@
+# Identity behind the KUBECONFIG_DEV CI variable (docs/ci-variables.md). Apply once with:
+#   kubectl apply -f ci-deployer-rbac.yaml
+#
+# cluster-admin because helmfile diff/apply/destroy across components touches CRDs and every
+# namespace. Revoke by deleting the Secret. Unlike an admin.conf client cert it does not expire.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-deployer
+  namespace: gitlab-runner
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ci-deployer-token
+  namespace: gitlab-runner
+  annotations:
+    kubernetes.io/service-account.name: ci-deployer
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ci-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: gitlab-runner

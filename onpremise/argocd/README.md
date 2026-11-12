@@ -215,6 +215,8 @@ ArgoCD authenticates via a **Keycloak OIDC connector** instead of the legacy Git
 
 OIDC config is managed in two blocks of [`values/dev.yaml`](values/dev.yaml): `configs.cm.dex.config` + `extraObjects.argocd-https-redirect` HTTPRoute. The legacy GitLab dex connector block is preserved as comments in the same file (rollback reference).
 
+**If dex is Ready but SSO fails:** when dex cannot reach Keycloak at startup, the dex process exits while its wrapper stays, so the Pod can still look Ready (2026-11-04, during a node drain). The symptom is `failed to query provider ... connection refused` in the `argocd-server` log. That is why `dev-server.yaml` turns on dex liveness and readiness probes. To recover by hand, run `kubectl -n argocd rollout restart deploy/argocd-dex-server`.
+
 - **Migration procedure + 5 pitfalls lessons learned**: [`security/keycloak/docs/argocd-migration.md`](../keycloak/docs/argocd-migration.md)
 - **Realm/Client/Mapper setup (kcadm-bootstrap.sh automation + 38/38 verify)**: [`security/keycloak/docs/realm-setup.md`](../keycloak/docs/realm-setup.md)
 

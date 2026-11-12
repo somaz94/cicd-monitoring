@@ -30,7 +30,7 @@ Bitwarden-compatible password management server written in Rust
 | Item | Value |
 |------|-------|
 | Chart | [guerzon/vaultwarden](https://github.com/guerzon/vaultwarden) |
-| Version | `version` in `helmfile.yaml` + `Chart.yaml` |
+| Version | `chart.version` in `argocd/vaultwarden.yaml` (`upgrade.py` bumps it) |
 | App Version | `appVersion` in `Chart.yaml` |
 | Access URL | `https://vault.example.com` (`domain` in `values/dev.yaml`) |
 
@@ -38,12 +38,17 @@ Bitwarden-compatible password management server written in Rust
 
 ## Install / Upgrade
 
-```bash
-# Install
-helmfile apply
+ArgoCD deploys this as the Application `infra-vaultwarden`. The retired `helmfile.yaml` survives in `backup/` as a record only.
 
-# Preview changes
-helmfile diff
+🔴 **`autoSync: false` stays** (decided 2026-11-03). `scripts/restore.sh` overwrites the SQLite file with the server down, and selfHeal would restart the server mid-restore and could corrupt the database. So after pushing a values or chart change to master you **must Sync by hand**. An `OutOfSync` on a `Healthy` app raises no alert, so Sync right after the push.
+
+```bash
+# Inspect the render, deploys nothing
+helm template vaultwarden vaultwarden --repo https://guerzon.github.io/vaultwarden \
+  --version "$(yq '.chart.version' argocd/vaultwarden.yaml)" -n vaultwarden -f values/dev.yaml
+
+# Apply after the push
+argocd app sync infra-vaultwarden
 
 # Chart version upgrade
 ./upgrade.py              # Check and upgrade to latest

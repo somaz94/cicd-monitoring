@@ -32,6 +32,12 @@ controller:
 ## Dex
 dex:
   enabled: true
+  # If Keycloak is down when dex starts, dex exits but its wrapper process keeps the pod Ready
+  # with no port open (2026-11-04, a node drain). The probes restart it until Keycloak is back.
+  livenessProbe:
+    enabled: true
+  readinessProbe:
+    enabled: true
 
 ## Server
 server:

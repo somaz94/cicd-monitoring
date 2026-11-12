@@ -20,6 +20,6 @@ chart:
   repoURL: https://prometheus-community.github.io/helm-charts
   name: prometheus-elasticsearch-exporter
   version: "7.4.0"
-valueFile: observability/monitoring/prometheus-elasticsearch-exporter/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+valueFile: observability/monitoring/prometheus-elasticsearch-exporter/values/dev.yaml  # repo-root-relative; pulled via the $values multi-source ref
 createNamespace: false                         # 'logging' already exists
 autoSync: true                                 # adopt-diff verified clean (only tracking-id annotation + missing-SM create, zero pod recreate) -> auto-sync (prune+selfHeal) on

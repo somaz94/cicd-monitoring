@@ -2,7 +2,7 @@
 
 Deploys the [Sealed Secrets](https://github.com/bitnami/sealed-secrets) controller into the `sealed-secrets` namespace via Helmfile. The controller holds an asymmetric key pair: a **public cert** the `kubeseal` CLI uses to encrypt, and a **private key** kept in-cluster to decrypt. Operators commit only the encrypted `SealedSecret` CR to git; the controller reconciles it into a plain `Secret` in-cluster.
 
-This lets registry credentials — notably the **Harbor robot `dockerconfigjson`** consumed by the sibling [`argocd-applicationset`](https://gitlab.example.com/server/argocd-applicationset) repo — live in git without plaintext exposure, replacing the raw committed `Secret` manifest.
+This lets registry credentials — notably the **Harbor robot `dockerconfigjson`** consumed by the sibling `argocd-applicationset` repo — live in git without plaintext exposure, replacing the raw committed `Secret` manifest.
 
 > ⚠️ The controller private key is the **single decryption root**. Back it up out of band (see [Key backup](#key-backup)). Losing it makes every committed `SealedSecret` permanently undecryptable.
 
@@ -146,6 +146,7 @@ Where a `SealedSecret` lives is decided by **the nature of the workload that con
 | `ghost-db-secret` | `secret/ghost-db/` | `blog` | ghost chart `existingSecret` | `infra-sealedsecret-applicationset` |
 | `unity-mcp-api-key` | `secret/unity-mcp/` | `mcp-server` | unity chart `apiKey.existingSecret` | `infra-sealedsecret-applicationset` |
 | `harbor-internal-secrets`, `harbor-core-token` | `secret/harbor-internal/` | `harbor` | Harbor chart `existingSecret` / `secretName` ([details](../harbor-helm/docs/internal-secrets.md)) | `infra-sealedsecret-applicationset` |
+| `runner-cache-s3` | `secret/runner-cache-gitlab-runner/` | `gitlab-runner` | read by both the build runner `runners.cache.secretName` and the `runner-cache` release `s3Cache.existingSecret` | `infra-sealedsecret-applicationset` |
 
 Everything except `harbor-robot` is pinned to a single namespace, so it is sealed with `strict` scope and delivered by the dedicated AppProject `infra-sealedsecret` (admin-only, sibling of `infra-pullsecret`). The seal/apply procedure matches [Sealing a secret](#sealing-a-secret-harbor-robot-example) above, only using `strict` (the default) scope.
 
@@ -191,7 +192,7 @@ Store the backup in a secure offline location — **never commit it to git**.
   ```
   - **Always run delete and restart back-to-back.** Do not just delete and wait — the controller only watches Secrets it owns, so deleting an unowned Secret may raise no event at all (it may already have logged `Error updating, giving up`), leaving the Secret empty and apps/Gateway without access. The restart forces a full resync, and with the old Secret gone the path is a **create**, not an update.
   - What does not work: adding the `sealedsecrets.bitnami.com/managed="true"` annotation to the live Secret or the SealedSecret — an annotation is metadata, not spec, so the controller logs `update suppressed, no changes in spec` and never retries.
-  > App secrets use the **exact same procedure**. For detail/background see `argocd-applicationset` [`docs/internal-app-gitops.md`](https://gitlab.example.com/server/argocd-applicationset/-/blob/master/docs/internal-app-gitops.md) "Adopting a hand-made Secret into a SealedSecret". (Hit for real on 2026-07-24 by deleting several at once while introducing infra-sealedsecret — the order above prevents it.)
+  > App secrets use the **exact same procedure**. For detail/background see `argocd-applicationset` `docs/internal-app-gitops.md` "Adopting a hand-made Secret into a SealedSecret". (Hit for real on 2026-07-24 by deleting several at once while introducing infra-sealedsecret — the order above prevents it.)
 
 <br/>
 

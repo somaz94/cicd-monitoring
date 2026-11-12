@@ -1,0 +1,18 @@
+# Per-release ArgoCD metadata consumed by the infra-applicationset git-files generator
+# (argocd-applicationset repo, appsets/onprem/infra/infra-applicationset.yaml).
+#
+# Adopted the live helmfile release in place on 2026-11-03; the retired helmfile is in backup/.
+# This file is the chart-version SSOT (upgrade.py bumps chart.version here).
+component: vaultwarden                          # -> app-name label on the generated App
+releaseName: vaultwarden                        # -> App name (infra-<releaseName>) AND helm release name (clean adoption)
+namespace: vaultwarden                          # already helmfile-managed; do not contest ownership
+syncWave: "2"                                   # identity tier (mirrors helmfile deploy wave 2)
+chart:
+  repoURL: https://guerzon.github.io/vaultwarden
+  name: vaultwarden
+  version: "0.46.3"
+valueFile: security/vaultwarden/values/dev.yaml  # repo-root-relative; pulled via the $values multi-source ref
+createNamespace: false                          # 'vaultwarden' already exists
+# Decided 2026-11-03: stays manual. scripts/restore.sh overwrites the SQLite file with replicas=0, and
+# selfHeal would restart the server mid-restore and could corrupt the password database.
+autoSync: false

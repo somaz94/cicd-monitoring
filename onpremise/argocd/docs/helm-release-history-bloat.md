@@ -146,7 +146,7 @@ Contexts swept: `onprem-dev`, `example-app-prod`. (`secondary-project-prod` / `s
 | medium | `elastic-system/eck-operator` | onprem-dev | 5 rev / 1.4 MB | 279 KB | ~2.7 MB | no active helmfile (ArgoCD-managed; leftover release secret) |
 | medium | `keycloak-system/keycloak-operator` | onprem-dev | 5 rev / 1.3 MB | 268 KB | ~2.6 MB | capped |
 | low | `harbor/harbor` | onprem-dev | 10 rev / 1.5 MB | 149 KB | already at cap | capped; small enough to be safe |
-| low | all others (metallb, vaultwarden, gitlab-runner build/deploy-image, static-file-server, ghost, unity-mcp-server, local-path-provisioner, sealed-secrets, keycloak, karpenter, karpenter-cr, aws-load-balancer-controller) | both | < 1 MB total | < 150 KB | < 1.5 MB | no risk |
+| low | all others (metallb, vaultwarden, gitlab-runner build/deploy-image, static-file-server, ghost, unity-mcp-server, local-path-provisioner, sealed-secrets, keycloak, karpenter-cr) | both | < 1 MB total | < 150 KB | < 1.5 MB | no risk |
 
 Thresholds: **~7 MB = measured breaking point** (Argo CD, 10 × ~700 KB). **Approaching ~5 MB = at risk.**
 
@@ -158,7 +158,7 @@ Start here next time.
 
 `kube-prometheus-stack` is the obvious suspect because the chart is huge, but it is **not affected.** There are no `sh.helm.release.v1.kube-prometheus-stack.*` Secrets on either cluster.
 It is deployed via an ArgoCD Application, and **ArgoCD renders with `helm template`, so it creates no helm release Secrets at all**.
-Any component under `<component>/argocd/` or `<component>/argocd-aws/` with no active helmfile is therefore structurally immune to this problem.
+Any component under a `<component>/argocd*/` marker directory with no active helmfile is therefore structurally immune to this problem.
 
 Corollary: only components with an **active helmfile** can hit this. When triaging, enumerate helmfiles first — do not start from "which chart is biggest".
 
@@ -206,7 +206,7 @@ kubectl -n argocd delete secret \
   sh.helm.release.v1.argocd.v7
 
 # 4) helmfile diff should now work
-cd cicd/argo-cd-aws && helmfile diff
+cd cicd/argo-cd-aws && helmfile --kube-context example-app-prod -e example-app-prod diff
 ```
 
 After pruning down to 3 revisions, both `helmfile diff` and `helmfile apply` were verified working on prod and dev.
@@ -220,7 +220,8 @@ If you cannot prune the history right now but still need to see the change you a
 ```bash
 cd cicd/argo-cd-aws
 helm template argocd argo/argo-cd --version <pinned> -n argocd \
-  -f values/prod.yaml -f values/prod-server.yaml -f values/prod-redis.yaml -f values/prod-notifications.yaml \
+  -f values/example-app-prod.yaml -f values/example-app-prod-server.yaml \
+  -f values/example-app-prod-redis.yaml -f values/example-app-prod-notifications.yaml \
   | yq eval 'select(.metadata.name == "argocd-notifications-cm") | .data' - > /tmp/cm-new.yaml
 kubectl -n argocd get cm argocd-notifications-cm -o yaml | yq eval '.data' - > /tmp/cm-live.yaml
 diff -u /tmp/cm-live.yaml /tmp/cm-new.yaml

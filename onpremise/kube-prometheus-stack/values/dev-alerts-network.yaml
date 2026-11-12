@@ -121,7 +121,7 @@ additionalPrometheusRulesMap:
           # A non-portal target stopped answering. Split from the portal rule
           # because the blast radius differs: these are individually scoped apps.
           - alert: BlackboxProbeFailed
-            expr: probe_success{target!~"example-hub-.*"} == 0
+            expr: probe_success{target!~"example-hub-.*|control-plane-vip|example-app-prod-prometheus"} == 0
             for: 5m
             labels:
               severity: warning
@@ -129,6 +129,18 @@ additionalPrometheusRulesMap:
             annotations:
               summary: "Probe {{ $labels.target }} is failing"
               description: "The synthetic probe for {{ $labels.target }} ({{ $labels.instance }}) has failed for 5+ minutes. The pods behind it may still be Ready — this checks the whole external path (DNS -> MetalLB IP -> Gateway -> HTTPRoute -> pod), so look at the Gateway and HTTPRoute before the workload."
+
+          # Dead-man's switch for the AWS example-app-prod cluster, whose own Alertmanager
+          # discards Watchdog. Critical because while it fires, that cluster alerts on nothing.
+          - alert: ExampleAppProdPrometheusDown
+            expr: probe_success{target="example-app-prod-prometheus"} == 0
+            for: 5m
+            labels:
+              severity: critical
+              group: blackbox
+            annotations:
+              summary: "example-app-prod Prometheus is not answering from outside"
+              description: "{{ $labels.instance }} has failed for 5+ minutes, so every example-app-prod Prometheus alert may be silent. Check `kubectl --context example-app-prod -n monitoring get pods` first, then the example-app-platform-alb target group. The ALB admits only the office IP (inbound-cidrs), so a changed office egress IP fails this probe too."
 
           # The portal. Categorically worse: every proxy-gated app is reachable
           # only through it.
@@ -194,4 +206,63 @@ additionalPrometheusRulesMap:
               group: blackbox
             annotations:
               summary: "TLS certificate for {{ $labels.target }} expires in under 30 days"
-              description: "The certificate served at {{ $labels.instance }} expires in {{ $value | humanizeDuration }}. The *.example.com wildcard is manually managed, so nothing renews it automatically."
+              description: "The certificate served at {{ $labels.instance }} expires in {{ $value | humanizeDuration }}. The *.example.com wildcard is manually managed, so nothing renews it automatically. A *.example.com certificate is ACM-issued and should have renewed itself, so a firing one means ACM renewal is stuck: check the certificate's DNS validation records."
+
+  # ---------------------------------------------------------------------------
+  # Control plane VIP and keepalived. See onprem-infra/bootstrap/kubespray/docs/control-plane-vip.md.
+  # `or vector(0)`: a host whose exporter stopped reporting counts as down, not as absent.
+  # ---------------------------------------------------------------------------
+  control-plane-vip-alerts:
+    groups:
+      - name: control-plane-vip-alerts
+        rules:
+          - alert: ControlPlaneVIPProbeFailed
+            expr: probe_success{target="control-plane-vip"} == 0
+            for: 3m
+            labels:
+              severity: critical
+              group: control-plane-vip
+            annotations:
+              summary: "Control plane VIP 192.0.2.99 is not answering"
+              description: "/readyz through the VIP has failed for 3+ minutes. ArgoCD, CI, kubectl and the external watchdog all use it. Find the holder with `ip -4 -br addr | grep 192.0.2.99` on the control plane nodes. The node addresses still work directly."
+
+          - alert: ControlPlaneVIPHolderCount
+            expr: count(node_network_address_info{address="192.0.2.99"}) != 1
+            for: 2m
+            labels:
+              severity: critical
+              group: control-plane-vip
+            annotations:
+              summary: "{{ $value }} nodes hold the control plane VIP"
+              description: "Exactly one node should hold 192.0.2.99. More than one is a VRRP split, usually a network partition between the control plane nodes."
+
+          - alert: ControlPlaneVIPOnUSBNode
+            expr: node_network_address_info{address="192.0.2.99", instance="192.0.2.25:9100"} == 1
+            for: 30m
+            labels:
+              severity: warning
+              group: control-plane-vip
+            annotations:
+              summary: "k8s-control-03 has held the control plane VIP for 30+ minutes"
+              description: "k8s-control-03 uses a USB NIC and is the last resort. k8s-control-01 should have taken the VIP back through preempt_delay, so check keepalived and the apiserver on k8s-control-01."
+
+          - alert: ControlPlaneKeepalivedDown
+            # A stale file counts as down, so a stopped timer cannot hide a dead keepalived.
+            expr: (count(keepalived_active{instance=~"192\\.0\\.2\\.(17|24|25):9100"} == 1 and on(instance) (time() - node_textfile_mtime_seconds{file=~".*keepalived\\.prom"} < 300)) or vector(0)) < 3
+            for: 5m
+            labels:
+              severity: warning
+              group: control-plane-vip
+            annotations:
+              summary: "Only {{ $value }} of 3 control plane keepalived instances are active"
+              description: "The VIP still answers, but it has fewer places to fail over to. Check `systemctl status keepalived keepalived-textfile.timer` on k8s-control-01, 02 and 03."
+
+          - alert: VPNKeepalivedDown
+            expr: (count(node_systemd_unit_state{name="keepalived.service", state="active", instance=~"192\\.0\\.2\\.(15|20):9100"} == 1) or vector(0)) < 2
+            for: 5m
+            labels:
+              severity: warning
+              group: control-plane-vip
+            annotations:
+              summary: "Only {{ $value }} of 2 VPN keepalived instances are active"
+              description: "server3 and server4 hold the VPN VIPs 192.0.2.97 and 192.0.2.98 together. With one instance down a failure of the other host loses the VPN. See onprem-infra/network/openvpn/docs/admin-guide.md."

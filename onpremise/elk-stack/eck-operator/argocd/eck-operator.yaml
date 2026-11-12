@@ -23,6 +23,6 @@ chart:
   repoURL: https://helm.elastic.co
   name: eck-operator
   version: "3.5.0"
-valueFile: observability/logging/eck-operator/values/dev.yaml  # repo-root-relative; pulled via the kuberntes-infra $values multi-source ref
+valueFile: observability/logging/eck-operator/values/dev.yaml  # repo-root-relative; pulled via the $values multi-source ref
 createNamespace: false                          # 'elastic-system' already exists
 autoSync: true                                  # adopt-diff verified clean (tracking-id only; STS/12 CRD/webhook caBundle unchanged via ServerSideApply, ServiceMonitor created) -> auto-sync (prune+selfHeal) on
